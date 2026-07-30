@@ -51,15 +51,18 @@ export const ProductCreateAddAttributesModal = () => {
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [selected, setSelected] = useState<SelectedAttribute[]>([])
 
-  const categoryId = form.watch("category_id")
+  const categoryIds = form.watch("category_ids") ?? []
 
   const { searchParams, raw } = useAttributeTableQuery({
     pageSize: PAGE_SIZE,
     prefix: ADD_ATTRIBUTES_MODAL_ID,
   })
   const attributesQuery = useMemo(
-    () => ({ ...searchParams, category_id: categoryId || undefined }),
-    [searchParams, categoryId]
+    () => ({
+      ...searchParams,
+      category_id: categoryIds.length ? categoryIds : undefined,
+    }),
+    [searchParams, categoryIds]
   )
   const { product_attributes, count, isLoading, isError, error } =
     useProductAttributes(attributesQuery, {

@@ -447,14 +447,14 @@ const SelectedAttributes = ({
 const RequiredAttributes = () => {
   const { t } = useTranslation()
   const form = useTabbedForm<ProductCreateSchemaType>()
-  const categoryId = form.watch("category_id")
+  const categoryIds = form.watch("category_ids") ?? []
 
   const { product_attributes } = useProductAttributes(
     {
-      category_id: categoryId,
+      category_id: categoryIds.length ? categoryIds : undefined,
       is_required: true,
     },
-    { enabled: !!categoryId }
+    { enabled: categoryIds.length > 0 }
   )
 
   const attributes = form.watch("attributes") || []
@@ -498,7 +498,7 @@ const RequiredAttributes = () => {
     form.setValue("attributes", [...otherAttributes, ...requiredAttributes])
   }, [product_attributes, form])
 
-  if (!categoryId || !product_attributes?.length) return null
+  if (!categoryIds.length || !product_attributes?.length) return null
 
   const requiredEntries = attributes
     .map((attr, index) => ({ attr, index }))
