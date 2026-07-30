@@ -46,7 +46,9 @@ export const ProductCreateSchema = z
     globally_available: z.boolean(),
     type_id: z.string().optional(),
     collection_id: z.string().optional(),
-    category_id: z.string().min(1, i18n.t("products.create.errors.requiredCategory")),
+    category_ids: z
+      .array(z.string())
+      .min(1, i18n.t("products.create.errors.requiredCategory")),
     seller_ids: z.array(z.string()).optional(),
     tags: z.array(z.string()).optional(),
     origin_country: z.string().optional(),
@@ -155,7 +157,7 @@ export const PRODUCT_CREATE_FORM_DEFAULTS: Partial<
   ]),
   attributes: [],
   media: [],
-  category_id: "",
+  category_ids: [],
   collection_id: "",
   description: "",
   handle: "",
