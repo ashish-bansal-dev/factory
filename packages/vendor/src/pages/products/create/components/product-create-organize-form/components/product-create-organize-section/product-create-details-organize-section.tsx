@@ -8,7 +8,7 @@ import { useTabbedForm } from "@components/tabbed-form/tabbed-form"
 import { useComboboxData } from "@hooks/use-combobox-data"
 import { sdk } from "@lib/client"
 
-import { SingleCategoryCombobox } from "../../../../../common/components/category-combobox"
+import { CategoryCombobox } from "../../../../../common/components/category-combobox"
 import { ProductCreateSchemaType } from "../../../../types"
 
 export const ProductCreateOrganizationSection = () => {
@@ -58,18 +58,18 @@ export const ProductCreateOrganizationSection = () => {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="product-create-organize-section-category-collection">
         <Form.Field
           control={form.control}
-          name="category_id"
+          name="category_ids"
           render={({ field }) => {
             return (
               <Form.Item data-testid="product-create-organize-section-category-item">
-                <Form.Label
-                  tooltip={t("products.fields.primaryCategory.tooltip")}
-                  data-testid="product-create-organize-section-category-label"
-                >
+                <Form.Label data-testid="product-create-organize-section-category-label">
                   {t("fields.category")}
                 </Form.Label>
                 <Form.Control data-testid="product-create-organize-section-category-control">
-                  <SingleCategoryCombobox {...field} />
+                  <CategoryCombobox
+                    value={field.value ?? []}
+                    onChange={field.onChange}
+                  />
                 </Form.Control>
                 <Form.ErrorMessage />
               </Form.Item>
