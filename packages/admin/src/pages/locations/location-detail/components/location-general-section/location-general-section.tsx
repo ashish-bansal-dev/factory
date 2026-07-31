@@ -146,8 +146,11 @@ function ShippingOption({
     <div className="flex items-center justify-between px-3 py-2" data-testid={`location-shipping-option-${option.id}`}>
       <div className="flex-1" data-testid={`location-shipping-option-name-${option.id}`}>
         <Text size="small" weight="plus">
-          {option.name} - {option.shipping_profile.name} (
-          {formatProvider(option.provider_id)})
+          {option.name}
+          {option.shipping_profile?.name
+            ? ` - ${option.shipping_profile.name}`
+            : ""}{" "}
+          ({formatProvider(option.provider_id)})
         </Text>
       </div>
       <Badge
