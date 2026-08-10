@@ -41,6 +41,27 @@ export const useSellerTableFilters = (): Filter[] => {
     ],
   }
 
+  const sellerTypeFilter: Filter = {
+    key: "type",
+    label: "Type",
+    type: "select",
+    multiple: true,
+    options: [
+      {
+        label: "Manufacturer",
+        value: "manufacturer",
+      },
+      {
+        label: "Distributor",
+        value: "distributor",
+      },
+      {
+        label: "Wholesaler",
+        value: "wholesaler",
+      },
+    ],
+  }
+
   const dateFilters: Filter[] = [
     { label: t("fields.createdAt"), key: "created_at" },
     { label: t("fields.updatedAt"), key: "updated_at" },
@@ -50,5 +71,5 @@ export const useSellerTableFilters = (): Filter[] => {
     type: "date",
   }))
 
-  return [statusFilter, premiumFilter, ...dateFilters]
+  return [statusFilter, sellerTypeFilter, premiumFilter, ...dateFilters]
 }

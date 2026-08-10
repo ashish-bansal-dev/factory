@@ -1,3 +1,5 @@
+import { SellerType } from "./common"
+
 export interface CreateSellerDTO {
   name: string
   handle?: string
@@ -9,6 +11,7 @@ export interface CreateSellerDTO {
   external_id?: string | null
   currency_code: string
   status?: string
+  type?: SellerType | string | null
   status_reason?: string | null
   is_premium?: boolean
   default_leadtime_to_ship?: number
@@ -28,6 +31,7 @@ export interface UpdateSellerDTO {
   external_id?: string | null
   currency_code?: string
   status?: string
+  type?: SellerType | string | null
   status_reason?: string | null
   is_premium?: boolean
   default_leadtime_to_ship?: number

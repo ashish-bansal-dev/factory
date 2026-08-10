@@ -19,6 +19,12 @@ export enum SellerStatus {
   TERMINATED = "terminated",
 }
 
+export enum SellerType {
+  MANUFACTURER = "manufacturer",
+  DISTRIBUTOR = "distributor",
+  WHOLESALER = "wholesaler",
+}
+
 export interface ProfessionalDetailsDTO {
   id: string
   corporate_name: string | null
@@ -194,6 +200,7 @@ export interface SellerDTO {
   external_id: string | null
   currency_code: string
   status: string
+  type: SellerType | string | null
   status_reason: string | null
   approved_at: Date | null
   rejected_at: Date | null

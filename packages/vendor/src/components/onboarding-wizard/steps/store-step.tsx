@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLoaderData } from "react-router-dom";
 import * as z from "zod";
+import { SellerType } from "@mercurjs/types";
 
 import {
   FormExtensionZone,
@@ -27,6 +28,7 @@ const StoreStepSchema = z.object({
   name: z.string().min(1, i18n.t("onboarding.wizard.validation.nameRequired")),
   email: z.string().email(i18n.t("onboarding.wizard.validation.emailInvalid")),
   phone: z.string().optional(),
+  type: z.nativeEnum(SellerType).optional(),
   currency_code: z.string().min(1, i18n.t("onboarding.wizard.validation.currencyRequired")),
   description: z.string().optional(),
   handle: z
@@ -76,6 +78,7 @@ export const StoreStep = ({
       name: "",
       email: "",
       phone: "",
+      type: undefined,
       currency_code: "",
       description: "",
       handle: "",
@@ -177,6 +180,28 @@ export const StoreStep = ({
                   <Form.Label optional>{t("fields.phone")}</Form.Label>
                   <Form.Control>
                     <Input type="tel" autoComplete="tel" {...field} />
+                  </Form.Control>
+                  <Form.ErrorMessage />
+                </Form.Item>
+              )}
+            />
+            <Form.Field
+              control={form.control}
+              name="type"
+              render={({ field: { onChange, ref, value, ...field } }) => (
+                <Form.Item>
+                  <Form.Label optional>Business Type</Form.Label>
+                  <Form.Control>
+                    <Select {...field} value={value} onValueChange={onChange}>
+                      <Select.Trigger ref={ref}>
+                        <Select.Value placeholder="Select Business Type" />
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value={SellerType.MANUFACTURER}>Manufacturer</Select.Item>
+                        <Select.Item value={SellerType.DISTRIBUTOR}>Distributor</Select.Item>
+                        <Select.Item value={SellerType.WHOLESALER}>Wholesaler</Select.Item>
+                      </Select.Content>
+                    </Select>
                   </Form.Control>
                   <Form.ErrorMessage />
                 </Form.Item>

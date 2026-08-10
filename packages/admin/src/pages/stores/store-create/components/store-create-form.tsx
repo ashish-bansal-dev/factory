@@ -43,6 +43,7 @@ export const StoreCreateForm = ({ children }: StoreCreateFormProps) => {
         email: values.email,
         phone: values.phone || undefined,
         currency_code: values.currency_code,
+        type: values.type || undefined,
         handle: values.handle || undefined,
         member: {
           email: values.member_email,

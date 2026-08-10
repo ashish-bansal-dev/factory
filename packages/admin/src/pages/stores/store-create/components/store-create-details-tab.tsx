@@ -1,6 +1,7 @@
 import { usePermissionGate } from "@mercurjs/dashboard-shared";
 import { Heading, Input, Select } from "@medusajs/ui";
 import { useTranslation } from "react-i18next";
+import { SellerType } from "@mercurjs/types";
 
 import { Form } from "../../../../components/common/form";
 import { HandleInput } from "../../../../components/inputs/handle-input";
@@ -72,6 +73,28 @@ const Root = () => {
                 <Form.Label optional>{t("fields.phone")}</Form.Label>
                 <Form.Control>
                   <Input type="tel" {...field} />
+                </Form.Control>
+                <Form.ErrorMessage />
+              </Form.Item>
+            )}
+          />
+          <Form.Field
+            control={form.control}
+            name="type"
+            render={({ field: { onChange, ref, value, ...field } }) => (
+              <Form.Item>
+                <Form.Label optional>Type</Form.Label>
+                <Form.Control>
+                  <Select {...field} value={value} onValueChange={onChange}>
+                    <Select.Trigger ref={ref}>
+                      <Select.Value placeholder="Type" />
+                    </Select.Trigger>
+                    <Select.Content>
+                      <Select.Item value={SellerType.MANUFACTURER}>Manufacturer</Select.Item>
+                      <Select.Item value={SellerType.DISTRIBUTOR}>Distributor</Select.Item>
+                      <Select.Item value={SellerType.WHOLESALER}>Wholesaler</Select.Item>
+                    </Select.Content>
+                  </Select>
                 </Form.Control>
                 <Form.ErrorMessage />
               </Form.Item>
