@@ -11,6 +11,7 @@ export const adminSellerFields = [
   "external_id",
   "currency_code",
   "status",
+  "type",
   "status_reason",
   "approved_at",
   "rejected_at",

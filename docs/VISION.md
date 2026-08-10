@@ -61,13 +61,13 @@ To capture valuable buyer demand signals, storefronts track product engagement:
 ### A. Internal Seller Type Field
 ```ts
 // Internal classification only - not exposed on public storefront API
-export enum InternalSellerType {
+export enum SellerType {
   MANUFACTURER = "manufacturer",
   DISTRIBUTOR = "distributor",
   WHOLESALER = "wholesaler",
 }
 ```
-Added to `Seller` model in `packages/core/src/modules/seller/models/seller.ts`.
+Field `type: model.enum(SellerType).nullable()` added to `Seller` model in `packages/core/src/modules/seller/models/seller.ts`.
 
 ### B. Lead & Prospect Inquiry Engine (`packages/core/src/modules/inquiry`)
 ```ts
@@ -101,7 +101,7 @@ Add engagement counters to Product / Offer models or dedicated `ProductEngagemen
 
 | Step | Scope | Key Capabilities |
 | :--- | :--- | :--- |
-| **Step 1 (Current MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `seller_type`, Product views/likes analytics. |
+| **Step 1 (Current MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `type` field on Seller, Product views/likes analytics. |
 | **Step 2** | Multi-Brand Support | Single seller managing multiple brands (`brand-seller-link`). |
 | **Step 3** | Wholesale Pack Engine | `bundle_size` storefront quantity increments, pack pricing formulas. |
 | **Step 4** | Gated B2B Access | Guest price hiding, Customer Group dynamic discount rules. |
@@ -112,8 +112,8 @@ Add engagement counters to Product / Offer models or dedicated `ProductEngagemen
 ## 4. Architectural Rules & Guardrails
 
 > [!IMPORTANT]
-> **Keep `seller_type` strictly internal during Step 1.**  
-> Do not expose `seller_type` on public API responses or storefront UI. Keep storefront browsing clean, simple, and brand-focused.
+> **Keep Seller `type` strictly internal during Step 1.**  
+> Do not expose `type` on public API responses or storefront UI. Keep storefront browsing clean, simple, and brand-focused.
 
 > [!TIP]
 > **Ensure dual inquiry delivery for seller domains.**  

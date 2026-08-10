@@ -1,6 +1,7 @@
 import { createColumnHelper } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@medusajs/ui";
 
 import { SellerStatusCell } from "../../../components/table/table-cells/seller/seller-status-cell/seller-status-cell";
 import { DateCell } from "@/components/table/table-cells/common/date-cell";
@@ -22,6 +23,18 @@ export const useSellersTableColumns = () => {
         id: "email",
         header: t("stores.fields.email"),
         cell: ({ row }) => row.original.email,
+      }),
+      columnHelper.display({
+        id: "type",
+        header: "Type",
+        cell: ({ row }) =>
+          row.original.type ? (
+            <Badge size="2xsmall" color="blue" className="capitalize">
+              {row.original.type}
+            </Badge>
+          ) : (
+            <span className="text-ui-fg-muted">-</span>
+          ),
       }),
       columnHelper.display({
         id: "status",

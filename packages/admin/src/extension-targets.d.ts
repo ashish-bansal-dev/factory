@@ -264,7 +264,7 @@ declare module "@mercurjs/dashboard-sdk" {
       formZones: "create" | "edit"
       formTabs: { "create": "details" | "users" }
       displayZones: "address" | "company-details" | "configuration" | "general" | "members" | "offers" | "orders" | "payment-details" | "requests"
-      displayFieldIds: "currency_code" | "description" | "email" | "handle" | "phone" | "website_url"
+      displayFieldIds: "currency_code" | "description" | "email" | "handle" | "phone" | "type" | "website_url"
     }
     "user": {
       formZones: never

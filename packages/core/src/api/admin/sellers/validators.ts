@@ -7,6 +7,7 @@ import {
 } from "@medusajs/medusa/api/utils/validators"
 import { booleanString } from "@medusajs/medusa/api/utils/common-validators/common"
 import { AdditionalData } from "@medusajs/framework/types"
+import { SellerType } from "@mercurjs/types"
 
 export type AdminGetSellerParamsType = z.infer<typeof AdminGetSellerParams>
 export const AdminGetSellerParams = createSelectParams()
@@ -23,6 +24,7 @@ export const AdminGetSellersParams = createFindParams({
     handle: z.string().optional(),
     email: z.string().optional(),
     status: z.union([z.string(), z.array(z.string())]).optional(),
+    type: z.union([z.nativeEnum(SellerType), z.array(z.nativeEnum(SellerType)), z.string(), z.array(z.string())]).optional(),
     is_premium: booleanString().optional(),
     created_at: createOperatorMap().optional(),
     updated_at: createOperatorMap().optional(),
@@ -62,6 +64,7 @@ export const CreateSeller = z.object({
   external_id: z.string().nullable().optional(),
   currency_code: z.string(),
   status: z.string().optional(),
+  type: z.nativeEnum(SellerType).nullable().optional(),
   status_reason: z.string().nullable().optional(),
   is_premium: z.boolean().optional(),
   closed_from: z.coerce.date().nullable().optional(),
@@ -87,6 +90,7 @@ export const UpdateSeller = z.object({
   external_id: z.string().nullable().optional(),
   currency_code: z.string().optional(),
   status: z.string().optional(),
+  type: z.nativeEnum(SellerType).nullable().optional(),
   status_reason: z.string().nullable().optional(),
   is_premium: z.boolean().optional(),
   closed_from: z.coerce.date().nullable().optional(),
