@@ -1,5 +1,5 @@
 import { model } from "@medusajs/framework/utils"
-import { SellerStatus } from "@mercurjs/types"
+import { SellerStatus, SellerType } from "@mercurjs/types"
 import ProfessionalDetails from "./professional-details"
 import SellerAddress from "./address"
 import PaymentDetails from "./payment-details"
@@ -21,6 +21,7 @@ const Seller = model
     external_id: model.text().searchable().nullable(),
     currency_code: model.text(),
     status: model.enum(SellerStatus).default(SellerStatus.PENDING_APPROVAL),
+    type: model.enum(SellerType).nullable(),
     status_reason: model.text().nullable(),
     approved_at: model.dateTime().nullable(),
     rejected_at: model.dateTime().nullable(),

@@ -103,22 +103,31 @@
 
 ## 3. Phased Step-by-Step Implementation Roadmap
 
-```mermaid
-timeline
-    title FactoryTribe Step-by-Step Evolution
-    Step 1 (Current Focus) : FactoryTribe Mediated Inquiries
-                           : Seller Domain Dual Inquiry Copy
-                           : Internal Seller Type Taxonomy
-                           : Product Views, Likes & Dislikes Analytics
-    Step 2                 : Multi-Brand Seller Engine (1 Seller -> N Brands)
-                           : Brand Pages (/brands/:slug) & SEO
-    Step 3                 : Merchandising & Wholesale Bundle Pack Engine
-                           : MRP Strike-Through Display
-    Step 4                 : Gated B2B Pricing & Customer Group Discounts
-    Step 5                 : Direct E-Commerce Checkout on Seller Domains & Marketplace
-                           : Automated Custom Domain SSL Provisioning
-    Step 6                 : B2C Retail Expansion (threadbuy Storefront)
-                           : Single-Unit Purchasing & B2C Retail Margin Pricing
+### A. Internal Seller Type Field
+```ts
+// Internal classification only - not exposed on public storefront API
+export enum SellerType {
+  MANUFACTURER = "manufacturer",
+  DISTRIBUTOR = "distributor",
+  WHOLESALER = "wholesaler",
+}
+```
+Field `type: model.enum(SellerType).nullable()` added to `Seller` model in `packages/core/src/modules/seller/models/seller.ts`.
+
+### B. Lead & Prospect Inquiry Engine (`packages/core/src/modules/inquiry`)
+```ts
+export const Inquiry = model.define("inquiry", {
+  id: model.id({ prefix: "inq" }).primaryKey(),
+  source_domain: model.text(), // "factorytribe.com" or "sellerdomain.com"
+  seller_id: model.text(),
+  buyer_name: model.text(),
+  buyer_email: model.text(),
+  buyer_phone: model.text().nullable(),
+  message: model.text(),
+  product_id: model.text().nullable(),
+  status: model.enum(["new", "in_progress", "mediated", "closed"]).default("new"),
+  is_operator_copy: model.boolean().default(true),
+})
 ```
 
 ---
@@ -142,19 +151,21 @@ timeline
 
 ## 5. Cumulative Vision Change Log
 
-* **2026-08-10**: Initial architecture vision created for multi-tenancy vs domain-separated storefronts.
-* **2026-08-11 (Morning)**: Added Brand-centric SEO landing pages, Operator Lead Mediation, Gated B2B Pricing, and Wholesale Bundle Pack Engine.
-* **2026-08-11 (Midday)**: Added Multi-Brand Seller Engine ($1 \text{ Seller} \rightarrow N \text{ Brands}$) and Seller Type Taxonomy (`MANUFACTURER`, `DISTRIBUTOR`, `WHOLESALER`).
-* **2026-08-11 (Afternoon)**: Established Step 1 Simplicity Focus — `factorytribe.com` mediated inquiries, seller domain dual inquiry tracking, internal seller type scoping, and Product Views/Likes/Dislikes analytics.
-* **2026-08-11 (Latest)**: Appended B2C Retail Expansion Storefront **`threadbuy`** (`threadbuy.com`) for single-unit purchases ($bundle\_size = 1$) with higher retail margin pricing.
+| Step | Scope | Key Capabilities |
+| :--- | :--- | :--- |
+| **Step 1 (Current MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `type` field on Seller, Product views/likes analytics. |
+| **Step 2** | Multi-Brand Support | Single seller managing multiple brands (`brand-seller-link`). |
+| **Step 3** | Wholesale Pack Engine | `bundle_size` storefront quantity increments, pack pricing formulas. |
+| **Step 4** | Gated B2B Access | Guest price hiding, Customer Group dynamic discount rules. |
+| **Step 5** | Direct E-Commerce Checkout | Full self-serve cart & checkout on seller domains and main marketplace. |
 
 ---
 
 ## 6. Master Rules & Guardrails for AI Agents
 
 > [!IMPORTANT]
-> **NEVER DELETE DISCUSSED FEATURES FROM THIS VISION FILE.**  
-> Always append and adapt. Even if an immediate implementation step is simple, keep the full end-state vision intact so future sessions build seamlessly toward the final goal.
+> **Keep Seller `type` strictly internal during Step 1.**  
+> Do not expose `type` on public API responses or storefront UI. Keep storefront browsing clean, simple, and brand-focused.
 
 > [!TIP]
 > **Keep Step 1 simple while preserving data hooks for Step 2+.**  

@@ -4,7 +4,7 @@ import {
   WithAdditionalData,
 } from "@medusajs/medusa/api/utils/validators"
 import { AdditionalData } from "@medusajs/framework/types"
-import { SellerRole } from "@mercurjs/types"
+import { SellerRole, SellerType } from "@mercurjs/types"
 import { z } from "zod"
 
 export type VendorGetSellersParamsType = z.infer<typeof VendorGetSellersParams>
@@ -22,6 +22,7 @@ export const CreateSellerAccount = z.object({
   handle: z.string().optional(),
   email: z.string().email(),
   phone: z.string().nullable().optional(),
+  type: z.nativeEnum(SellerType).nullable().optional(),
   member_email: z.string().email().optional(),
   first_name: z.string().nullable().optional(),
   last_name: z.string().nullable().optional(),
@@ -70,6 +71,7 @@ export const UpdateSeller = z.object({
   handle: z.string().optional(),
   email: z.string().email().optional(),
   phone: z.string().nullable().optional(),
+  type: z.nativeEnum(SellerType).nullable().optional(),
   description: z.string().nullable().optional(),
   logo: z.string().url().nullable().optional(),
   banner: z.string().url().nullable().optional(),

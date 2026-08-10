@@ -30,7 +30,7 @@ import { sdk } from "@lib/client";
 import { useUpdateSeller } from "@hooks/api/sellers";
 import { useStore } from "@hooks/api/store";
 import { currencies } from "@/lib/data/currencies";
-import { SellerStatus } from "@mercurjs/types";
+import { SellerStatus, SellerType } from "@mercurjs/types";
 
 type Seller = InferClientOutput<typeof sdk.admin.sellers.$id.query>["seller"];
 
@@ -40,6 +40,7 @@ type StoreEditFormProps = {
 
 const EditStoreSchema = zod.object({
   status: zod.nativeEnum(SellerStatus),
+  type: zod.nativeEnum(SellerType).optional(),
   name: zod
     .string()
     .min(1, { message: i18n.t("stores.create.validation.nameRequired") }),
@@ -113,6 +114,7 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
     data: seller,
     defaultValues: {
       status: (seller.status as SellerStatus) ?? SellerStatus.OPEN,
+      type: (seller.type as SellerType) ?? undefined,
       name: seller.name ?? "",
       description: seller.description ?? "",
       handle: seller.handle ?? "",
@@ -193,6 +195,7 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
     await mutateAsync(
       {
         status: values.status,
+        type: values.type || null,
         name: values.name,
         handle: values.handle || undefined,
         email: values.email || undefined,
@@ -292,6 +295,34 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
                         </Select.Item>
                         <Select.Item value={SellerStatus.SUSPENDED}>
                           {t("stores.status.suspended")}
+                        </Select.Item>
+                      </Select.Content>
+                    </Select>
+                  </Form.Control>
+                  <Form.ErrorMessage />
+                </Form.Item>
+              )}
+            />
+            <Form.Field
+              control={form.control}
+              name="type"
+              render={({ field: { onChange, value, ref: _ref, ...field } }) => (
+                <Form.Item>
+                  <Form.Label optional>Type</Form.Label>
+                  <Form.Control>
+                    <Select {...field} value={value} onValueChange={onChange}>
+                      <Select.Trigger>
+                        <Select.Value placeholder="Select Type" />
+                      </Select.Trigger>
+                      <Select.Content>
+                        <Select.Item value={SellerType.MANUFACTURER}>
+                          Manufacturer
+                        </Select.Item>
+                        <Select.Item value={SellerType.DISTRIBUTOR}>
+                          Distributor
+                        </Select.Item>
+                        <Select.Item value={SellerType.WHOLESALER}>
+                          Wholesaler
                         </Select.Item>
                       </Select.Content>
                     </Select>
