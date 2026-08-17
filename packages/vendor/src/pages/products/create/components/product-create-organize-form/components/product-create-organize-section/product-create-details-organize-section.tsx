@@ -25,6 +25,16 @@ export const ProductCreateOrganizationSection = () => {
       })),
   })
 
+  const brands = useComboboxData({
+    queryKey: ["brands", "approved"],
+    queryFn: (params: any) => sdk.vendor.brands.query({ status: "approved", ...params }) as any,
+    getOptions: (data: any) =>
+      (data.brands ?? []).map((brand: { id: string; name: string }) => ({
+        label: brand.name,
+        value: brand.id,
+      })),
+  })
+
   const types = useComboboxData({
     queryKey: ["product_types"],
     queryFn: (params: any) => sdk.vendor.productTypes.query(params) as any,
@@ -92,6 +102,30 @@ export const ProductCreateOrganizationSection = () => {
                     searchValue={collections.searchValue}
                     onSearchValueChange={collections.onSearchValueChange}
                     fetchNextPage={collections.fetchNextPage}
+                  />
+                </Form.Control>
+                <Form.ErrorMessage />
+              </Form.Item>
+            )
+          }}
+        />
+        <Form.Field
+          control={form.control}
+          name="brand_id"
+          render={({ field }) => {
+            return (
+              <Form.Item data-testid="product-create-organize-section-brand-item">
+                <Form.Label optional data-testid="product-create-organize-section-brand-label">
+                  Brand
+                </Form.Label>
+                <Form.Control data-testid="product-create-organize-section-brand-control">
+                  <Combobox
+                    {...field}
+                    options={brands.options}
+                    searchValue={brands.searchValue}
+                    onSearchValueChange={brands.onSearchValueChange}
+                    fetchNextPage={brands.fetchNextPage}
+                    placeholder="Select brand"
                   />
                 </Form.Control>
                 <Form.ErrorMessage />

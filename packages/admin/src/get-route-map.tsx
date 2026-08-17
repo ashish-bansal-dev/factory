@@ -1,5 +1,5 @@
 import type { HttpTypes } from "@medusajs/types";
-import type { AdminReviewResponse } from "@mercurjs/types";
+import type { AdminBrandResponse, AdminReviewResponse } from "@mercurjs/types";
 
 import { t } from "i18next";
 import { Outlet, type RouteObject, type UIMatch } from "react-router-dom";
@@ -619,6 +619,55 @@ export function getRouteMap({
                             path: "metadata/edit",
                             lazy: () =>
                               import("./pages/collections/collection-metadata"),
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                path: "/brands",
+                errorElement: <ErrorBoundary />,
+                handle: {
+                  breadcrumb: () => "Brands",
+                },
+                children: [
+                  {
+                    path: "",
+                    lazy: () => import("./pages/brands/brands-list"),
+                    children: [
+                      {
+                        path: "create",
+                        lazy: () => import("./pages/brands/brand-create"),
+                      },
+                    ],
+                  },
+                  {
+                    path: ":id",
+                    lazy: async () => {
+                      const { Breadcrumb, loader } = await import(
+                        "./pages/brands/brand-details"
+                      );
+
+                      return {
+                        Component: Outlet,
+                        loader,
+                        handle: {
+                          breadcrumb: (
+                            match: UIMatch<AdminBrandResponse>,
+                          ) => <Breadcrumb {...match} />,
+                        },
+                      };
+                    },
+                    children: [
+                      {
+                        path: "",
+                        lazy: () => import("./pages/brands/brand-details"),
+                        children: [
+                          {
+                            path: "edit",
+                            lazy: () => import("./pages/brands/brand-edit"),
                           },
                         ],
                       },

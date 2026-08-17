@@ -176,6 +176,31 @@ export const useUpdateProduct = (
   });
 };
 
+export const useLinkProductBrand = (
+  id: string,
+  options?: UseMutationOptions<
+    any,
+    ClientError,
+    { add?: string[]; remove?: string[] }
+  >
+) => {
+  return useMutation({
+    mutationFn: (payload) =>
+      sdk.vendor.products.$id.brand.mutate({ $id: id, ...payload }),
+    onSuccess: async (data, variables, context) => {
+      await queryClient.invalidateQueries({
+        queryKey: productsQueryKeys.lists(),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: productsQueryKeys.detail(id),
+      });
+
+      options?.onSuccess?.(data, variables, context);
+    },
+    ...options,
+  });
+};
+
 export const useDeleteProduct = (
   id: string,
   options?: UseMutationOptions<ProductChangeResponse, ClientError, void>

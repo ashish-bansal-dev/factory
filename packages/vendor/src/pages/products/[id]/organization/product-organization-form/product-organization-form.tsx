@@ -1,5 +1,5 @@
 import { Button, toast } from "@medusajs/ui";
-import { MercurFeatureFlags } from "@mercurjs/types";
+import { BrandStatus, MercurFeatureFlags } from "@mercurjs/types";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,20 +10,21 @@ import { Combobox } from "@components/inputs/combobox";
 import { RouteDrawer, useRouteModal } from "@components/modals";
 import { KeyboundForm } from "@components/utilities/keybound-form";
 import { useFeatureFlags } from "@hooks/api";
-import { useUpdateProduct } from "@hooks/api/products";
+import { useLinkProductBrand, useUpdateProduct } from "@hooks/api/products";
 import { useComboboxData } from "@hooks/use-combobox-data";
 import { sdk } from "@lib/client";
 import { SingleCategoryCombobox } from "@pages/products/common/components/category-combobox";
 import { ExtendedAdminProduct } from "@custom-types/products";
 
 type ProductOrganizationFormProps = {
-  product: ExtendedAdminProduct;
+  product: ExtendedAdminProduct & { brand?: { id: string; name: string } };
 };
 
 const ProductOrganizationSchema = zod.object({
   type_id: zod.string().nullable(),
   collection_id: zod.string().nullable(),
   category_id: zod.string().optional(),
+  brand_id: zod.string().nullable().optional(),
   tag_ids: zod.array(zod.string()),
 });
 
@@ -57,6 +58,20 @@ export const ProductOrganizationForm = ({
       })),
   });
 
+  const brands = useComboboxData({
+    queryKey: ["brands", { status: BrandStatus.APPROVED }],
+    queryFn: (params) =>
+      sdk.vendor.brands.query({
+        status: BrandStatus.APPROVED,
+        ...(params as any),
+      }),
+    getOptions: (data) =>
+      data.brands.map((brand: any) => ({
+        label: brand.name,
+        value: brand.id,
+      })),
+  });
+
   const tags = useComboboxData({
     queryKey: ["product_tags"],
     queryFn: (params) => sdk.vendor.productTags.query(params as any),
@@ -67,17 +82,22 @@ export const ProductOrganizationForm = ({
       })),
   });
 
+  const initialBrandId = (product as any).brand?.id ?? "";
+
   const form = useForm({
     defaultValues: {
       type_id: product.type_id ?? "",
       collection_id: product.collection_id ?? "",
       category_id: product.categories?.[0]?.id ?? "",
+      brand_id: initialBrandId,
       tag_ids: product.tags?.map((t: { id: string }) => t.id) || [],
     },
     resolver: zodResolver(ProductOrganizationSchema),
   });
 
   const { mutateAsync, isPending } = useUpdateProduct(product.id);
+  const { mutateAsync: linkBrand, isPending: isLinkingBrand } =
+    useLinkProductBrand(product.id);
 
   const handleSubmit = form.handleSubmit(async (data) => {
     await mutateAsync(
@@ -88,7 +108,14 @@ export const ProductOrganizationForm = ({
         tags: data.tag_ids?.map((t) => ({ id: t })),
       } as any,
       {
-        onSuccess: () => {
+        onSuccess: async () => {
+          if ((data.brand_id ?? "") !== initialBrandId) {
+            await linkBrand({
+              add: data.brand_id ? [data.brand_id] : [],
+              remove: initialBrandId ? [initialBrandId] : [],
+            });
+          }
+
           toast.success(
             isProductRequestEnabled
               ? t("products.edit.requestSuccessToast")
@@ -136,6 +163,35 @@ export const ProductOrganizationForm = ({
                       />
                     </Form.Control>
                     <Form.ErrorMessage data-testid="product-organization-form-categories-error" />
+                  </Form.Item>
+                );
+              }}
+            />
+            <Form.Field
+              control={form.control}
+              name="brand_id"
+              render={({ field }) => {
+                return (
+                  <Form.Item data-testid="product-organization-form-brand-item">
+                    <Form.Label
+                      optional
+                      data-testid="product-organization-form-brand-label"
+                    >
+                      Brand
+                    </Form.Label>
+                    <Form.Control data-testid="product-organization-form-brand-control">
+                      <Combobox
+                        {...field}
+                        multiple={false}
+                        options={brands.options}
+                        onSearchValueChange={brands.onSearchValueChange}
+                        searchValue={brands.searchValue}
+                        fetchNextPage={brands.fetchNextPage}
+                        placeholder="Select brand"
+                        data-testid="product-organization-form-brand-combobox"
+                      />
+                    </Form.Control>
+                    <Form.ErrorMessage data-testid="product-organization-form-brand-error" />
                   </Form.Item>
                 );
               }}
@@ -243,7 +299,7 @@ export const ProductOrganizationForm = ({
             <Button
               size="small"
               type="submit"
-              isLoading={isPending}
+              isLoading={isPending || isLinkingBrand}
               data-testid="product-organization-form-save-button"
             >
               {t("actions.save")}

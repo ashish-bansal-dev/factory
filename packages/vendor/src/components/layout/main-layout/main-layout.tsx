@@ -307,6 +307,10 @@ export const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
           label: t("categories.domain"),
           to: "/categories",
         },
+        {
+          label: "Brands",
+          to: "/brands",
+        },
         // TODO: Enable when domin is introduced
         // {
         //   label: t("giftCards.domain"),

@@ -190,4 +190,9 @@ export const adminProductsMiddlewares: MiddlewareRoute[] = [
     matcher: "/admin/products/:id/sellers",
     middlewares: [validateAndTransformBody(createLinkBody())],
   },
+  {
+    method: ["POST"],
+    matcher: "/admin/products/:id/brand",
+    middlewares: [validateAndTransformBody(createLinkBody())],
+  },
 ]

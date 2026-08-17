@@ -95,17 +95,26 @@ Add engagement counters to Product / Offer models or dedicated `ProductEngagemen
 * `POST /store/products/:id/view` $\rightarrow$ Increments `views_count`.
 * `POST /store/products/:id/react` $\rightarrow$ Accepts `{ reaction: "like" | "dislike" }` to update counts.
 
+### D. Multi-Brand Engine (`packages/core/src/modules/brand`)
+* **Brand Model**: `Brand` (`id`, `name`, `handle`, `description`, `logo`, `banner`, `website_url`, `status`, `metadata`).
+* **Approval Lifecycle**: `pending_approval`, `approved`, `rejected`.
+* **Medusa v2 Links**:
+  * `brand-seller-link`: Cross-module link between `BrandModule` and `SellerModule`.
+  * `brand-product-link`: Cross-module link between `BrandModule` and `ProductModule`.
+* **Admin Flow**: Admins can directly create brands and assign them to 1 or more sellers (auto-`approved`), and approve/reject vendor requests.
+* **Vendor Flow**: Vendors can submit brand creation requests (starts in `pending_approval`) and select approved assigned brands when creating products.
+
 ---
 
 ## 3. Step-by-Step Evolution Roadmap
 
-| Step | Scope | Key Capabilities |
-| :--- | :--- | :--- |
-| **Step 1 (Current MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `type` field on Seller, Product views/likes analytics. |
-| **Step 2** | Multi-Brand Support | Single seller managing multiple brands (`brand-seller-link`). |
-| **Step 3** | Wholesale Pack Engine | `bundle_size` storefront quantity increments, pack pricing formulas. |
-| **Step 4** | Gated B2B Access | Guest price hiding, Customer Group dynamic discount rules. |
-| **Step 5** | Direct E-Commerce Checkout | Full self-serve cart & checkout on seller domains and main marketplace. |
+| Step | Scope | Key Capabilities | Status |
+| :--- | :--- | :--- | :--- |
+| **Step 1 (MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `type` field on Seller, Product views/likes analytics. | In Progress |
+| **Step 2** | Multi-Brand Support | Single seller managing multiple brands, Admin assignment & approval workflow (`brand-seller-link`, `brand-product-link`). | Completed |
+| **Step 3** | Wholesale Pack Engine | `bundle_size` storefront quantity increments, pack pricing formulas. | Planned |
+| **Step 4** | Gated B2B Access | Guest price hiding, Customer Group dynamic discount rules. | Planned |
+| **Step 5** | Direct E-Commerce Checkout | Full self-serve cart & checkout on seller domains and main marketplace. | Planned |
 
 ---
 

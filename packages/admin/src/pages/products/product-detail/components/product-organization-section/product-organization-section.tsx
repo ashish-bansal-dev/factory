@@ -99,6 +99,19 @@ export const ProductOrganizationSection = ({
         }
         data-testid="product-type-row"
       />
+
+      <SectionRow
+        title="Brand"
+        value={
+          (product as any).brand ? (
+            <OrganizationTag
+              label={(product as any).brand.name}
+              to={`/brands/${(product as any).brand.id}`}
+            />
+          ) : undefined
+        }
+        data-testid="product-brand-row"
+      />
       <DisplayExtensionZone model="product" zone="organize" data={product} />
     </Container>
   );

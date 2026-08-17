@@ -482,6 +482,25 @@ export function getRouteMap({
                 ],
               },
 
+              // BRANDS
+              {
+                path: "/brands",
+                errorElement: <ErrorBoundary />,
+                handle: { breadcrumb: () => "Brands" },
+                children: [
+                  {
+                    path: "",
+                    lazy: () => import("./pages/brands/brands-list"),
+                    children: [
+                      {
+                        path: "create",
+                        lazy: () => import("./pages/brands/brand-create"),
+                      },
+                    ],
+                  },
+                ],
+              },
+
               // CUSTOMERS
               {
                 path: "/customers",
