@@ -153,6 +153,7 @@ declare module "@mercurjs/dashboard-sdk" {
   }
 
   interface NavItemRegistry {
+    "brands": true
     "campaigns": true
     "categories": true
     "collections": true

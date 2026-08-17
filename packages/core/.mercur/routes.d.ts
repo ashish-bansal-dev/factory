@@ -509,6 +509,12 @@ export type Routes = {
                 subscribe: typeof import("@medusajs/medusa/api/admin/workflows-executions/[workflow_id]/subscribe/route");
             };
         };
+        brands: typeof import("../src/api/admin/brands/route") & {
+            $id: typeof import("../src/api/admin/brands/[id]/route") & {
+                approve: typeof import("../src/api/admin/brands/[id]/approve/route");
+                reject: typeof import("../src/api/admin/brands/[id]/reject/route");
+            };
+        };
         reviews: typeof import("../src/api/admin/reviews/route") & {
             $id: typeof import("../src/api/admin/reviews/[id]/route") & {
                 respond: typeof import("../src/api/admin/reviews/[id]/respond/route");
@@ -931,6 +937,9 @@ export type Routes = {
         };
         stores: typeof import("../src/api/vendor/stores/route");
         uploads: typeof import("../src/api/vendor/uploads/route");
+        brands: typeof import("../src/api/vendor/brands/route") & {
+            $id: typeof import("../src/api/vendor/brands/[id]/route");
+        };
         reviews: typeof import("../src/api/vendor/reviews/route") & {
             $id: typeof import("../src/api/vendor/reviews/[id]/route");
         };
