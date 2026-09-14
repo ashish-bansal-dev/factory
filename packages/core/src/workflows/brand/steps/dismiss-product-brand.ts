@@ -22,8 +22,8 @@ export const dismissProductBrandStep = createStep(
     )
 
     const link: Record<string, Record<string, string>> = {
-      [Modules.PRODUCT]: { product_id: input.product_id },
       [MercurModules.BRAND]: input.brand_id ? { brand_id: input.brand_id } : {},
+      [Modules.PRODUCT]: { product_id: input.product_id },
     }
 
     await remoteLink.dismiss([link as any])
@@ -39,8 +39,8 @@ export const dismissProductBrandStep = createStep(
     )
 
     const link = {
-      [Modules.PRODUCT]: { product_id: input.product_id },
       [MercurModules.BRAND]: { brand_id: input.brand_id },
+      [Modules.PRODUCT]: { product_id: input.product_id },
     }
 
     await remoteLink.create([link])

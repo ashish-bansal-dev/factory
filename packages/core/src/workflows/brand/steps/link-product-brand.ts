@@ -22,8 +22,8 @@ export const linkProductBrandStep = createStep(
     )
 
     const link = {
-      [Modules.PRODUCT]: { product_id: input.product_id },
       [MercurModules.BRAND]: { brand_id: input.brand_id },
+      [Modules.PRODUCT]: { product_id: input.product_id },
     }
 
     await remoteLink.create([link])
@@ -39,8 +39,8 @@ export const linkProductBrandStep = createStep(
     )
 
     const link = {
-      [Modules.PRODUCT]: { product_id: input.product_id },
       [MercurModules.BRAND]: { brand_id: input.brand_id },
+      [Modules.PRODUCT]: { product_id: input.product_id },
     }
 
     await remoteLink.dismiss([link])

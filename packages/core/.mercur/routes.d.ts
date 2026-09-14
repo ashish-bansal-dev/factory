@@ -310,6 +310,7 @@ export type Routes = {
                         batch: typeof import("@medusajs/medusa/api/admin/products/[id]/variants/inventory-items/batch/route");
                     };
                 };
+                brand: typeof import("../src/api/admin/products/[id]/brand/route");
             };
             batch: typeof import("@medusajs/medusa/api/admin/products/batch/route");
             export: typeof import("@medusajs/medusa/api/admin/products/export/route");
@@ -513,6 +514,7 @@ export type Routes = {
             $id: typeof import("../src/api/admin/brands/[id]/route") & {
                 approve: typeof import("../src/api/admin/brands/[id]/approve/route");
                 reject: typeof import("../src/api/admin/brands/[id]/reject/route");
+                sellers: typeof import("../src/api/admin/brands/[id]/sellers/route");
             };
         };
         reviews: typeof import("../src/api/admin/reviews/route") & {
@@ -839,6 +841,7 @@ export type Routes = {
                 variants: typeof import("../src/api/vendor/products/[id]/variants/route") & {
                     $variantId: typeof import("../src/api/vendor/products/[id]/variants/[variant_id]/route");
                 };
+                brand: typeof import("../src/api/vendor/products/[id]/brand/route");
             };
         };
         promotions: typeof import("../src/api/vendor/promotions/route") & {
