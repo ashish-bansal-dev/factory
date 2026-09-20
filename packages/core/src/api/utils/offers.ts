@@ -214,9 +214,13 @@ type StoreRequestWithContext = MedusaStoreRequest<unknown> & {
   }
 }
 
+import { resolveVisibleSellerIds } from "./sellers"
+
 type OfferPriceRow = {
   id: string
   variant_id: string
+  seller_id?: string
+  product_id?: string
   product_variant?: { price_set?: { id?: string } | null } | null
   prices?: { id?: string }[] | null
 }
@@ -259,10 +263,72 @@ export const wrapProductVariantsWithOfferPrice = async (
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
   const { data: offers } = await query.graph({
     entity: "offer",
-    fields: ["id", "variant_id", "product_variant.price_set.id", "prices.id"],
+    fields: [
+      "id",
+      "variant_id",
+      "seller_id",
+      "product_id",
+      "product_variant.price_set.id",
+      "prices.id",
+    ],
     filters: { variant_id: variantIds },
   })
   if (!offers.length) {
+    return
+  }
+
+  const visibleSellerIds = await resolveVisibleSellerIds(req.scope)
+  const visibleSellerSet = new Set(visibleSellerIds)
+
+  const variantToProductId = new Map<string, string>()
+  for (const p of products) {
+    if (p.id) {
+      for (const v of p.variants ?? []) {
+        variantToProductId.set(v.id, p.id)
+      }
+    }
+  }
+
+  const productIds = Array.from(
+    new Set(
+      products
+        .map((p) => p.id)
+        .filter((id): id is string => Boolean(id))
+    )
+  )
+
+  const productAllowedSellers = new Map<string, Set<string>>()
+  if (productIds.length > 0) {
+    const { data: productSellers } = await query.graph({
+      entity: "product_seller",
+      fields: ["product_id", "seller_id"],
+      filters: { product_id: productIds },
+    })
+
+    for (const ps of productSellers as {
+      product_id: string
+      seller_id: string
+    }[]) {
+      if (!productAllowedSellers.has(ps.product_id)) {
+        productAllowedSellers.set(ps.product_id, new Set())
+      }
+      productAllowedSellers.get(ps.product_id)!.add(ps.seller_id)
+    }
+  }
+
+  const eligibleOffers = (offers as OfferPriceRow[]).filter((offer) => {
+    if (!offer.seller_id || !visibleSellerSet.has(offer.seller_id)) {
+      return false
+    }
+    const productId =
+      offer.product_id || variantToProductId.get(offer.variant_id)
+    if (productId && productAllowedSellers.has(productId)) {
+      return productAllowedSellers.get(productId)!.has(offer.seller_id)
+    }
+    return true
+  })
+
+  if (!eligibleOffers.length) {
     return
   }
 
@@ -270,7 +336,7 @@ export const wrapProductVariantsWithOfferPrice = async (
   const priceIdToOffer = new Map<string, string>()
   const offerIds: string[] = []
   const priceSetIds = new Set<string>()
-  for (const offer of offers as OfferPriceRow[]) {
+  for (const offer of eligibleOffers) {
     const priceSetId = offer.product_variant?.price_set?.id
     if (!priceSetId) {
       continue

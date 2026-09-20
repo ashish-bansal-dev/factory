@@ -5,7 +5,10 @@ import {
   MedusaError,
 } from "@medusajs/framework/utils"
 
-import { getSellerOwnedProductIds } from "../products/helpers"
+import {
+  getProductIdsRestrictedFromSeller,
+  getSellerOwnedProductIds,
+} from "../products/helpers"
 
 export const refetchSalesChannel = async (
   id: string,
@@ -38,11 +41,19 @@ export const ensureSellerOwnsProducts = async (
     filters: { seller_id: sellerId, product_id: productIds },
   })
 
+  const [ownedIds, restrictedIds] = await Promise.all([
+    getSellerOwnedProductIds(scope, sellerId),
+    getProductIdsRestrictedFromSeller(scope, sellerId),
+  ])
+
+  const restrictedSet = new Set(restrictedIds)
   const ownedProductIds = new Set<string | null>(
     links.map((link: { product_id: string | null }) => link.product_id)
   )
-  for (const id of await getSellerOwnedProductIds(scope, sellerId)) {
-    ownedProductIds.add(id)
+  for (const id of ownedIds) {
+    if (!restrictedSet.has(id)) {
+      ownedProductIds.add(id)
+    }
   }
   const unowned = productIds.filter((id) => !ownedProductIds.has(id))
 

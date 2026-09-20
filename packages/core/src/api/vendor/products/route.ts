@@ -68,6 +68,7 @@ export const POST = async (
   const productInput = {
     ...payload,
     status: payload.status ?? ProductStatus.PROPOSED,
+    seller_ids: [sellerId],
   } as unknown as CreateProductsWorkflowInput["products"][number]
 
   const { result } = await createProductsWorkflow(req.scope).run({

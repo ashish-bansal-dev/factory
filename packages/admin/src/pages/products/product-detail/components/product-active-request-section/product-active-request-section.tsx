@@ -9,9 +9,11 @@ import { DisplayExtensionZone } from "@mercurjs/dashboard-shared";
 import { ConfirmPrompt } from "../../../../../components/common/confirm-prompt";
 import {
   useConfirmProduct,
+  useProductChange,
   useRejectProduct,
   useRequestProductChanges,
 } from "../../../../../hooks/api/products";
+import { useSeller } from "../../../../../hooks/api/sellers";
 
 type ProductWithSellers = HttpTypes.AdminProduct & {
   sellers?: SellerDTO[];
@@ -29,6 +31,19 @@ export const ProductActiveRequestSection = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [requestUpdateOpen, setRequestUpdateOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+
+  const { product_change } = useProductChange(product.id, {
+    retry: false,
+  });
+  const requesterId = product_change?.created_by ?? "";
+  const { seller: requesterSeller } = useSeller(requesterId, undefined, {
+    enabled: !!requesterId,
+  });
+
+  const requestingStoreName =
+    requesterSeller?.name ??
+    product.sellers?.[0]?.name ??
+    t("products.request.fallbackStore");
 
   const { mutateAsync: confirmProduct, isPending: isConfirming } =
     useConfirmProduct(product.id);
@@ -89,8 +104,7 @@ export const ProductActiveRequestSection = ({
       <div className="px-6 py-4">
         <Text size="small" leading="compact" className="text-ui-fg-subtle">
           {t("products.request.panel.description", {
-            store:
-              product.sellers?.[0]?.name ?? t("products.request.fallbackStore"),
+            store: requestingStoreName,
           })}
         </Text>
       </div>

@@ -20,13 +20,29 @@ import {
   VendorGetOffersParams,
   VendorUpdateOffer,
 } from "./validators"
+import { getProductIdsRestrictedFromSeller } from "../products/helpers"
 
-const applySellerOfferFilter = (
+const applySellerOfferFilter = async (
   req: AuthenticatedMedusaRequest,
   _res: MedusaResponse,
   next: MedusaNextFunction
 ) => {
-  req.filterableFields.seller_id = req.seller_context!.seller_id
+  const sellerId = req.seller_context!.seller_id
+  req.filterableFields.seller_id = sellerId
+
+  const restrictedFromSellerIds = await getProductIdsRestrictedFromSeller(
+    req.scope,
+    sellerId
+  )
+  if (restrictedFromSellerIds.length) {
+    const existingAnd =
+      (req.filterableFields.$and as object[] | undefined) ?? []
+    req.filterableFields.$and = [
+      ...existingAnd,
+      { product_id: { $nin: restrictedFromSellerIds } },
+    ]
+  }
+
   next()
 }
 

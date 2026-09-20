@@ -80,11 +80,19 @@ export const ensureSellerOwnsProduct = async (
     },
   })
 
+  const [ownedIds, restrictedIds] = await Promise.all([
+    getSellerOwnedProductIds(scope, sellerId),
+    getProductIdsRestrictedFromSeller(scope, sellerId),
+  ])
+
+  const restrictedSet = new Set(restrictedIds)
   const ownedProductIds = new Set<string | null>(
     data.map(({ product_id }) => product_id)
   )
-  for (const id of await getSellerOwnedProductIds(scope, sellerId)) {
-    ownedProductIds.add(id)
+  for (const id of ownedIds) {
+    if (!restrictedSet.has(id)) {
+      ownedProductIds.add(id)
+    }
   }
   const missingProductId = productIds.find((id) => !ownedProductIds.has(id))
 

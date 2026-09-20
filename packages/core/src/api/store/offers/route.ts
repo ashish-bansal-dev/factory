@@ -28,21 +28,63 @@ export const GET = async (
     pagination: req.queryConfig.pagination,
   })
 
+  let validOffers = offers
+  const productIds = Array.from(
+    new Set(
+      offers
+        .map((o: { product_id?: string }) => o.product_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  )
+
+  if (productIds.length > 0) {
+    const { data: productSellers } = await query.graph({
+      entity: "product_seller",
+      fields: ["product_id", "seller_id"],
+      filters: { product_id: productIds },
+    })
+
+    if (productSellers.length > 0) {
+      const allowedByProduct = new Map<string, Set<string>>()
+      for (const ps of productSellers as {
+        product_id: string
+        seller_id: string
+      }[]) {
+        if (!allowedByProduct.has(ps.product_id)) {
+          allowedByProduct.set(ps.product_id, new Set())
+        }
+        allowedByProduct.get(ps.product_id)!.add(ps.seller_id)
+      }
+
+      validOffers = offers.filter(
+        (o: { product_id?: string; seller_id?: string }) => {
+          if (o.product_id && allowedByProduct.has(o.product_id)) {
+            return Boolean(
+              o.seller_id && allowedByProduct.get(o.product_id)!.has(o.seller_id)
+            )
+          }
+          return true
+        }
+      )
+    }
+  }
+
   if (withCalculatedPrice) {
     await wrapOffersWithCalculatedPrices(
       req,
-      offers
+      validOffers
     )
-    await wrapOffersWithTaxPrices(req, offers)
+    await wrapOffersWithTaxPrices(req, validOffers)
   }
 
   if (withInventoryQuantity) {
-    await wrapOffersWithInventoryQuantityForSalesChannel(req, offers)
+    await wrapOffersWithInventoryQuantityForSalesChannel(req, validOffers)
   }
 
+  const countDiff = offers.length - validOffers.length
   res.json({
-    offers,
-    count: metadata?.count ?? 0,
+    offers: validOffers,
+    count: Math.max(0, (metadata?.count ?? validOffers.length) - countDiff),
     offset: metadata?.skip ?? 0,
     limit: metadata?.take ?? 0,
   })
