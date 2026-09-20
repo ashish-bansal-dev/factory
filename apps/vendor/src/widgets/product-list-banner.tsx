@@ -1,4 +1,4 @@
-import "@mercurjs/vendor/extension-targets"
+// import "@mercurjs/vendor/extension-targets"
 import { defineWidgetConfig } from "@mercurjs/dashboard-sdk"
 import { Container, Text } from "@medusajs/ui"
 

@@ -44,3 +44,4 @@ packages/modules/*
 
 # Local spec tracker (not versioned)
 docs/specs/
+apps/api/static
