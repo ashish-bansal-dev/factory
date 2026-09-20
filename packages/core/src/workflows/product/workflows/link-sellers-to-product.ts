@@ -6,6 +6,7 @@ import {
 
 import { associateSellersWithProductStep } from "../steps/associate-sellers-with-product"
 import { detachSellersFromProductStep } from "../steps/detach-sellers-from-product"
+import { cleanupIneligibleProductOffersStep } from "../steps/cleanup-ineligible-product-offers"
 
 export type LinkSellersToProductWorkflowInput = {
   id: string
@@ -36,5 +37,6 @@ export const linkSellersToProductWorkflow = createWorkflow(
 
     associateSellersWithProductStep({ links: toAdd })
     detachSellersFromProductStep({ links: toRemove })
+    cleanupIneligibleProductOffersStep({ productId: input.id })
   }
 )

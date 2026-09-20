@@ -56,15 +56,10 @@ const applySellerProductLinkFilter = async (
   req.filterableFields.$and = [
     ...existingAnd,
     {
+      id: { $nin: restrictedFromSellerIds },
       $or: [
-        {
-          id: ownProductIds,
-          status: { $in: [ProductStatus.DRAFT, ProductStatus.PROPOSED] },
-        },
-        {
-          status: ProductStatus.PUBLISHED,
-          id: { $nin: restrictedFromSellerIds },
-        },
+        { id: ownProductIds },
+        { status: ProductStatus.PUBLISHED },
       ],
     },
   ]

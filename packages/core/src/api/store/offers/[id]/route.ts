@@ -39,6 +39,26 @@ export const GET = async (
     )
   }
 
+  if (offer.product_id && offer.seller_id) {
+    const { data: productSellers } = await query.graph({
+      entity: "product_seller",
+      fields: ["seller_id"],
+      filters: { product_id: offer.product_id },
+    })
+
+    if (
+      productSellers.length > 0 &&
+      !productSellers.some(
+        (ps: { seller_id: string }) => ps.seller_id === offer.seller_id
+      )
+    ) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_FOUND,
+        `Offer with id ${req.params.id} was not found`
+      )
+    }
+  }
+
   const offers = [offer]
   if (withCalculatedPrice) {
     await wrapOffersWithCalculatedPrices(

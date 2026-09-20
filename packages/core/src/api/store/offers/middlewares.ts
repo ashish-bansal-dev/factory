@@ -18,6 +18,7 @@ import {
 import { storeOfferQueryConfig } from "./query-config"
 import { StoreGetOfferParams, StoreGetOffersParams } from "./validators"
 import { resolveVisibleSellerIds } from "../../utils/sellers"
+import { getProductIdsRestrictedFromSeller } from "../../vendor/products/helpers"
 
 async function applyVisibleSellerIdsFilter(
   req: MedusaRequest,
@@ -72,6 +73,115 @@ async function applyPublishedProductFilter(
   next()
 }
 
+async function applyProductSellerScopeFilter(
+  req: MedusaRequest,
+  _res: MedusaResponse,
+  next: MedusaNextFunction
+) {
+  req.filterableFields ??= {}
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+
+  const currentSellerIds = req.filterableFields.seller_id as
+    | string
+    | string[]
+    | undefined
+
+  if (currentSellerIds) {
+    const sellerList = Array.isArray(currentSellerIds)
+      ? currentSellerIds
+      : [currentSellerIds]
+    if (sellerList.length === 1) {
+      const restrictedProductIds = await getProductIdsRestrictedFromSeller(
+        req.scope,
+        sellerList[0]
+      )
+      if (
+        restrictedProductIds.length &&
+        Array.isArray(req.filterableFields.product_id)
+      ) {
+        const restrictedSet = new Set(restrictedProductIds)
+        req.filterableFields.product_id = (
+          req.filterableFields.product_id as string[]
+        ).filter((id) => !restrictedSet.has(id))
+      }
+    }
+  }
+
+  const requestedProduct = req.filterableFields.product_id as
+    | string
+    | string[]
+    | undefined
+
+  if (requestedProduct) {
+    const productList = Array.isArray(requestedProduct)
+      ? requestedProduct
+      : [requestedProduct]
+
+    const { data: productSellers } = await query.graph({
+      entity: "product_seller",
+      fields: ["product_id", "seller_id"],
+      filters: { product_id: productList },
+    })
+
+    if (productSellers.length > 0) {
+      const allowedSellers = new Set(
+        (productSellers as { seller_id: string }[]).map((ps) => ps.seller_id)
+      )
+      const current = Array.isArray(req.filterableFields.seller_id)
+        ? req.filterableFields.seller_id
+        : [req.filterableFields.seller_id].filter(Boolean)
+
+      req.filterableFields.seller_id = (current as string[]).filter((id) =>
+        allowedSellers.has(id)
+      )
+    }
+  }
+
+  const requestedVariant = req.filterableFields.variant_id as
+    | string
+    | string[]
+    | undefined
+
+  if (requestedVariant) {
+    const variantList = Array.isArray(requestedVariant)
+      ? requestedVariant
+      : [requestedVariant]
+
+    const { data: variants } = await query.graph({
+      entity: "product_variant",
+      fields: ["id", "product_id"],
+      filters: { id: variantList },
+    })
+
+    const variantProductIds = (variants as { product_id?: string }[])
+      .map((v) => v.product_id)
+      .filter(Boolean) as string[]
+
+    if (variantProductIds.length > 0) {
+      const { data: productSellers } = await query.graph({
+        entity: "product_seller",
+        fields: ["product_id", "seller_id"],
+        filters: { product_id: variantProductIds },
+      })
+
+      if (productSellers.length > 0) {
+        const allowedSellers = new Set(
+          (productSellers as { seller_id: string }[]).map((ps) => ps.seller_id)
+        )
+        const current = Array.isArray(req.filterableFields.seller_id)
+          ? req.filterableFields.seller_id
+          : [req.filterableFields.seller_id].filter(Boolean)
+
+        req.filterableFields.seller_id = (current as string[]).filter((id) =>
+          allowedSellers.has(id)
+        )
+      }
+    }
+  }
+
+  next()
+}
+
 const pricingMiddlewares = [
   normalizeDataForContext({ priceFieldPaths: ["calculated_price"] }),
   setPricingContext({ priceFieldPaths: ["calculated_price"] }),
@@ -84,6 +194,7 @@ const offerMiddlewares = [
   }),
   applyVisibleSellerIdsFilter,
   applyPublishedProductFilter,
+  applyProductSellerScopeFilter,
   ...pricingMiddlewares,
   clearFiltersByKey(["region_id", "country_code", "province", "cart_id"]),
 ]
