@@ -12,10 +12,12 @@ import { cn } from "@/lib/utils"
 
 export const OfferCard = ({
   offer,
+  productOffers,
   locale,
   className,
 }: {
   offer: StoreOffer
+  productOffers?: StoreOffer[]
   locale: string
   className?: string
 }) => {
@@ -24,24 +26,38 @@ export const OfferCard = ({
   const product = offer.product
   const productName = String(product?.title || "Product")
 
-  const amount = getOfferAmount(offer)
-  const currency = offer.calculated_price?.currency_code || cart?.currency_code || "eur"
+  const hasMultipleOffers = Boolean(productOffers && productOffers.length > 1)
+  const offersList =
+    productOffers && productOffers.length > 0 ? productOffers : [offer]
+
+  const amounts = offersList
+    .map(getOfferAmount)
+    .filter((a): a is number => a !== null)
+  const minAmount = amounts.length ? Math.min(...amounts) : getOfferAmount(offer)
+  const maxAmount = amounts.length ? Math.max(...amounts) : getOfferAmount(offer)
+
+  const currency =
+    offer.calculated_price?.currency_code || cart?.currency_code || "eur"
+
+  const totalStock = offersList.reduce((sum, o) => sum + getOfferStock(o), 0)
   const stock = getOfferStock(offer)
 
-  const hasPrice = amount !== null
+  const hasPrice = minAmount !== null
   const displayPrice = hasPrice
-    ? convertToLocale({ amount: amount as number, currency_code: currency })
+    ? (hasMultipleOffers && minAmount !== maxAmount ? "From " : "") +
+      convertToLocale({ amount: minAmount as number, currency_code: currency })
     : null
 
   const quantityInCart =
     cart?.items?.find((item) => item.metadata?.offer_id === offer.id)?.quantity ?? 0
   const isStockMaxLimitReached = quantityInCart >= stock
+  const singleAmount = getOfferAmount(offer)
   const isAddToCartDisabled = !hasPrice || !stock || isStockMaxLimitReached
 
   const handleAddToCart = async () => {
-    if (isAddToCartDisabled) return
+    if (isAddToCartDisabled || singleAmount === null) return
 
-    const total = amount as number
+    const total = singleAmount
     const subtotal =
       offer.calculated_price?.calculated_amount_without_tax ?? total
 
@@ -122,15 +138,48 @@ export const OfferCard = ({
             )}
           </div>
         </LocalizedClientLink>
-        <Button
-          onClick={handleAddToCart}
-          disabled={isAddToCartDisabled}
-          loading={isAddingItem}
-          className="w-full uppercase py-3 flex justify-center"
-          data-testid="offer-card-add-to-cart-button"
-        >
-          {!hasPrice ? "NOT AVAILABLE" : stock ? "ADD TO CART" : "OUT OF STOCK"}
-        </Button>
+        {hasMultipleOffers ? (
+          !hasPrice ? (
+            <Button
+              disabled
+              className="w-full uppercase py-3 flex justify-center"
+              data-testid="offer-card-not-available-button"
+            >
+              NOT AVAILABLE
+            </Button>
+          ) : totalStock <= 0 ? (
+            <Button
+              disabled
+              className="w-full uppercase py-3 flex justify-center"
+              data-testid="offer-card-out-of-stock-button"
+            >
+              OUT OF STOCK
+            </Button>
+          ) : (
+            <LocalizedClientLink
+              href={`/products/${product?.handle}`}
+              className="w-full"
+              data-testid="offer-card-view-options-link"
+            >
+              <Button
+                className="w-full uppercase py-3 flex justify-center"
+                data-testid="offer-card-view-options-button"
+              >
+                VIEW OPTIONS
+              </Button>
+            </LocalizedClientLink>
+          )
+        ) : (
+          <Button
+            onClick={handleAddToCart}
+            disabled={isAddToCartDisabled}
+            loading={isAddingItem}
+            className="w-full uppercase py-3 flex justify-center"
+            data-testid="offer-card-add-to-cart-button"
+          >
+            {!hasPrice ? "NOT AVAILABLE" : stock ? "ADD TO CART" : "OUT OF STOCK"}
+          </Button>
+        )}
       </div>
     </div>
   )
