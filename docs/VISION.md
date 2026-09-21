@@ -160,13 +160,14 @@ export const Inquiry = model.define("inquiry", {
 
 ## 5. Cumulative Vision Change Log
 
-| Step | Scope | Key Capabilities | Status |
-| :--- | :--- | :--- | :--- |
-| **Step 1 (MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `type` field on Seller, Product views/likes analytics. | In Progress |
-| **Step 2** | Multi-Brand Support | Single seller managing multiple brands, Admin assignment & approval workflow (`brand-seller-link`, `brand-product-link`). | Completed |
-| **Step 3** | Wholesale Pack Engine | `bundle_size` storefront quantity increments, pack pricing formulas. | Planned |
-| **Step 4** | Gated B2B Access | Guest price hiding, Customer Group dynamic discount rules. | Planned |
-| **Step 5** | Direct E-Commerce Checkout | Full self-serve cart & checkout on seller domains and main marketplace. | Planned |
+| Step | Scope | Key Capabilities |
+| :--- | :--- | :--- |
+| **Step 1 (Current MVP)** | Inquiry & Engagement Focus | `factorytribe.com` inquiry routing, seller domain copy tracking, internal `type` field on Seller, Product views/likes analytics. |
+| **Step 2** | Multi-Brand Support | Single seller managing multiple brands (`brand-seller-link`). |
+| **Step 3** | Wholesale Pack Engine | `bundle_size` storefront quantity increments, pack pricing formulas. |
+| **Step 4** | Gated B2B Access | Guest price hiding, Customer Group dynamic discount rules. |
+| **Step 5** | Direct E-Commerce Checkout | Full self-serve cart & checkout on seller domains and main marketplace. |
+| **Step 6** | Self-Service Multitenancy & Dedicated URLs | Subdomains for all sellers (`{handle}.factorytribe.com`), custom domains (`acmebrand.com`), direct self-serve publishing for store-only vs global catalog submission. |
 
 ---
 
@@ -179,3 +180,41 @@ export const Inquiry = model.define("inquiry", {
 > [!TIP]
 > **Keep Step 1 simple while preserving data hooks for Step 2+.**  
 > In Step 1, focus on Inquiry flow, dual inquiry tracking, internal seller types, and engagement analytics, but structure database tables so Brands, Bundle Packs, Customer Groups, and B2C Channels connect cleanly when activated.
+
+---
+
+## 7. Self-Service Multitenancy, Dedicated URLs & Catalog Publishing Architecture
+
+### A. Dedicated Storefront URLs: Subdomains & Custom Domains
+1. **Default Subdomains for ALL Sellers (`{seller_handle}.factorytribe.com`)**:
+   * Every seller registered on FactoryTribe receives an automatic, zero-setup subdomain derived from their unique `Seller.handle`.
+   * Example: Seller handle `lumina-apparel` is immediately accessible at `https://lumina-apparel.factorytribe.com` (or `lumina-apparel.localhost:8000` in dev).
+   * **Buybox Elimination**: When a buyer visits a seller's subdomain, the store context is locked exclusively to that seller. All products, category navigation, and product pages display and add only this seller's inventory—completely eliminating marketplace buybox competition.
+
+2. **Custom Domains for Sellers (`acmebrand.com`)**:
+   * Premium or dedicated sellers can configure custom domains stored on `Seller.custom_domain` (e.g. `www.luminaapparel.com`).
+   * Managed via Next.js Middleware domain inspection and CNAME DNS mapping.
+
+3. **Next.js Host-Based Middleware Routing (`apps/storefront/src/middleware.ts`)**:
+   * Middleware intercepts `host = req.headers.get("host")`:
+     * If root host (`factorytribe.com` / `localhost:8000`): Serves the central marketplace hub.
+     * If subdomain (`{handle}.factorytribe.com`) or matched `custom_domain`: Rewrites internally to tenant-scoped routes with header `x-seller-handle`, rendering the seller's branded storefront directly at root `/`.
+
+### B. Catalog Publishing Scope: Direct Self-Service vs. Global Marketplace
+Currently, default Mercur products require admin approval (`status: PROPOSED` $\rightarrow$ `PUBLISHED`). The self-service multitenancy architecture introduces a two-tier publishing model:
+
+1. **Store-Only / Direct Publishing (`listing_scope: "store_only"`)**:
+   * **Instant Self-Service**: When a vendor creates or updates a product flagged as `store_only`, its status is immediately set to `PUBLISHED`.
+   * **Zero Admin Approval Bottleneck**: The vendor can start selling to their direct wholesale clients immediately without waiting for platform operator review.
+   * **Catalog Isolation**: These products are visible **only** on the vendor's dedicated subdomain/custom domain (`{handle}.factorytribe.com` / `acmebrand.com`) and are excluded from the central marketplace search and categories (`factorytribe.com/products`).
+
+2. **Global Marketplace Submission (`listing_scope: "global_catalog"`)**:
+   * **Curated Discovery**: Products submitted for the central `factorytribe.com` hub require operator review (`status: PROPOSED`).
+   * **Multi-Seller Buybox**: Once approved by the Super Admin, the product enters the shared catalog where other approved vendors can offer competitive pricing and join the Buybox.
+
+3. **Schema Specification**:
+   * `Product.metadata.listing_scope`: `"store_only"` | `"global_catalog"` (or explicit model extension `listing_scope`).
+   * `POST /vendor/products`:
+     * If `listing_scope === "store_only"`: `status = ProductStatus.PUBLISHED`.
+     * If `listing_scope === "global_catalog"`: `status = ProductStatus.PROPOSED`.
+
