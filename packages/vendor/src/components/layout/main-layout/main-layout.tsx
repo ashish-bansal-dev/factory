@@ -12,6 +12,7 @@ import {
   Star,
   Tag,
   Users,
+  Phone,
 } from "@medusajs/icons";
 import {
   Avatar,
@@ -490,6 +491,11 @@ export const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
       icon: <Star />,
       label: t("reviews.domain"),
       to: "/reviews",
+    },
+    {
+      icon: <Phone />,
+      label: "Wholesale Inquiries",
+      to: "/inquiries",
     },
   ];
 };

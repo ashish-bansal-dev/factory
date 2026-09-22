@@ -56,6 +56,7 @@ import {
 import { vendorProductAttributesMiddlewares } from "./product-attributes/middlewares"
 import { vendorProductTagsMiddlewares } from "./product-tags/middlewares"
 import { vendorBrandsMiddlewares } from "./brands/middlewares"
+import { vendorInquiriesMiddlewares } from "./inquiries/middlewares"
 
 const unauthenticatedRoutes = [
   /^\/vendor\/sellers$/,
@@ -179,4 +180,5 @@ export const vendorMiddlewares: MiddlewareRoute[] = [
   ...vendorUploadsMiddlewares,
   ...vendorProductTagsMiddlewares,
   ...vendorBrandsMiddlewares,
+  ...vendorInquiriesMiddlewares,
 ]

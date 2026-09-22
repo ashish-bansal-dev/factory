@@ -21,6 +21,8 @@ type MobileActionsProps = {
   isAdding?: boolean
   show: boolean
   optionsDisabled: boolean
+  isTenant?: boolean
+  onOpenInquiry?: () => void
 }
 
 const MobileActions: React.FC<MobileActionsProps> = ({
@@ -33,6 +35,8 @@ const MobileActions: React.FC<MobileActionsProps> = ({
   isAdding,
   show,
   optionsDisabled,
+  isTenant,
+  onOpenInquiry,
 }) => {
   const { state, open, close } = useToggleState()
 
@@ -51,6 +55,7 @@ const MobileActions: React.FC<MobileActionsProps> = ({
   }, [price])
 
   const isSimple = isSimpleProduct(product)
+  const hasOffer = Boolean((variant as { offer_id?: string | null })?.offer_id)
 
   return (
     <>
@@ -116,19 +121,31 @@ const MobileActions: React.FC<MobileActionsProps> = ({
                   <ChevronDown />
                 </div>
               </Button>}
-              <Button
-                onClick={handleAddToCart}
-                disabled={!inStock || !variant}
-                className="w-full"
-                isLoading={isAdding}
-                data-testid="mobile-cart-button"
-              >
-                {!variant
-                  ? "Select variant"
-                  : !inStock
-                  ? "Out of stock"
-                  : "Add to cart"}
-              </Button>
+              {!isTenant ? (
+                <Button
+                  onClick={onOpenInquiry}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                  data-testid="mobile-inquiry-button"
+                >
+                  WhatsApp Inquiry →
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleAddToCart}
+                  disabled={!inStock || !variant || !hasOffer}
+                  className="w-full"
+                  isLoading={isAdding}
+                  data-testid="mobile-cart-button"
+                >
+                  {!variant
+                    ? "Select variant"
+                    : !hasOffer
+                    ? "No offer available"
+                    : !inStock
+                    ? "Out of stock"
+                    : "Add to cart"}
+                </Button>
+              )}
             </div>
           </div>
         </Transition>

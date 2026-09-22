@@ -8,6 +8,8 @@ import { storeProductCategoriesMiddlewares } from "./product-categories/middlewa
 import { storeProductsMiddlewares } from "./products/middlewares"
 import { storeSellersMiddlewares } from "./sellers/middlewares"
 import { storeReviewsMiddlewares } from "./reviews/middlewares"
+import { storeBrandsMiddlewares } from "./brands/middlewares"
+import { storeInquiriesMiddlewares } from "./inquiries/middlewares"
 
 export const storeMiddlewares: MiddlewareRoute[] = [
   ...storeCartsMiddlewares,
@@ -18,4 +20,7 @@ export const storeMiddlewares: MiddlewareRoute[] = [
   ...storeProductsMiddlewares,
   ...storeSellersMiddlewares,
   ...storeReviewsMiddlewares,
+  ...storeBrandsMiddlewares,
+  ...storeInquiriesMiddlewares,
 ]
+

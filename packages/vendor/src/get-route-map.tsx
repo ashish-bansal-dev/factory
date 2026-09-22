@@ -1138,6 +1138,20 @@ export function getRouteMap({
                 ],
               },
 
+              // INQUIRIES
+              {
+                path: "/inquiries",
+                errorElement: <ErrorBoundary />,
+                handle: { breadcrumb: () => "Wholesale Inquiries" },
+                children: [
+                  {
+                    path: "",
+                    lazy: () => import("./pages/inquiries/inquiry-list"),
+                    children: [],
+                  },
+                ],
+              },
+
               // REVIEWS
               {
                 path: "/reviews",

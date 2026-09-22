@@ -11,22 +11,32 @@ import LanguageSelect from "../language-select"
 import { HttpTypes } from "@medusajs/types"
 import { Locale } from "@lib/data/locales"
 
-const SideMenuItems = {
-  Home: "/",
-  Store: "/store",
-  Account: "/account",
-  Cart: "/cart",
-}
-
 type SideMenuProps = {
   regions: HttpTypes.StoreRegion[] | null
   locales: Locale[] | null
   currentLocale: string | null
+  isTenant?: boolean
 }
 
-const SideMenu = ({ regions, locales, currentLocale }: SideMenuProps) => {
+const SideMenu = ({ regions, locales, currentLocale, isTenant }: SideMenuProps) => {
   const countryToggleState = useToggleState()
   const languageToggleState = useToggleState()
+
+  const menuItems = isTenant
+    ? {
+        Home: "/",
+        Store: "/store",
+        Account: "/account",
+        Cart: "/cart",
+      }
+    : {
+        Home: "/",
+        Store: "/store",
+        Suppliers: "/sellers",
+        Brands: "/brands",
+        Categories: "/categories",
+        Account: "/account",
+      }
 
   return (
     <div className="h-full">
@@ -45,6 +55,8 @@ const SideMenu = ({ regions, locales, currentLocale }: SideMenuProps) => {
 
               {open && (
                 <div
+                  role="presentation"
+                  aria-hidden="true"
                   className="fixed inset-0 z-[50] bg-black/0 pointer-events-auto"
                   onClick={close}
                   data-testid="side-menu-backdrop"
@@ -72,11 +84,11 @@ const SideMenu = ({ regions, locales, currentLocale }: SideMenuProps) => {
                       </button>
                     </div>
                     <ul className="flex flex-col gap-6 items-start justify-start">
-                      {Object.entries(SideMenuItems).map(([name, href]) => {
+                      {Object.entries(menuItems).map(([name, href]) => {
                         return (
                           <li key={name}>
                             <LocalizedClientLink
-                              href={href}
+                              href={href as string}
                               className="text-3xl leading-10 hover:text-ui-fg-disabled"
                               onClick={close}
                               data-testid={`${name.toLowerCase()}-link`}

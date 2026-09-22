@@ -64,6 +64,10 @@ export const normalizeProductFormValues = (
       values.variants.filter((variant) => variant.should_create),
       hasAxis,
     ),
+    metadata: {
+      ...((values as any).metadata || {}),
+      listing_scope: (values as any).listing_scope || "store_only",
+    },
   } as any
 }
 

@@ -13,6 +13,7 @@ import { StoreTimeOffSection } from "./_components/store-time-off-section";
 import { StoreGeneralSection } from "./_components/store-general-section";
 import { StorePaymentDetailsSection } from "./_components/store-payment-details-section";
 import { StoreProfessionalDetailsSection } from "./_components/store-professional-details-section";
+import { StoreDomainSettingsSection } from "./_components/store-domain-settings-section";
 import {
   StoreDetailHeader,
   StoreDetailTitle,
@@ -99,6 +100,7 @@ const Root = ({ children }: { children?: ReactNode }) => {
       </TwoColumnPage.Main>
       <TwoColumnPage.Sidebar>
         <StoreAddressSection seller={seller} />
+        <StoreDomainSettingsSection seller={seller} />
         <StoreProfessionalDetailsSection seller={seller} />
         <StorePaymentDetailsSection seller={seller} />
       </TwoColumnPage.Sidebar>

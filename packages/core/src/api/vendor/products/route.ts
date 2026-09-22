@@ -65,9 +65,12 @@ export const POST = async (
 
   const { additional_data, ...payload } = req.validatedBody
 
+  const listingScope = (payload.metadata as Record<string, any>)?.listing_scope ?? "store_only"
+  const defaultStatus = listingScope === "store_only" ? ProductStatus.PUBLISHED : ProductStatus.PROPOSED
+
   const productInput = {
     ...payload,
-    status: payload.status ?? ProductStatus.PROPOSED,
+    status: payload.status ?? defaultStatus,
     seller_ids: [sellerId],
   } as unknown as CreateProductsWorkflowInput["products"][number]
 

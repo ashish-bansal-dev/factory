@@ -4,8 +4,16 @@ import { sdk } from "@lib/config"
 import { sortProducts } from "@lib/util/sort-products"
 import { HttpTypes } from "@medusajs/types"
 import { SortOptions } from "@modules/store/components/refinement-list/sort-products"
+import { headers as nextHeaders } from "next/headers"
 import { getAuthHeaders, getCacheOptions } from "./cookies"
 import { getRegion, retrieveRegion } from "./regions"
+import { getSellerByHandle } from "./seller"
+
+export type ProductQueryParams = HttpTypes.FindParams &
+  HttpTypes.StoreProductListParams & {
+    seller_id?: string
+    brand_id?: string
+  }
 
 export const listProducts = async ({
   pageParam = 1,
@@ -14,13 +22,13 @@ export const listProducts = async ({
   regionId,
 }: {
   pageParam?: number
-  queryParams?: HttpTypes.FindParams & HttpTypes.StoreProductListParams
+  queryParams?: ProductQueryParams
   countryCode?: string
   regionId?: string
 }): Promise<{
   response: { products: HttpTypes.StoreProduct[]; count: number }
   nextPage: number | null
-  queryParams?: HttpTypes.FindParams & HttpTypes.StoreProductListParams
+  queryParams?: ProductQueryParams
 }> => {
   if (!countryCode && !regionId) {
     throw new Error("Country code or region ID is required")
@@ -45,8 +53,38 @@ export const listProducts = async ({
     }
   }
 
-  const headers = {
+  let isTenant = false
+  let tenantHandle: string | null = null
+  try {
+    const headersList = await nextHeaders()
+    isTenant = headersList.get("x-is-tenant") === "true"
+    tenantHandle = headersList.get("x-tenant-handle")
+  } catch {}
+
+  const effectiveQueryParams: ProductQueryParams = {
+    limit,
+    offset,
+    region_id: region?.id,
+    fields:
+      "*variants.calculated_price,+variants.inventory_quantity,*variants.images,+metadata,+tags,",
+    ...queryParams,
+  }
+
+  const headers: Record<string, string> = {
     ...(await getAuthHeaders()),
+  }
+
+  if (isTenant && tenantHandle) {
+    headers["x-tenant-handle"] = tenantHandle
+    if (!effectiveQueryParams.seller_id) {
+      const seller = await getSellerByHandle(tenantHandle).catch(() => null)
+      if (seller) {
+        effectiveQueryParams.seller_id = seller.id
+        headers["x-seller-id"] = seller.id
+      }
+    } else {
+      headers["x-seller-id"] = effectiveQueryParams.seller_id
+    }
   }
 
   const next = {
@@ -58,14 +96,7 @@ export const listProducts = async ({
       `/store/products`,
       {
         method: "GET",
-        query: {
-          limit,
-          offset,
-          region_id: region?.id,
-          fields:
-            "*variants.calculated_price,+variants.inventory_quantity,*variants.images,+metadata,+tags,",
-          ...queryParams,
-        },
+        query: effectiveQueryParams,
         headers,
         next,
         cache: "force-cache",
@@ -80,7 +111,7 @@ export const listProducts = async ({
           count,
         },
         nextPage: nextPage,
-        queryParams,
+        queryParams: effectiveQueryParams,
       }
     })
 }

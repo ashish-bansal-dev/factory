@@ -6,9 +6,11 @@ import { HttpTypes } from "@medusajs/types"
 export default function ProductPrice({
   product,
   variant,
+  isTenant = false,
 }: {
   product: HttpTypes.StoreProduct
   variant?: HttpTypes.StoreProductVariant
+  isTenant?: boolean
 }) {
   const { cheapestPrice, variantPrice } = getProductPrice({
     product,
@@ -18,7 +20,13 @@ export default function ProductPrice({
   const selectedPrice = variant ? variantPrice : cheapestPrice
 
   if (!selectedPrice) {
-    return <div className="block w-32 h-9 bg-gray-100 animate-pulse" />
+    return (
+      <div className="flex flex-col text-ui-fg-muted">
+        <span className="text-base font-medium" data-testid="product-price">
+          Price unavailable
+        </span>
+      </div>
+    )
   }
 
   return (
@@ -52,6 +60,11 @@ export default function ProductPrice({
             -{selectedPrice.percentage_diff}%
           </span>
         </>
+      )}
+      {!isTenant && (
+        <span className="text-xs text-ui-fg-muted font-normal mt-0.5">
+          Indicative Wholesale (Contact for volume tiering)
+        </span>
       )}
     </div>
   )

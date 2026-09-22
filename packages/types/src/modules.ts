@@ -13,4 +13,5 @@ export enum MercurModules {
     PROMOTION_COST = "promotion_cost",
     REVIEW = "review",
     BRAND = "brand",
+    INQUIRY = "inquiry",
 }

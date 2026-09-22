@@ -31,7 +31,7 @@ export const AdminCreateBrand = z.object({
   website_url: z.string().nullable().optional(),
   status: z.nativeEnum(BrandStatus).optional().default(BrandStatus.APPROVED),
   seller_ids: z.array(z.string()).optional(),
-  metadata: z.record(z.unknown()).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 export type AdminCreateBrandType = z.infer<typeof AdminCreateBrand>
 
@@ -44,7 +44,7 @@ export const AdminUpdateBrand = z.object({
   website_url: z.string().nullable().optional(),
   status: z.nativeEnum(BrandStatus).optional(),
   seller_ids: z.array(z.string()).optional(),
-  metadata: z.record(z.unknown()).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 export type AdminUpdateBrandType = z.infer<typeof AdminUpdateBrand>
 

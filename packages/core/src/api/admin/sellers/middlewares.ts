@@ -258,4 +258,15 @@ export const adminSellersMiddlewares: MiddlewareRoute[] = [
       requirePermission("members", "manage"),
     ],
   },
+  {
+    method: ["POST"],
+    matcher: "/admin/sellers/:id/domain-approval",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.update,
+      },
+    ],
+  },
 ]

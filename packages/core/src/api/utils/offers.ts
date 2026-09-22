@@ -223,12 +223,26 @@ type OfferPriceRow = {
   product_id?: string
   product_variant?: { price_set?: { id?: string } | null } | null
   prices?: { id?: string }[] | null
+  manage_inventory?: boolean
+  allow_backorder?: boolean
+  inventory_item_link?: {
+    required_quantity?: number
+    inventory_item?: {
+      location_levels?: {
+        stocked_quantity?: number
+        reserved_quantity?: number
+      }[]
+    }
+  }[]
 }
 
 type PriceableVariant = {
   id: string
   offer_id?: string | null
   calculated_price?: Record<string, unknown> | null
+  manage_inventory?: boolean
+  allow_backorder?: boolean
+  inventory_quantity?: number | null
 }
 
 type PriceableProduct = {
@@ -268,8 +282,13 @@ export const wrapProductVariantsWithOfferPrice = async (
       "variant_id",
       "seller_id",
       "product_id",
+      "manage_inventory",
+      "allow_backorder",
       "product_variant.price_set.id",
       "prices.id",
+      "inventory_item_link.required_quantity",
+      "inventory_item_link.inventory_item.location_levels.stocked_quantity",
+      "inventory_item_link.inventory_item.location_levels.reserved_quantity",
     ],
     filters: { variant_id: variantIds },
   })
@@ -316,7 +335,26 @@ export const wrapProductVariantsWithOfferPrice = async (
     }
   }
 
+  const filterable = (req as { filterableFields?: Record<string, unknown> }).filterableFields
+  let effectiveSellerId: string | undefined =
+    (typeof filterable?.seller_id === "string" ? filterable.seller_id : undefined) ||
+    (typeof req.headers?.["x-seller-id"] === "string" ? req.headers["x-seller-id"] : undefined)
+
+  if (!effectiveSellerId && typeof req.headers?.["x-tenant-handle"] === "string") {
+    const tenantHandle = req.headers["x-tenant-handle"]
+    const { data: sellers } = await query.graph({
+      entity: "seller",
+      fields: ["id"],
+      filters: { handle: tenantHandle },
+    }).catch(() => ({ data: [] }))
+    effectiveSellerId = (sellers?.[0] as { id?: string })?.id
+  }
+
   const eligibleOffers = (offers as OfferPriceRow[]).filter((offer) => {
+    // If querying in a tenant or seller-scoped context, only this seller's offers are eligible
+    if (effectiveSellerId && offer.seller_id !== effectiveSellerId) {
+      return false
+    }
     if (!offer.seller_id || !visibleSellerSet.has(offer.seller_id)) {
       return false
     }
@@ -329,14 +367,24 @@ export const wrapProductVariantsWithOfferPrice = async (
   })
 
   if (!eligibleOffers.length) {
+    if (effectiveSellerId) {
+      for (const product of products) {
+        for (const variant of product.variants ?? []) {
+          variant.offer_id = null
+          variant.calculated_price = null
+        }
+      }
+    }
     return
   }
 
   const priceSetToVariant = new Map<string, string>()
   const priceIdToOffer = new Map<string, string>()
+  const offerById = new Map<string, OfferPriceRow>()
   const offerIds: string[] = []
   const priceSetIds = new Set<string>()
   for (const offer of eligibleOffers) {
+    offerById.set(offer.id, offer)
     const priceSetId = offer.product_variant?.price_set?.id
     if (!priceSetId) {
       continue
@@ -351,6 +399,14 @@ export const wrapProductVariantsWithOfferPrice = async (
     }
   }
   if (!priceSetIds.size) {
+    if (effectiveSellerId) {
+      for (const product of products) {
+        for (const variant of product.variants ?? []) {
+          variant.offer_id = null
+          variant.calculated_price = null
+        }
+      }
+    }
     return
   }
 
@@ -366,7 +422,13 @@ export const wrapProductVariantsWithOfferPrice = async (
 
   const byVariant = new Map<
     string,
-    { offerId: string | null; price: Record<string, unknown> }
+    {
+      offerId: string | null
+      price: Record<string, unknown>
+      manageInventory: boolean
+      allowBackorder: boolean
+      inventoryQuantity: number
+    }
   >()
   for (const calc of calculated) {
     const variantId = priceSetToVariant.get(calc.id)
@@ -376,11 +438,28 @@ export const wrapProductVariantsWithOfferPrice = async (
     const winningPriceId =
       (calc as { calculated_price?: { id?: string | null } }).calculated_price
         ?.id ?? null
+    const winningOfferId = winningPriceId
+      ? priceIdToOffer.get(winningPriceId) ?? null
+      : null
+    const winningOffer = winningOfferId ? offerById.get(winningOfferId) : null
+
+    let availableInventory = 0
+    if (winningOffer?.inventory_item_link?.length) {
+      for (const link of winningOffer.inventory_item_link) {
+        for (const lvl of link.inventory_item?.location_levels ?? []) {
+          const available =
+            (lvl.stocked_quantity ?? 0) - (lvl.reserved_quantity ?? 0)
+          availableInventory += Math.max(0, available)
+        }
+      }
+    }
+
     byVariant.set(variantId, {
-      offerId: winningPriceId
-        ? priceIdToOffer.get(winningPriceId) ?? null
-        : null,
+      offerId: winningOfferId,
       price: calc as unknown as Record<string, unknown>,
+      manageInventory: winningOffer?.manage_inventory ?? true,
+      allowBackorder: winningOffer?.allow_backorder ?? false,
+      inventoryQuantity: availableInventory,
     })
   }
 
@@ -389,6 +468,11 @@ export const wrapProductVariantsWithOfferPrice = async (
       const hit = byVariant.get(variant.id)
       variant.offer_id = hit?.offerId ?? null
       variant.calculated_price = hit?.price ?? null
+      if (hit?.offerId) {
+        variant.manage_inventory = hit.manageInventory
+        variant.allow_backorder = hit.allowBackorder
+        variant.inventory_quantity = hit.inventoryQuantity
+      }
     }
   }
 

@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Tag,
   Users,
+  Phone,
 } from "@medusajs/icons";
 import {
   Avatar,
@@ -504,6 +505,11 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
           to: "/reviews",
         },
       ],
+    },
+    {
+      icon: <Phone />,
+      label: "Wholesale Inquiries",
+      to: "/inquiries",
     },
     {
       icon: <CreditCardRefresh />,

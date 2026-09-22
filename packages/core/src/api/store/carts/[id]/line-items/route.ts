@@ -45,6 +45,26 @@ export const POST = async (
         `Offer ${offer_id} is currently unavailable`,
       )
     }
+
+    let effectiveSellerId: string | undefined =
+      typeof req.headers?.["x-seller-id"] === "string" ? req.headers["x-seller-id"] : undefined
+
+    if (!effectiveSellerId && typeof req.headers?.["x-tenant-handle"] === "string") {
+      const tenantHandle = req.headers["x-tenant-handle"]
+      const { data: sellers } = await query.graph({
+        entity: "seller",
+        fields: ["id"],
+        filters: { handle: tenantHandle },
+      }).catch(() => ({ data: [] }))
+      effectiveSellerId = (sellers?.[0] as { id?: string })?.id
+    }
+
+    if (effectiveSellerId && offer.seller_id !== effectiveSellerId) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_ALLOWED,
+        `Cannot add an offer from another seller to this tenant cart`,
+      )
+    }
   }
 
   if (offer.product_id && offer.seller_id) {

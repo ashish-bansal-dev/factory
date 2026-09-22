@@ -28,6 +28,6 @@ export const VendorCreateBrand = z.object({
   logo: z.string().nullable().optional(),
   banner: z.string().nullable().optional(),
   website_url: z.string().nullable().optional(),
-  metadata: z.record(z.unknown()).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 export type VendorCreateBrandType = z.infer<typeof VendorCreateBrand>

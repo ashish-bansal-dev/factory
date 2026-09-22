@@ -1,5 +1,5 @@
-import { PencilSquare, Trash } from "@medusajs/icons";
-import { Container, Heading, StatusBadge, usePrompt } from "@medusajs/ui";
+import { ArrowPath, CheckCircle, PencilSquare, Trash } from "@medusajs/icons";
+import { Badge, Container, Heading, StatusBadge, usePrompt } from "@medusajs/ui";
 
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -12,7 +12,7 @@ import {
 } from "@mercurjs/dashboard-shared";
 import { ActionMenu } from "../../../../../components/common/action-menu";
 import { SectionRow } from "../../../../../components/common/section";
-import { useDeleteProduct } from "../../../../../hooks/api/products";
+import { useDeleteProduct, useUpdateProduct } from "../../../../../hooks/api/products";
 
 const GENERAL_FIELD_IDS = [
   "title",
@@ -48,6 +48,18 @@ export const ProductGeneralSection = ({
   const navigate = useNavigate();
 
   const { mutateAsync } = useDeleteProduct(product.id);
+  const { mutateAsync: updateProduct } = useUpdateProduct(product.id);
+  const isGlobal = (product.metadata?.listing_scope as string) === "global";
+
+  const handleToggleListingScope = async () => {
+    const nextScope = isGlobal ? "store_only" : "global";
+    await updateProduct({
+      metadata: {
+        ...(product.metadata || {}),
+        listing_scope: nextScope,
+      },
+    });
+  };
 
   const handleDelete = async () => {
     const res = await prompt({
@@ -100,6 +112,11 @@ export const ProductGeneralSection = ({
             groups={[
               {
                 actions: [
+                  {
+                    label: isGlobal ? "Set to Store Only" : "Approve for Global Marketplace",
+                    onClick: handleToggleListingScope,
+                    icon: isGlobal ? <ArrowPath /> : <CheckCircle />,
+                  },
                   {
                     label: t("actions.edit"),
                     to: "edit",
@@ -166,6 +183,15 @@ export const ProductGeneralSection = ({
           data-testid="product-discountable-row"
         />
       </DisplayField>
+      <SectionRow
+        title="Marketplace Scope"
+        value={
+          <Badge size="small" color={isGlobal ? "green" : "grey"}>
+            {isGlobal ? "Global Wholesale (FactoryTribe)" : "Store Only (Vendor SaaS)"}
+          </Badge>
+        }
+        data-testid="product-listing-scope-row"
+      />
       <DisplayExtensionZone
         model="product"
         zone="general"

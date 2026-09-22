@@ -574,6 +574,20 @@ export function getRouteMap({
                 ],
               },
               {
+                path: "/inquiries",
+                errorElement: <ErrorBoundary />,
+                handle: {
+                  breadcrumb: () => "Wholesale Inquiries",
+                },
+                children: [
+                  {
+                    path: "",
+                    lazy: () => import("./pages/inquiries/inquiry-list"),
+                    children: [],
+                  },
+                ],
+              },
+              {
                 path: "/reviews",
                 errorElement: <ErrorBoundary />,
                 handle: {

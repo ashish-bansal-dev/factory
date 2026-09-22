@@ -4,6 +4,7 @@ import { sdk } from "@lib/config"
 import medusaError from "@lib/util/medusa-error"
 import { HttpTypes } from "@medusajs/types"
 import { revalidateTag } from "next/cache"
+import { headers as nextHeaders } from "next/headers"
 import { redirect } from "next/navigation"
 import {
   getAuthHeaders,
@@ -116,45 +117,108 @@ export async function updateCart(data: HttpTypes.StoreUpdateCart) {
 
 export async function addToCart({
   variantId,
+  offerId,
   quantity,
   countryCode,
 }: {
-  variantId: string
+  variantId?: string
+  offerId?: string
   quantity: number
   countryCode: string
 }) {
-  if (!variantId) {
-    throw new Error("Missing variant ID when adding to cart")
-  }
-
   const cart = await getOrSetCart(countryCode)
 
   if (!cart) {
     throw new Error("Error retrieving or creating cart")
   }
 
-  const headers = {
+  const headers: Record<string, string> = {
     ...(await getAuthHeaders()),
   }
 
-  await sdk.store.cart
-    .createLineItem(
-      cart.id,
-      {
-        variant_id: variantId,
-        quantity,
-      },
-      {},
-      headers
-    )
-    .then(async () => {
-      const cartCacheTag = await getCacheTag("carts")
-      revalidateTag(cartCacheTag)
+  const headersList = await nextHeaders().catch(() => null)
+  const isTenant = headersList?.get("x-is-tenant") === "true"
+  const tenantHandle = headersList?.get("x-tenant-handle")
 
-      const fulfillmentCacheTag = await getCacheTag("fulfillment")
-      revalidateTag(fulfillmentCacheTag)
-    })
-    .catch(medusaError)
+  if (isTenant && tenantHandle) {
+    headers["x-tenant-handle"] = tenantHandle
+  }
+
+  let effectiveOfferId = offerId
+
+  // If offerId was not passed directly, look for it on the variant
+  if (!effectiveOfferId && variantId) {
+    const { products } = await sdk.client
+      .fetch<{ products: HttpTypes.StoreProduct[] }>(`/store/products`, {
+        method: "GET",
+        query: {
+          fields: "*variants.calculated_price",
+          limit: 10,
+        },
+        headers,
+      })
+      .catch(() => ({ products: [] }))
+
+    for (const p of products) {
+      const v = (p.variants ?? []).find((v) => v.id === variantId) as { offer_id?: string } | undefined
+      if (v?.offer_id) {
+        effectiveOfferId = v.offer_id
+        break
+      }
+    }
+  }
+
+  if (!effectiveOfferId) {
+    throw new Error("No active offer available for this item from this seller.")
+  }
+
+  // Check if an item with this offer_id already exists in the cart
+  const currentItem = cart.items?.find(
+    (item) => item.metadata?.offer_id === effectiveOfferId
+  )
+
+  if (currentItem) {
+    await sdk.client
+      .fetch<HttpTypes.StoreCartResponse>(
+        `/store/carts/${cart.id}/line-items/${currentItem.id}`,
+        {
+          method: "POST",
+          body: {
+            quantity: currentItem.quantity + quantity,
+          },
+          headers,
+        }
+      )
+      .then(async () => {
+        const cartCacheTag = await getCacheTag("carts")
+        revalidateTag(cartCacheTag)
+
+        const fulfillmentCacheTag = await getCacheTag("fulfillment")
+        revalidateTag(fulfillmentCacheTag)
+      })
+      .catch(medusaError)
+  } else {
+    await sdk.client
+      .fetch<HttpTypes.StoreCartResponse>(
+        `/store/carts/${cart.id}/line-items`,
+        {
+          method: "POST",
+          body: {
+            offer_id: effectiveOfferId,
+            quantity,
+          },
+          headers,
+        }
+      )
+      .then(async () => {
+        const cartCacheTag = await getCacheTag("carts")
+        revalidateTag(cartCacheTag)
+
+        const fulfillmentCacheTag = await getCacheTag("fulfillment")
+        revalidateTag(fulfillmentCacheTag)
+      })
+      .catch(medusaError)
+  }
 }
 
 export async function updateLineItem({

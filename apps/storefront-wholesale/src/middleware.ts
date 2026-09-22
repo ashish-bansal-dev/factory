@@ -1,5 +1,6 @@
 import { HttpTypes } from "@medusajs/types"
 import { NextRequest, NextResponse } from "next/server"
+import { resolveTenant } from "@lib/tenant/resolver"
 
 const BACKEND_URL = process.env.MEDUSA_BACKEND_URL
 const PUBLISHABLE_API_KEY = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
@@ -61,6 +62,52 @@ async function getRegionMap(cacheId: string) {
   return regionMapCache.regionMap
 }
 
+const customDomainMap = new Map<string, string>()
+
+async function resolveCustomDomainHandle(customDomain: string): Promise<string | null> {
+  const cleanDomain = customDomain.replace(/^[a-zA-Z]+:\/\//, "").trim().toLowerCase()
+  if (customDomainMap.has(cleanDomain)) {
+    return customDomainMap.get(cleanDomain)!
+  }
+
+  if (!BACKEND_URL || !PUBLISHABLE_API_KEY) {
+    return null
+  }
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/store/sellers?limit=100&fields=id,handle,metadata`, {
+      headers: {
+        "x-publishable-api-key": PUBLISHABLE_API_KEY,
+      },
+      next: { revalidate: 300 },
+    })
+
+    if (res.ok) {
+      const data = await res.json()
+      const sellers = data.sellers || []
+      const matched = sellers.find((s: any) => {
+        const custom = s.metadata?.domain_settings?.custom_domain
+        if (!custom) return false
+        return (
+          String(custom)
+            .replace(/^[a-zA-Z]+:\/\//, "")
+            .trim()
+            .toLowerCase() === cleanDomain
+        )
+      })
+
+      if (matched?.handle) {
+        customDomainMap.set(cleanDomain, matched.handle)
+        return matched.handle
+      }
+    }
+  } catch {
+    // Fall back to runtime server components
+  }
+
+  return null
+}
+
 /**
  * Fetches regions from Medusa and sets the region cookie.
  * @param request
@@ -90,7 +137,7 @@ async function getCountryCode(
     }
 
     return countryCode
-  } catch (error) {
+  } catch {
     if (process.env.NODE_ENV === "development") {
       console.error(
         "Middleware.ts: Error getting the country code. Did you set up regions in your Medusa Admin and define a MEDUSA_BACKEND_URL environment variable? Note that the variable is no longer named NEXT_PUBLIC_MEDUSA_BACKEND_URL."
@@ -100,41 +147,67 @@ async function getCountryCode(
 }
 
 /**
- * Middleware to handle region selection and onboarding status.
+ * Middleware to handle region selection, tenant resolution, and onboarding status.
  */
 export async function middleware(request: NextRequest) {
-  let redirectUrl = request.nextUrl.href
+  // Check if the url is a static asset
+  if (request.nextUrl.pathname.includes(".")) {
+    return NextResponse.next()
+  }
 
+  // Resolve tenant from host header
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    ""
+  const tenant = resolveTenant(host, process.env.NEXT_PUBLIC_BASE_DOMAIN)
+
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set("x-is-tenant", String(tenant.isTenant))
+  requestHeaders.set("x-tenant-type", tenant.tenantType)
+  if (tenant.handle) {
+    requestHeaders.set("x-tenant-handle", tenant.handle)
+  }
+  if (tenant.customDomain) {
+    requestHeaders.set("x-custom-domain", tenant.customDomain)
+    const customHandle = await resolveCustomDomainHandle(tenant.customDomain)
+    if (customHandle) {
+      requestHeaders.set("x-tenant-handle", customHandle)
+    }
+  }
+
+  let redirectUrl = request.nextUrl.href
   let response = NextResponse.redirect(redirectUrl, 307)
 
   let cacheIdCookie = request.cookies.get("_medusa_cache_id")
-
   let cacheId = cacheIdCookie?.value || crypto.randomUUID()
 
   const regionMap = await getRegionMap(cacheId)
-
   const countryCode = regionMap && (await getCountryCode(request, regionMap))
 
   const urlHasCountryCode =
     countryCode && request.nextUrl.pathname.split("/")[1].includes(countryCode)
 
-  // if one of the country codes is in the url and the cache id is set, return next
+  // if one of the country codes is in the url and the cache id is set, return next with headers
   if (urlHasCountryCode && cacheIdCookie) {
-    return NextResponse.next()
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
   }
 
-  // if one of the country codes is in the url and the cache id is not set, set the cache id and redirect
+  // if one of the country codes is in the url and the cache id is not set, set the cache id and return with headers
   if (urlHasCountryCode && !cacheIdCookie) {
-    response.cookies.set("_medusa_cache_id", cacheId, {
+    const res = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
+    res.cookies.set("_medusa_cache_id", cacheId, {
       maxAge: 60 * 60 * 24,
     })
-
-    return response
-  }
-
-  // check if the url is a static asset
-  if (request.nextUrl.pathname.includes(".")) {
-    return NextResponse.next()
+    return res
   }
 
   const redirectPath =

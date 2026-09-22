@@ -25,6 +25,28 @@ export const useSellersTableColumns = () => {
         cell: ({ row }) => row.original.email,
       }),
       columnHelper.display({
+        id: "domain",
+        header: "Storefront Domain",
+        cell: ({ row }) => {
+          const seller = row.original;
+          const domainSettings = (seller.metadata as Record<string, any>)?.domain_settings;
+          const hasPending = domainSettings?.subdomain_request?.status === "pending";
+          const baseDomain =
+            typeof window !== "undefined" && window.location.hostname === "localhost"
+              ? "localhost:8000"
+              : "factorytribe.com";
+          const subdomain = `${seller.handle}.${baseDomain}`;
+          return (
+            <div className="flex items-center gap-x-2">
+              <span className="font-mono text-xs text-ui-fg-subtle">{subdomain}</span>
+              {hasPending && (
+                <Badge size="2xsmall" color="orange">Pending Request</Badge>
+              )}
+            </div>
+          );
+        },
+      }),
+      columnHelper.display({
         id: "type",
         header: "Type",
         cell: ({ row }) =>

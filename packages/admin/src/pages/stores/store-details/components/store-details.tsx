@@ -25,6 +25,7 @@ import { StoreMembersSection } from "./store-members-section";
 import { StoreRequestSection } from "./store-request-section";
 import { StoreOrdersSection } from "./store-orders-section";
 import { StoreOffersSection } from "./store-offers-section";
+import { StoreDomainSection } from "./store-domain-section";
 import {
   StoreDetailHeader,
   StoreDetailTitle,
@@ -178,6 +179,7 @@ const Root = ({ children }: { children?: ReactNode }) => {
         <WidgetZone id="stores.detail.side" data={seller}>
           <StoreAddressSection seller={seller} />
           <StoreCompanyDetailsSection seller={seller} />
+          <StoreDomainSection seller={seller} />
           <StorePaymentDetailsSection seller={seller} />
         </WidgetZone>
       </TwoColumnPage.Sidebar>
