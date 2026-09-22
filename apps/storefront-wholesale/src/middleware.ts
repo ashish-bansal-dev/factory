@@ -163,6 +163,19 @@ export async function middleware(request: NextRequest) {
   const tenant = resolveTenant(host, process.env.NEXT_PUBLIC_BASE_DOMAIN)
 
   const requestHeaders = new Headers(request.headers)
+
+  // Unconditionally strip incoming client-supplied tenant headers to prevent spoofing
+  for (const key of Array.from(requestHeaders.keys())) {
+    const lowerKey = key.toLowerCase()
+    if (
+      lowerKey.startsWith("x-tenant") ||
+      lowerKey === "x-is-tenant" ||
+      lowerKey === "x-custom-domain"
+    ) {
+      requestHeaders.delete(key)
+    }
+  }
+
   requestHeaders.set("x-is-tenant", String(tenant.isTenant))
   requestHeaders.set("x-tenant-type", tenant.tenantType)
   if (tenant.handle) {
