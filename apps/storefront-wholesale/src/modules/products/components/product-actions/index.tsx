@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation"
 import WholesaleInquiryModal from "../wholesale-inquiry-modal"
 import QuickVariantGrid from "../quick-variant-grid"
 import { SellerDTO } from "@lib/data/seller"
+import { useCuratedQuote } from "@lib/context/curated-quote-context"
 
 type ProductActionsProps = {
   product: HttpTypes.StoreProduct
@@ -62,7 +63,12 @@ export default function ProductActions({
   const countryCode = useParams().countryCode as string
 
   const hasMultipleVariants = (product.variants?.length ?? 0) > 1
-  const [orderMode, setOrderMode] = useState<"grid" | "single">("grid")
+  const hasAnyOffer = useMemo(() => {
+    return (product.variants || []).some((v: any) => Boolean(v.offer_id))
+  }, [product.variants])
+  const [orderMode, setOrderMode] = useState<"grid" | "single">(
+    hasMultipleVariants ? "grid" : "single"
+  )
 
   // If there is only 1 variant or v_id changed, keep options in sync
   useEffect(() => {
@@ -186,6 +192,26 @@ export default function ProductActions({
     setIsAdding(false)
   }
 
+  const { addItem: addCuratedQuoteItem } = useCuratedQuote()
+  const [quoteFeedback, setQuoteFeedback] = useState<string | null>(null)
+
+  const handleAddToCuratedQuote = () => {
+    addCuratedQuoteItem({
+      productId: product.id,
+      productTitle: product.title,
+      productHandle: product.handle,
+      thumbnail: product.thumbnail,
+      variantId: selectedVariant?.id || null,
+      variantTitle: selectedVariant?.title || "Default Variant",
+      sku: selectedVariant?.sku || null,
+      quantity: quantity || 1,
+      sellerId: seller?.id || null,
+      sellerName: seller?.name || null,
+    })
+    setQuoteFeedback(`Added ${quantity || 1} units of "${product.title}" to Curated Quote Basket!`)
+    setTimeout(() => setQuoteFeedback(null), 3500)
+  }
+
   return (
     <>
       <div className="flex flex-col gap-y-3" ref={actionsRef}>
@@ -199,6 +225,21 @@ export default function ProductActions({
             </p>
           </div>
         )}
+
+        {(product.variants?.length ?? 0) === 0 ? (
+          <div className="bg-ui-bg-subtle border border-ui-border-base rounded-lg p-3 text-xs text-ui-fg-muted">
+            No product options or variants are currently listed. Connect with the supplier directly below for inquiries.
+          </div>
+        ) : !hasAnyOffer ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900">
+            <div className="font-semibold flex items-center gap-1.5 text-amber-800 mb-0.5">
+              <span>No Active Supplier Offers</span>
+            </div>
+            <p className="text-[11px] text-amber-700">
+              No sellers have published active pricing for this product. You can connect with suppliers directly on WhatsApp below to negotiate pricing and place custom orders.
+            </p>
+          </div>
+        ) : null}
 
         {hasMultipleVariants && (
           <div className="flex border border-ui-border-base rounded-md p-0.5 bg-ui-bg-subtle mb-1">
@@ -296,31 +337,46 @@ export default function ProductActions({
               </div>
             )}
 
-            <Button
-              onClick={handleAddToCart}
-              disabled={
-                !inStock ||
-                !selectedVariant ||
-                !!disabled ||
-                isAdding ||
-                !isValidVariant ||
-                !hasOffer
-              }
-              variant="primary"
-              className="w-full h-10"
-              isLoading={isAdding}
-              data-testid="add-product-button"
-            >
-              {!selectedVariant && !options
-                ? "Select variant"
-                : !hasOffer
-                ? "No offer available"
-                : !inStock || !isValidVariant
-                ? "Out of stock"
-                : bundleSize > 1
-                ? `Add ${quantity} units (${Math.round(quantity / bundleSize)} pack${Math.round(quantity / bundleSize) > 1 ? "s" : ""}) to cart`
-                : `Add to cart (${quantity})`}
-            </Button>
+            {!hasOffer ? (
+              <Button
+                type="button"
+                onClick={handleAddToCuratedQuote}
+                variant="secondary"
+                className="w-full h-11 border-purple-400 bg-purple-50/50 hover:bg-purple-100 text-purple-900 font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition"
+                data-testid="add-curated-quote-button"
+              >
+                <span>Add to Curated Quote Basket ({quantity || 1}) 📋</span>
+              </Button>
+            ) : (
+              <Button
+                onClick={handleAddToCart}
+                disabled={
+                  !inStock ||
+                  !selectedVariant ||
+                  !!disabled ||
+                  isAdding ||
+                  !isValidVariant
+                }
+                variant="primary"
+                className="w-full h-10"
+                isLoading={isAdding}
+                data-testid="add-product-button"
+              >
+                {!selectedVariant && !options
+                  ? "Select variant"
+                  : !inStock || !isValidVariant
+                  ? "Out of stock"
+                  : bundleSize > 1
+                  ? `Add ${quantity} units (${Math.round(quantity / bundleSize)} pack${Math.round(quantity / bundleSize) > 1 ? "s" : ""}) to cart`
+                  : `Add to cart (${quantity})`}
+              </Button>
+            )}
+
+            {quoteFeedback && (
+              <div className="p-2.5 rounded bg-purple-50 text-purple-900 border border-purple-200 text-xs font-medium text-center">
+                {quoteFeedback}
+              </div>
+            )}
           </div>
         )}
 

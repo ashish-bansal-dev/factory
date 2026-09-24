@@ -278,32 +278,6 @@ const useColumns = ({
             <DataGrid.TextCell context={context} />
           ),
       }),
-      ...(channel === "wholesale"
-        ? [
-            columnHelper.column({
-              id: "bundle_size",
-              name: "Pack Size",
-              header: "Pack Size",
-              field: (context) => {
-                const row = context.row.original;
-                return isGroup(row)
-                  ? null
-                  : `variants.${row.__formIndex}.bundle_size`;
-              },
-              type: "number",
-              cell: (context) =>
-                isGroup(context.row.original) ? (
-                  <DataGrid.ReadonlyCell context={context} />
-                ) : (
-                  <DataGrid.NumberCell
-                    context={context}
-                    min={1}
-                    placeholder="6"
-                  />
-                ),
-            }),
-          ]
-        : []),
       columnHelper.column({
         id: "mrp",
         name: "MRP",
@@ -397,6 +371,32 @@ const useColumns = ({
         },
         t,
       }),
+      ...(channel === "wholesale"
+        ? [
+            columnHelper.column({
+              id: "bundle_size",
+              name: "Pack Size",
+              header: "Pack Size",
+              field: (context) => {
+                const row = context.row.original;
+                return isGroup(row)
+                  ? null
+                  : `variants.${row.__formIndex}.bundle_size`;
+              },
+              type: "number",
+              cell: (context) =>
+                isGroup(context.row.original) ? (
+                  <DataGrid.ReadonlyCell context={context} />
+                ) : (
+                  <DataGrid.NumberCell
+                    context={context}
+                    min={1}
+                    placeholder="4"
+                  />
+                ),
+            }),
+          ]
+        : []),
     ];
   }, [
     t,

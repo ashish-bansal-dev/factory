@@ -17,11 +17,14 @@ import Thumbnail from "@modules/products/components/thumbnail"
 import { usePathname } from "next/navigation"
 import { Fragment, useEffect, useRef, useState } from "react"
 
+import { useCuratedQuote } from "@lib/context/curated-quote-context"
+
 const CartDropdown = ({
   cart: cartState,
 }: {
   cart?: HttpTypes.StoreCart | null
 }) => {
+  const { totalItems: curatedQuoteCount } = useCuratedQuote()
   const [activeTimer, setActiveTimer] = useState<NodeJS.Timer | undefined>(
     undefined
   )
@@ -31,9 +34,9 @@ const CartDropdown = ({
   const close = () => setCartDropdownOpen(false)
 
   const totalItems =
-    cartState?.items?.reduce((acc, item) => {
+    (cartState?.items?.reduce((acc, item) => {
       return acc + item.quantity
-    }, 0) || 0
+    }, 0) || 0) + curatedQuoteCount
 
   const subtotal = cartState?.subtotal ?? 0
   const itemRef = useRef<number>(totalItems || 0)

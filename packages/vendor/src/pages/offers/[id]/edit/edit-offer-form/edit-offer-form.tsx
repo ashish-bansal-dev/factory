@@ -152,7 +152,7 @@ export const EditOfferForm = ({ offer }: Props) => {
                     value={field.value ?? ""}
                   />
                 </Form.Control>
-                <Form.Hint>Number of units packaged together (default 6 for wholesale, 1 for retail).</Form.Hint>
+                <Form.Hint>Number of units packaged together (default 4 for wholesale, 1 for retail).</Form.Hint>
                 <Form.ErrorMessage />
               </Form.Item>
             )}

@@ -6,6 +6,7 @@ import { convertToLocale } from "@lib/util/money"
 import { HttpTypes } from "@medusajs/types"
 import { Badge, Button, clx } from "@medusajs/ui"
 import React, { useMemo, useState } from "react"
+import { useCuratedQuote } from "@lib/context/curated-quote-context"
 
 interface QuickVariantGridProps {
   product: HttpTypes.StoreProduct
@@ -80,6 +81,8 @@ export default function QuickVariantGrid({
     }))
   }
 
+  const { addItem: addCuratedQuoteItem } = useCuratedQuote()
+
   // Row-level instant add
   const handleAddSingle = async (
     variant: HttpTypes.StoreProductVariant,
@@ -88,9 +91,33 @@ export default function QuickVariantGrid({
     const currentQty = quantities[variant.id] || 0
     const qty = currentQty > 0 ? currentQty : stepSize
     const offerId = (variant as { offer_id?: string | null }).offer_id ?? undefined
+    const hasOffer = Boolean(offerId)
 
     setAddingVariantId(variant.id)
     setFeedback(null)
+
+    if (!hasOffer) {
+      addCuratedQuoteItem({
+        productId: product.id,
+        productTitle: product.title,
+        productHandle: product.handle,
+        thumbnail: product.thumbnail,
+        variantId: variant.id,
+        variantTitle: variant.title || "Default Variant",
+        sku: variant.sku || null,
+        quantity: qty,
+      })
+      if (currentQty === 0) {
+        setQuantities((prev) => ({ ...prev, [variant.id]: stepSize }))
+      }
+      setFeedback({
+        message: `Added ${qty} units of "${variant.title || "variant"}" to Curated Quote Basket 📋`,
+        type: "success",
+      })
+      setTimeout(() => setFeedback(null), 3500)
+      setAddingVariantId(null)
+      return
+    }
 
     try {
       await addToCart({
@@ -120,31 +147,63 @@ export default function QuickVariantGrid({
 
   // Bulk add all variants with qty > 0
   const handleAddAll = async () => {
-    const itemsToAdd = sortedVariants
-      .filter((v) => (quantities[v.id] || 0) > 0)
-      .map((v) => ({
-        variantId: v.id,
-        offerId: (v as { offer_id?: string | null }).offer_id ?? undefined,
-        quantity: quantities[v.id],
-      }))
+    const selected = sortedVariants.filter((v) => (quantities[v.id] || 0) > 0)
+    if (selected.length === 0) return
 
-    if (itemsToAdd.length === 0) return
+    const withOffer = selected.filter((v) =>
+      Boolean((v as { offer_id?: string | null }).offer_id)
+    )
+    const withoutOffer = selected.filter(
+      (v) => !Boolean((v as { offer_id?: string | null }).offer_id)
+    )
 
     setIsAddingAll(true)
     setFeedback(null)
 
     try {
-      await addMultipleToCart(itemsToAdd, countryCode)
-      const totalUnits = itemsToAdd.reduce((sum, item) => sum + item.quantity, 0)
+      if (withOffer.length > 0) {
+        await addMultipleToCart(
+          withOffer.map((v) => ({
+            variantId: v.id,
+            offerId: (v as { offer_id?: string | null }).offer_id ?? undefined,
+            quantity: quantities[v.id],
+          })),
+          countryCode
+        )
+      }
+
+      if (withoutOffer.length > 0) {
+        withoutOffer.forEach((v) => {
+          addCuratedQuoteItem({
+            productId: product.id,
+            productTitle: product.title,
+            productHandle: product.handle,
+            thumbnail: product.thumbnail,
+            variantId: v.id,
+            variantTitle: v.title || "Default Variant",
+            sku: v.sku || null,
+            quantity: quantities[v.id],
+          })
+        })
+      }
+
+      const totalUnits = selected.reduce((sum, v) => sum + quantities[v.id], 0)
+      const message =
+        withoutOffer.length > 0 && withOffer.length > 0
+          ? `Added ${withOffer.length} variant(s) to Cart and ${withoutOffer.length} to Curated Quote Basket 📋`
+          : withoutOffer.length > 0
+          ? `Added ${totalUnits} units across ${withoutOffer.length} variant(s) to Curated Quote Basket 📋`
+          : `Added ${totalUnits} units across ${withOffer.length} variant(s) to Cart`
+
       setFeedback({
-        message: `Successfully added ${totalUnits} units across ${itemsToAdd.length} variant(s) to cart`,
+        message,
         type: "success",
       })
       setQuantities({})
       setTimeout(() => setFeedback(null), 4000)
     } catch (err: any) {
       setFeedback({
-        message: err?.message || "Failed to add items to cart",
+        message: err?.message || "Failed to add items",
         type: "error",
       })
     } finally {
@@ -188,6 +247,13 @@ export default function QuickVariantGrid({
     return { sum, currency }
   }, [sortedVariants, quantities])
 
+  // Check if any variant has an active offer
+  const anyVariantHasOffer = useMemo(() => {
+    return sortedVariants.some((v) =>
+      Boolean((v as { offer_id?: string | null })?.offer_id)
+    )
+  }, [sortedVariants])
+
   if (sortedVariants.length === 0) {
     return null
   }
@@ -207,6 +273,17 @@ export default function QuickVariantGrid({
           {sortedVariants.length} {sortedVariants.length === 1 ? "Variant" : "Variants"}
         </Badge>
       </div>
+
+      {!anyVariantHasOffer && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-900">
+          <div className="font-semibold flex items-center gap-1.5 text-amber-800 mb-0.5">
+            <span>No Active Supplier Offers</span>
+          </div>
+          <p className="text-[11px] text-amber-700">
+            Currently no seller offers are listed for these variants. You can inquire directly with suppliers on WhatsApp below for custom pricing and availability.
+          </p>
+        </div>
+      )}
 
       {feedback && (
         <div
@@ -263,6 +340,10 @@ export default function QuickVariantGrid({
                   ? Math.round(((mrpNum - unitPriceNum) / mrpNum) * 100)
                   : 0
 
+              const hasOffer = Boolean(
+                (variant as { offer_id?: string | null })?.offer_id
+              )
+
               return (
                 <tr
                   key={variant.id}
@@ -290,7 +371,11 @@ export default function QuickVariantGrid({
                       <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
                         Pack of {bundleSize}
                       </span>
-                      {!inStock ? (
+                      {!hasOffer ? (
+                        <span className="text-[10px] font-semibold text-gray-600 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-full">
+                          No active offer
+                        </span>
+                      ) : !inStock ? (
                         <span className="text-[10px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
                           Out of stock
                         </span>
@@ -411,9 +496,14 @@ export default function QuickVariantGrid({
                       onClick={() => handleAddSingle(variant, bundleSize)}
                       disabled={disabled || !inStock || isRowAdding || isAddingAll}
                       isLoading={isRowAdding}
-                      className="text-xs h-8 px-3 font-semibold hover:bg-ui-bg-base hover:text-white transition"
+                      className={clx(
+                        "text-xs h-8 px-3 font-semibold transition",
+                        !hasOffer
+                          ? "border-purple-300 text-purple-800 hover:bg-purple-100 bg-purple-50/50"
+                          : "hover:bg-ui-bg-base hover:text-white"
+                      )}
                     >
-                      + Add
+                      {!hasOffer ? "+ Quote 📋" : "+ Add"}
                     </Button>
                   </td>
                 </tr>
@@ -452,7 +542,9 @@ export default function QuickVariantGrid({
             isLoading={isAddingAll}
             className="flex-1 sm:flex-none h-9 px-5 text-xs font-semibold"
           >
-            Add Selected to Cart ({totalUnits})
+            {!anyVariantHasOffer
+              ? `Add Selected to Quote Basket (${totalUnits}) 📋`
+              : `Add Selected to Cart (${totalUnits})`}
           </Button>
           {onOpenInquiry && (
             <Button
