@@ -9,6 +9,7 @@ import type { Metadata } from "next"
 import Script from "next/script"
 import { listRegions } from "@/lib/data/regions"
 import { listProducts } from "@/lib/data/products"
+import { getSellerByHandle } from "@/lib/data/seller"
 import {
   buildHreflangAlternates,
   getStorefrontLocales,
@@ -85,11 +86,27 @@ async function AllCategories({
   const host = headersList.get("host")
   const protocol = headersList.get("x-forwarded-proto") || "https"
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`
+
+  const isTenant = headersList.get("x-is-tenant") === "true"
+  const tenantHandle = headersList.get("x-tenant-handle")
+  let sellerId: string | undefined
+  if (isTenant && tenantHandle) {
+    const seller = await getSellerByHandle(tenantHandle).catch(() => null)
+    if (seller) {
+      sellerId = seller.id
+    }
+  }
+
   const {
     response: { products: jsonLdProducts },
   } = await listProducts({
     countryCode: locale,
-    queryParams: { limit: 8, order: "created_at", fields: "id,title,handle" },
+    queryParams: {
+      limit: 8,
+      order: "created_at",
+      fields: "id,title,handle",
+      seller_id: sellerId,
+    },
   })
 
   const itemList = jsonLdProducts.slice(0, 8).map((p, idx) => ({
@@ -138,9 +155,9 @@ async function AllCategories({
 
       <Suspense fallback={<div data-testid="all-categories-page-loading"><ProductListingSkeleton /></div>}>
         {bot ? (
-          <ProductListing showSidebar locale={locale} />
+          <ProductListing seller_id={sellerId} showSidebar locale={locale} />
         ) : (
-          <SearchProductsListing locale={locale} />
+          <SearchProductsListing seller_id={sellerId} locale={locale} />
         )}
       </Suspense>
     </main>

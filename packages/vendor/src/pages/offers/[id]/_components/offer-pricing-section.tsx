@@ -56,6 +56,19 @@ export const OfferPricingSection = ({ offer }: Props) => {
       </div>
 
       {!hasPrices && <NoRecords className="h-60" />}
+      {offer.mrp != null && (
+        <div className="txt-small text-ui-fg-subtle flex justify-between px-6 py-4 bg-ui-bg-subtle/30">
+          <span className="font-medium">MRP (Maximum Retail Price)</span>
+          <span className="font-semibold text-ui-fg-base">{offer.mrp}</span>
+        </div>
+      )}
+      {offer.bundle_size != null && offer.bundle_size > 1 && (
+        <div className="txt-small text-ui-fg-subtle flex justify-between px-6 py-4 bg-ui-bg-subtle/30">
+          <span className="font-medium">Wholesale Pack Size</span>
+          <span className="font-semibold text-ui-fg-base">{offer.bundle_size} units / pack</span>
+        </div>
+      )}
+
       {displayPrices.map((price) => (
         <div
           key={price.id ?? `${price.currency_code}-${price.amount}`}

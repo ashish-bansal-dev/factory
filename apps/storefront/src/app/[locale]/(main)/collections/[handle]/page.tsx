@@ -67,6 +67,8 @@ export async function generateMetadata({
   }
 }
 
+import { getSellerByHandle } from "@/lib/data/seller"
+
 const SingleCollectionsPage = async ({
   params,
 }: {
@@ -74,10 +76,22 @@ const SingleCollectionsPage = async ({
 }) => {
   const { handle, locale } = await params
 
-  const bot = isBot(navigator.userAgent)
+  const headersList = await headers()
+  const ua = headersList.get("user-agent") || ""
+  const bot = isBot(ua)
   const collection = await getCollectionByHandle(handle)
 
   if (!collection) return <NotFound />
+
+  const isTenant = headersList.get("x-is-tenant") === "true"
+  const tenantHandle = headersList.get("x-tenant-handle")
+  let sellerId: string | undefined
+  if (isTenant && tenantHandle) {
+    const seller = await getSellerByHandle(tenantHandle).catch(() => null)
+    if (seller) {
+      sellerId = seller.id
+    }
+  }
 
   const breadcrumbsItems = [
     {
@@ -96,9 +110,9 @@ const SingleCollectionsPage = async ({
 
       <Suspense fallback={<div data-testid="collection-page-loading"><ProductListingSkeleton /></div>}>
         {bot ? (
-          <ProductListing collection_id={collection.id} showSidebar />
+          <ProductListing collection_id={collection.id} seller_id={sellerId} showSidebar locale={locale} />
         ) : (
-          <SearchProductsListing collection_id={collection.id} locale={locale} />
+          <SearchProductsListing collection_id={collection.id} seller_id={sellerId} locale={locale} />
         )}
       </Suspense>
     </main>

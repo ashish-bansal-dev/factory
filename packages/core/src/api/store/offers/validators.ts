@@ -20,6 +20,8 @@ const StoreOfferFilterFields = z.object({
   seller_id: z.union([z.string(), z.array(z.string())]).optional(),
   sku: z.union([z.string(), z.array(z.string())]).optional(),
   condition_id: z.union([z.string(), z.array(z.string())]).optional(),
+  channel: z.enum(["retail", "wholesale"]).optional(),
+  offer_type: z.enum(["retail", "wholesale"]).optional(),
   created_at: createOperatorMap().optional(),
   updated_at: createOperatorMap().optional(),
 })

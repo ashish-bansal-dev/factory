@@ -180,8 +180,11 @@ const ManualTestPaymentButton = ({ notReady }: { notReady: boolean }) => {
         size="large"
         data-testid="submit-order-button"
       >
-        Place order
+        Submit Quote / Place Order (No Payment Required)
       </Button>
+      <p className="text-xs text-ui-fg-muted mt-2 text-center">
+        Zero upfront payment. Invoice and payment terms will be provided by the seller.
+      </p>
       <ErrorMessage
         error={errorMessage}
         data-testid="manual-payment-error-message"

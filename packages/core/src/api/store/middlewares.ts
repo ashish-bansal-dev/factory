@@ -10,8 +10,10 @@ import { storeSellersMiddlewares } from "./sellers/middlewares"
 import { storeReviewsMiddlewares } from "./reviews/middlewares"
 import { storeBrandsMiddlewares } from "./brands/middlewares"
 import { storeInquiriesMiddlewares } from "./inquiries/middlewares"
+import { storeDomainsMiddlewares } from "./domains/middlewares"
 
 export const storeMiddlewares: MiddlewareRoute[] = [
+  ...storeDomainsMiddlewares,
   ...storeCartsMiddlewares,
   ...storeOffersMiddlewares,
   ...storeOrderGroupsMiddlewares,

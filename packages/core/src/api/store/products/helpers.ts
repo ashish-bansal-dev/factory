@@ -4,20 +4,26 @@
  * post-query from the cheapest offer, not graph columns, so passing them to
  * `query.graph` raises `Trying to query by not existing property`.
  */
-export const splitComputedVariantFields = (fields: string[]) => {
-  const withCalculatedPrice = fields.some(
-    (f) =>
-      f === "variants.calculated_price" ||
-      f.startsWith("variants.calculated_price.") ||
-      f === "variants.offer_id"
-  )
+const VIRTUAL_VARIANT_FIELDS = new Set([
+  "variants.calculated_price",
+  "variants.offer_id",
+  "variants.bundle_size",
+  "variants.pack_price",
+  "variants.offer_type",
+  "variants.mrp",
+])
 
-  const filteredFields = fields.filter(
-    (f) =>
-      f !== "variants.calculated_price" &&
-      !f.startsWith("variants.calculated_price.") &&
-      f !== "variants.offer_id"
+const isVirtualVariantField = (field: string): boolean => {
+  return (
+    VIRTUAL_VARIANT_FIELDS.has(field) ||
+    field.startsWith("variants.calculated_price.") ||
+    field.startsWith("variants.pack_price.")
   )
+}
+
+export const splitComputedVariantFields = (fields: string[]) => {
+  const withCalculatedPrice = fields.some(isVirtualVariantField)
+  const filteredFields = fields.filter((f) => !isVirtualVariantField(f))
 
   return { fields: filteredFields, withCalculatedPrice }
 }

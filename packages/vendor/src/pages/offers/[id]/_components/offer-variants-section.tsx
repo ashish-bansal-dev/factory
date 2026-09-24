@@ -1,6 +1,7 @@
 import { Buildings, Component, CurrencyDollar, PencilSquare, Trash } from "@medusajs/icons"
 import {
   Badge,
+  Button,
   clx,
   Container,
   Heading,
@@ -10,7 +11,7 @@ import {
 } from "@medusajs/ui"
 import { OfferDTO } from "@mercurjs/types"
 import { createColumnHelper } from "@tanstack/react-table"
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 
@@ -140,6 +141,36 @@ const useColumns = ({
             <PlaceholderCell />
           ),
       }),
+      columnHelper.display({
+        id: "channel",
+        header: "Channel",
+        cell: ({ row }) => {
+          const type = row.original.offer.offer_type || "retail"
+          return type === "wholesale" ? (
+            <Badge color="purple" size="2xsmall">Wholesale</Badge>
+          ) : (
+            <Badge color="blue" size="2xsmall">Retail</Badge>
+          )
+        },
+      }),
+      columnHelper.display({
+        id: "bundle_size",
+        header: "Pack Size",
+        cell: ({ row }) => {
+          const bundleSize = row.original.offer.bundle_size ?? 1
+          const mrp = row.original.offer.mrp
+          return (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Badge size="2xsmall" color="grey">Pack of {bundleSize}</Badge>
+              {mrp != null && (
+                <span className="text-[11px] text-ui-fg-muted font-mono">
+                  MRP: {mrp}
+                </span>
+              )}
+            </div>
+          )
+        },
+      }),
       ...optionTitles.map((title) =>
         columnHelper.display({
           id: `option-${title}`,
@@ -256,6 +287,8 @@ export const OfferVariantsSection = ({
     PREFIX,
   )
 
+  const [channelTab, setChannelTab] = useState<"all" | "retail" | "wholesale">("all")
+
   const allRows: OfferVariantRow[] = useMemo(
     () =>
       (variants ?? []).flatMap((variant) =>
@@ -282,6 +315,13 @@ export const OfferVariantsSection = ({
 
   const filteredRows = useMemo(() => {
     let rows = allRows
+
+    if (channelTab !== "all") {
+      rows = rows.filter((row) => {
+        const type = row.offer.offer_type || "retail"
+        return type === channelTab
+      })
+    }
 
     const search = q?.trim().toLowerCase()
     if (search) {
@@ -310,7 +350,7 @@ export const OfferVariantsSection = ({
     }
 
     return rows
-  }, [allRows, q, created_at, updated_at])
+  }, [allRows, q, created_at, updated_at, channelTab])
 
   const sortedRows = useMemo(() => {
     const activeOrder = order || "title"
@@ -387,7 +427,7 @@ export const OfferVariantsSection = ({
         { key: "sku", label: t("fields.sku") },
         { key: "created_at", label: t("fields.createdAt") },
         { key: "updated_at", label: t("fields.updatedAt") },
-      ] as DataTableOrderByKey<OfferVariantRow>[],
+      ] as unknown as DataTableOrderByKey<OfferVariantRow>[],
     [t],
   )
 
@@ -435,6 +475,22 @@ export const OfferVariantsSection = ({
             ]}
           />
         </div>
+      </div>
+      <div className="flex items-center gap-x-2 px-6 py-2.5 border-b border-ui-border-base bg-ui-bg-subtle/50">
+        {(["all", "retail", "wholesale"] as const).map((tab) => (
+          <Button
+            key={tab}
+            size="small"
+            variant={channelTab === tab ? "primary" : "secondary"}
+            onClick={() => setChannelTab(tab)}
+          >
+            {tab === "all"
+              ? "All Channels"
+              : tab === "retail"
+              ? "Retail (ThreadBuy)"
+              : "Wholesale (FactoryTribe)"}
+          </Button>
+        ))}
       </div>
       <_DataTable
         table={table}

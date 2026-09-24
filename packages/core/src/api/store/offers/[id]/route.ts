@@ -59,6 +59,32 @@ export const GET = async (
     }
   }
 
+  let effectiveSellerId: string | undefined =
+    (typeof req.headers["x-seller-id"] === "string" ? (req.headers["x-seller-id"] as string) : undefined)
+
+  if (!effectiveSellerId && typeof req.headers["x-tenant-handle"] === "string") {
+    const tenantHandle = req.headers["x-tenant-handle"]
+    const { data: sellers } = await query.graph({
+      entity: "seller",
+      fields: ["id"],
+      filters: { handle: tenantHandle },
+    }).catch(() => ({ data: [] }))
+    effectiveSellerId = (sellers?.[0] as { id?: string })?.id
+    if (!effectiveSellerId) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_FOUND,
+        `Offer with id ${req.params.id} was not found`
+      )
+    }
+  }
+
+  if (effectiveSellerId && offer.seller_id !== effectiveSellerId) {
+    throw new MedusaError(
+      MedusaError.Types.NOT_FOUND,
+      `Offer with id ${req.params.id} was not found`
+    )
+  }
+
   const offers = [offer]
   if (withCalculatedPrice) {
     await wrapOffersWithCalculatedPrices(

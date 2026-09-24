@@ -27,6 +27,8 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
   const {
     region_id: _r,
     currency_code: _c,
+    channel: _ch,
+    offer_type: _ot,
     seller_id,
     brand_id,
     ...productFilters

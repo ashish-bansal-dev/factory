@@ -27,6 +27,9 @@ export * from "./review"
 // Brand types
 export * from "./brand"
 
+// Domain types
+export * from "./domain"
+
 // Product types — explicit re-export overrides Medusa's product surface.
 // Mercur's runtime enums and Mercur-extended DTOs (Omit + intersection over
 // upstream) win over the wholesale `export * from "@medusajs/types"` above.

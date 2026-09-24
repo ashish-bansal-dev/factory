@@ -3,7 +3,7 @@
 import { addToCart } from "@lib/data/cart"
 import { useIntersection } from "@lib/hooks/use-in-view"
 import { HttpTypes } from "@medusajs/types"
-import { Button } from "@medusajs/ui"
+import { Button, clx } from "@medusajs/ui"
 import Divider from "@modules/common/components/divider"
 import OptionSelect from "@modules/products/components/product-actions/option-select"
 import { isEqual } from "lodash"
@@ -13,6 +13,7 @@ import ProductPrice from "../product-price"
 import MobileActions from "./mobile-actions"
 import { useRouter } from "next/navigation"
 import WholesaleInquiryModal from "../wholesale-inquiry-modal"
+import QuickVariantGrid from "../quick-variant-grid"
 import { SellerDTO } from "@lib/data/seller"
 
 type ProductActionsProps = {
@@ -59,6 +60,9 @@ export default function ProductActions({
   })
   const [isAdding, setIsAdding] = useState(false)
   const countryCode = useParams().countryCode as string
+
+  const hasMultipleVariants = (product.variants?.length ?? 0) > 1
+  const [orderMode, setOrderMode] = useState<"grid" | "single">("grid")
 
   // If there is only 1 variant or v_id changed, keep options in sync
   useEffect(() => {
@@ -147,6 +151,25 @@ export default function ProductActions({
   const offerId = (selectedVariant as { offer_id?: string | null })?.offer_id
   const hasOffer = Boolean(offerId)
 
+  const bundleSize =
+    Number((selectedVariant as any)?.bundle_size) ||
+    Number((selectedVariant as any)?.calculated_price?.bundle_size) ||
+    1
+
+  const [quantity, setQuantity] = useState<number>(bundleSize)
+
+  useEffect(() => {
+    setQuantity(bundleSize)
+  }, [bundleSize, selectedVariant?.id])
+
+  const handleIncrement = () => {
+    setQuantity((prev) => prev + bundleSize)
+  }
+
+  const handleDecrement = () => {
+    setQuantity((prev) => Math.max(bundleSize, prev - bundleSize))
+  }
+
   // add the selected variant to the cart
   const handleAddToCart = async () => {
     if (!selectedVariant?.id) return null
@@ -156,7 +179,7 @@ export default function ProductActions({
     await addToCart({
       variantId: selectedVariant.id,
       offerId: offerId ?? undefined,
-      quantity: 1,
+      quantity,
       countryCode,
     })
 
@@ -165,53 +188,114 @@ export default function ProductActions({
 
   return (
     <>
-      <div className="flex flex-col gap-y-2" ref={actionsRef}>
-        <div>
-          {(product.variants?.length ?? 0) > 1 && (
-            <div className="flex flex-col gap-y-4">
-              {(product.options || []).map((option) => {
-                return (
-                  <div key={option.id}>
-                    <OptionSelect
-                      option={option}
-                      current={options[option.id]}
-                      updateOption={setOptionValue}
-                      title={option.title ?? ""}
-                      data-testid="product-options"
-                      disabled={!!disabled || isAdding}
-                    />
-                  </div>
-                )
-              })}
-              <Divider />
+      <div className="flex flex-col gap-y-3" ref={actionsRef}>
+        {!isTenant && (
+          <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-lg p-3 text-xs text-emerald-900">
+            <div className="font-semibold flex items-center gap-1.5 text-emerald-800 mb-0.5">
+              <span>Direct Wholesale Sourcing</span>
             </div>
-          )}
-        </div>
-
-        <ProductPrice product={product} variant={selectedVariant} isTenant={isTenant} />
-
-        {!isTenant ? (
-          <div className="flex flex-col gap-y-2">
-            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-lg p-3 text-xs text-emerald-900">
-              <div className="font-semibold flex items-center gap-1.5 text-emerald-800 mb-0.5">
-                <span>Direct Wholesale Sourcing</span>
-              </div>
-              <p className="text-[11px] text-emerald-700">
-                Factory-direct pricing and bulk deals. Connect with verified suppliers directly on WhatsApp.
-              </p>
-            </div>
-
-            <Button
-              onClick={() => setIsInquiryOpen(true)}
-              variant="primary"
-              className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center justify-center gap-2"
-              data-testid="wholesale-inquiry-button"
-            >
-              Connect for Wholesale Deal (WhatsApp) →
-            </Button>
+            <p className="text-[11px] text-emerald-700">
+              Factory-direct pricing and bulk deals. Add to cart for direct order/quote or connect with suppliers directly on WhatsApp.
+            </p>
           </div>
+        )}
+
+        {hasMultipleVariants && (
+          <div className="flex border border-ui-border-base rounded-md p-0.5 bg-ui-bg-subtle mb-1">
+            <button
+              type="button"
+              onClick={() => setOrderMode("grid")}
+              className={clx(
+                "flex-1 py-1.5 text-xs font-medium rounded transition text-center",
+                orderMode === "grid"
+                  ? "bg-white text-ui-fg-base shadow-sm font-semibold"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              )}
+            >
+              Quick Variant Grid
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrderMode("single")}
+              className={clx(
+                "flex-1 py-1.5 text-xs font-medium rounded transition text-center",
+                orderMode === "single"
+                  ? "bg-white text-ui-fg-base shadow-sm font-semibold"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              )}
+            >
+              Select Options
+            </button>
+          </div>
+        )}
+
+        {orderMode === "grid" ? (
+          <QuickVariantGrid
+            product={product}
+            countryCode={countryCode}
+            disabled={disabled}
+            onOpenInquiry={() => setIsInquiryOpen(true)}
+          />
         ) : (
-          <div className="flex flex-col gap-y-2">
+          <div className="flex flex-col gap-y-3">
+            <div>
+              {(product.variants?.length ?? 0) > 1 && (
+                <div className="flex flex-col gap-y-4">
+                  {(product.options || []).map((option) => {
+                    return (
+                      <div key={option.id}>
+                        <OptionSelect
+                          option={option}
+                          current={options[option.id]}
+                          updateOption={setOptionValue}
+                          title={option.title ?? ""}
+                          data-testid="product-options"
+                          disabled={!!disabled || isAdding}
+                        />
+                      </div>
+                    )
+                  })}
+                  <Divider />
+                </div>
+              )}
+            </div>
+
+            <ProductPrice product={product} variant={selectedVariant} isTenant={isTenant} />
+
+            {hasOffer && inStock && (
+              <div className="flex items-center justify-between border border-ui-border-base rounded-md p-2.5 bg-ui-bg-subtle/50">
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-ui-fg-base">
+                    Pack Quantity
+                  </span>
+                  <span className="text-[11px] text-ui-fg-muted">
+                    {Math.round(quantity / bundleSize)} {Math.round(quantity / bundleSize) === 1 ? "pack" : "packs"} ({quantity} units)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDecrement}
+                    disabled={quantity <= bundleSize || isAdding}
+                    className="w-8 h-8 flex items-center justify-center rounded border border-ui-border-base bg-white hover:bg-ui-bg-subtle disabled:opacity-40 disabled:cursor-not-allowed font-medium text-sm transition-colors"
+                  >
+                    -
+                  </button>
+                  <span className="w-12 text-center font-bold text-sm text-ui-fg-base">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleIncrement}
+                    disabled={isAdding}
+                    className="w-8 h-8 flex items-center justify-center rounded border border-ui-border-base bg-white hover:bg-ui-bg-subtle disabled:opacity-40 font-medium text-sm transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
+
             <Button
               onClick={handleAddToCart}
               disabled={
@@ -233,18 +317,22 @@ export default function ProductActions({
                 ? "No offer available"
                 : !inStock || !isValidVariant
                 ? "Out of stock"
-                : "Add to cart"}
-            </Button>
-
-            <Button
-              onClick={() => setIsInquiryOpen(true)}
-              variant="secondary"
-              className="w-full h-10 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-medium text-xs"
-            >
-              Inquire with Brand via WhatsApp →
+                : bundleSize > 1
+                ? `Add ${quantity} units (${Math.round(quantity / bundleSize)} pack${Math.round(quantity / bundleSize) > 1 ? "s" : ""}) to cart`
+                : `Add to cart (${quantity})`}
             </Button>
           </div>
         )}
+
+        <Button
+          onClick={() => setIsInquiryOpen(true)}
+          variant="secondary"
+          className="w-full h-10 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-medium text-xs flex items-center justify-center gap-1.5"
+          data-testid="wholesale-inquiry-button"
+        >
+          <span>Connect with Supplier on WhatsApp →</span>
+        </Button>
+
 
         <WholesaleInquiryModal
           isOpen={isInquiryOpen}

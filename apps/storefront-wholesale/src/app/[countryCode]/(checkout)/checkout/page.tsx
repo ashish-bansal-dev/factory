@@ -4,8 +4,7 @@ import PaymentWrapper from "@modules/checkout/components/payment-wrapper"
 import CheckoutForm from "@modules/checkout/templates/checkout-form"
 import CheckoutSummary from "@modules/checkout/templates/checkout-summary"
 import { Metadata } from "next"
-import { notFound, redirect } from "next/navigation"
-import { headers } from "next/headers"
+import { notFound } from "next/navigation"
 
 export const metadata: Metadata = {
   title: "Checkout",
@@ -15,12 +14,6 @@ export default async function Checkout(props: {
   params: Promise<{ countryCode: string }>
 }) {
   const { countryCode } = await props.params
-  const headersList = await headers()
-  const isTenant = headersList.get("x-is-tenant") === "true"
-
-  if (!isTenant) {
-    redirect(`/${countryCode}/store`)
-  }
 
   const cart = await retrieveCart()
 

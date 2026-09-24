@@ -9,7 +9,14 @@ export const createOffersStep = createStep(
   "create-offers",
   async (data: CreateOffersStepInput, { container }) => {
     const service = container.resolve<OfferModuleService>(MercurModules.OFFER)
-    const offers = await service.createOffers(data)
+    const normalized: CreateOfferRowDTO[] = data.map((offer) => ({
+      ...offer,
+      offer_type: offer.offer_type ?? "retail",
+      bundle_size: offer.bundle_size ?? 1,
+      mrp: offer.mrp ?? null,
+      lead_time_days: offer.lead_time_days ?? null,
+    }))
+    const offers = await service.createOffers(normalized)
     return new StepResponse(
       offers,
       offers.map((o) => o.id)

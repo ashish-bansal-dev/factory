@@ -1,5 +1,6 @@
 import { HttpTypes } from "@medusajs/types";
 import { usePermissions } from "@mercurjs/dashboard-shared";
+import { Badge, toast } from "@medusajs/ui";
 import { useMemo } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -20,7 +21,11 @@ import { useShippingProfiles } from "../../../../hooks/api/shipping-profiles";
 import { useStockLocations } from "../../../../hooks/api/stock-locations";
 import { CreateOfferFormValues, OfferVariantRow } from "./schema";
 
-type ShippingProfileLite = { id: string; name?: string | null };
+type ShippingProfileLite = {
+  id: string;
+  name?: string | null;
+  type?: string | null;
+};
 type OfferConditionLite = { id: string; label: string };
 
 /**
@@ -48,8 +53,14 @@ const Root = () => {
   const form = useFormContext<CreateOfferFormValues>();
   const { setCloseOnEscape } = useRouteModal();
 
-  const { currency_code } = useCurrentSeller();
+  const { currency_code, seller } = useCurrentSeller();
+  const isRetailer = seller?.type === "retailer";
   const { can } = usePermissions();
+  const channel = (useWatch({
+    control: form.control,
+    name: "channel",
+  }) ?? "retail") as "retail" | "wholesale";
+
   const { stock_locations } = useStockLocations(
     { limit: 100 },
     { enabled: can("stock_locations") }
@@ -71,6 +82,32 @@ const Root = () => {
     name: "variants",
   }) as OfferVariantRow[] | undefined;
 
+  const filteredShippingProfiles = useMemo(() => {
+    const profiles = shipping_profiles ?? [];
+    if (channel !== "wholesale") return profiles;
+    const freight = profiles.filter((p) =>
+      (p.name && /freight/i.test(p.name)) ||
+      (p.type && /freight/i.test(p.type))
+    );
+    return freight.length > 0 ? freight : profiles;
+  }, [shipping_profiles, channel]);
+
+  const handleChannelChange = (newChannel: "retail" | "wholesale") => {
+    if (newChannel === "wholesale" && isRetailer) {
+      toast.error("Retailer accounts can only create retail offers.");
+      return;
+    }
+    form.setValue("channel", newChannel);
+    if (newChannel === "wholesale") {
+      const current = form.getValues("variants") ?? [];
+      const updated = current.map((v) => ({
+        ...v,
+        bundle_size: (!v.bundle_size || v.bundle_size === 1) ? 6 : v.bundle_size,
+      }));
+      form.setValue("variants", updated);
+    }
+  };
+
   const gridData = useMemo<GridRow[]>(() => {
     const rows: GridRow[] = [];
     let lastProductId: string | undefined;
@@ -90,10 +127,11 @@ const Root = () => {
 
   const columns = useColumns({
     currencyCode: currency_code,
+    channel,
     stockLocations: stock_locations as
       | HttpTypes.AdminStockLocation[]
       | undefined,
-    shippingProfiles: shipping_profiles ?? [],
+    shippingProfiles: filteredShippingProfiles,
     offerConditions: offer_conditions ?? [],
     pricePreferences,
   });
@@ -103,6 +141,53 @@ const Root = () => {
       className="flex size-full flex-col overflow-hidden"
       data-testid="offer-create-tab-stockLevelsAndPrices"
     >
+      {/* Channel selector toolbar */}
+      <div className="flex items-center justify-between border-b border-ui-border-base px-6 py-2.5 bg-ui-bg-subtle/50">
+        <div className="flex items-center gap-x-3">
+          <span className="text-xs font-medium text-ui-fg-subtle">Channel:</span>
+          <div className="inline-flex rounded-lg border border-ui-border-base bg-ui-bg-base p-0.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => handleChannelChange("retail")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                channel === "retail"
+                  ? "bg-ui-bg-interactive text-ui-fg-on-color"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              }`}
+            >
+              Retail (ThreadBuy)
+            </button>
+            <button
+              type="button"
+              disabled={isRetailer}
+              onClick={() => handleChannelChange("wholesale")}
+              title={isRetailer ? "Retailer accounts can only create retail offers." : undefined}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                channel === "wholesale"
+                  ? "bg-ui-bg-interactive text-ui-fg-on-color"
+                  : isRetailer
+                  ? "text-ui-fg-disabled cursor-not-allowed opacity-50"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              }`}
+            >
+              Wholesale (FactoryTribe)
+            </button>
+          </div>
+          {isRetailer && (
+            <span className="text-[11px] text-ui-fg-muted italic">
+              Retailer accounts can only create retail offers
+            </span>
+          )}
+        </div>
+        {channel === "wholesale" && (
+          <div className="flex items-center gap-2">
+            <Badge color="purple" size="2xsmall">
+              Wholesale: Pack Size &ge; 1 + Freight Shipping
+            </Badge>
+          </div>
+        )}
+      </div>
+
       <DataGrid
         columns={columns}
         data={gridData}
@@ -115,6 +200,7 @@ const Root = () => {
 
 type ColumnArgs = {
   currencyCode?: string;
+  channel?: "retail" | "wholesale";
   stockLocations?: HttpTypes.AdminStockLocation[];
   shippingProfiles?: ShippingProfileLite[];
   offerConditions?: OfferConditionLite[];
@@ -125,6 +211,7 @@ const columnHelper = createDataGridHelper<GridRow, CreateOfferFormValues>();
 
 const useColumns = ({
   currencyCode,
+  channel = "retail",
   stockLocations = [],
   shippingProfiles = [],
   offerConditions = [],
@@ -189,6 +276,57 @@ const useColumns = ({
             <DataGrid.ReadonlyCell context={context} />
           ) : (
             <DataGrid.TextCell context={context} />
+          ),
+      }),
+      ...(channel === "wholesale"
+        ? [
+            columnHelper.column({
+              id: "bundle_size",
+              name: "Pack Size",
+              header: "Pack Size",
+              field: (context) => {
+                const row = context.row.original;
+                return isGroup(row)
+                  ? null
+                  : `variants.${row.__formIndex}.bundle_size`;
+              },
+              type: "number",
+              cell: (context) =>
+                isGroup(context.row.original) ? (
+                  <DataGrid.ReadonlyCell context={context} />
+                ) : (
+                  <DataGrid.NumberCell
+                    context={context}
+                    min={1}
+                    placeholder="6"
+                  />
+                ),
+            }),
+          ]
+        : []),
+      columnHelper.column({
+        id: "mrp",
+        name: "MRP",
+        header: "MRP (Optional)",
+        field: (context) => {
+          const row = context.row.original;
+          return isGroup(row) ? null : `variants.${row.__formIndex}.mrp`;
+        },
+        type: "number",
+        cell: (context) =>
+          isGroup(context.row.original) ? (
+            <DataGrid.ReadonlyCell context={context} />
+          ) : currencyCode ? (
+            <DataGrid.CurrencyCell
+              context={context}
+              code={currencyCode}
+            />
+          ) : (
+            <DataGrid.NumberCell
+              context={context}
+              min={0}
+              placeholder="Optional"
+            />
           ),
       }),
       columnHelper.column({
@@ -263,6 +401,7 @@ const useColumns = ({
   }, [
     t,
     currencyCode,
+    channel,
     stockLocations,
     shippingProfiles,
     offerConditions,

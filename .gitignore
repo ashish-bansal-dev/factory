@@ -44,3 +44,9 @@ packages/modules/*
 
 # Local spec tracker (not versioned)
 docs/specs/
+apps/api/static
+
+# Ephemeral agent working logs and directories
+.agents/*
+!.agents/rules/
+!.agents/skills/

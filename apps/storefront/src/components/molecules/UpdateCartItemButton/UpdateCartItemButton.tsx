@@ -17,7 +17,7 @@ export const UpdateCartItemButton = ({
 }) => {
   const { updateCartItem, isUpdatingItem } = useCartContext();
   const [pendingQuantity, setPendingQuantity] = useState(quantity);
-  const debounceTimerRef = useRef<NodeJS.Timeout>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
 
   useEffect(() => {

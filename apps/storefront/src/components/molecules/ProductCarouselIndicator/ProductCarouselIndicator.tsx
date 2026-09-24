@@ -1,11 +1,11 @@
 "use client"
 import Image from "next/image"
 import { HttpTypes } from "@medusajs/types"
-import { EmblaCarouselType } from "embla-carousel"
 import { useCallback, useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
 import { Indicator } from "@/components/atoms"
 import useEmblaCarousel from "embla-carousel-react"
+type EmblaCarouselType = NonNullable<ReturnType<typeof useEmblaCarousel>[1]>
 
 export const ProductCarouselIndicator = ({
   slides = [],

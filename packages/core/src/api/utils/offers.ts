@@ -25,6 +25,10 @@ const OFFER_WRAP_FIELDS = [
   "sku",
   "ean",
   "upc",
+  "offer_type",
+  "bundle_size",
+  "mrp",
+  "lead_time_days",
   "created_at",
   "updated_at",
   "seller.id",
@@ -59,7 +63,8 @@ type OfferRow = { variant_id: string }
 export const wrapProductVariantsWithOffers = async (
   scope: MedusaContainer,
   products: WrappableProduct[],
-  sellerId?: string
+  sellerId?: string,
+  channel?: "retail" | "wholesale"
 ): Promise<void> => {
   const variantIds = Array.from(
     new Set(products.flatMap((p) => (p.variants ?? []).map((v) => v.id)))
@@ -71,13 +76,16 @@ export const wrapProductVariantsWithOffers = async (
 
   const query = scope.resolve(ContainerRegistrationKeys.QUERY)
 
+  const filters: Record<string, unknown> = {
+    variant_id: variantIds,
+    ...(sellerId ? { seller_id: sellerId } : {}),
+    ...(channel ? { offer_type: channel } : {}),
+  }
+
   const { data: offers } = await query.graph({
     entity: "offer",
     fields: OFFER_WRAP_FIELDS,
-    filters: {
-      variant_id: variantIds,
-      ...(sellerId ? { seller_id: sellerId } : {}),
-    },
+    filters,
   })
 
   const offersByVariant = new Map<string, unknown[]>()
@@ -215,12 +223,17 @@ type StoreRequestWithContext = MedusaStoreRequest<unknown> & {
 }
 
 import { resolveVisibleSellerIds } from "./sellers"
+import { resolveChannel } from "./channel"
 
 type OfferPriceRow = {
   id: string
   variant_id: string
   seller_id?: string
   product_id?: string
+  offer_type?: string
+  bundle_size?: number
+  mrp?: number | string | null
+  lead_time_days?: number | null
   product_variant?: { price_set?: { id?: string } | null } | null
   prices?: { id?: string }[] | null
   manage_inventory?: boolean
@@ -239,6 +252,15 @@ type OfferPriceRow = {
 type PriceableVariant = {
   id: string
   offer_id?: string | null
+  offer_type?: string | null
+  bundle_size?: number | null
+  mrp?: number | string | null
+  pack_price?: {
+    amount: number
+    currency_code?: string
+    unit_amount?: number
+    bundle_size?: number
+  } | null
   calculated_price?: Record<string, unknown> | null
   manage_inventory?: boolean
   allow_backorder?: boolean
@@ -282,6 +304,10 @@ export const wrapProductVariantsWithOfferPrice = async (
       "variant_id",
       "seller_id",
       "product_id",
+      "offer_type",
+      "bundle_size",
+      "mrp",
+      "lead_time_days",
       "manage_inventory",
       "allow_backorder",
       "product_variant.price_set.id",
@@ -350,7 +376,20 @@ export const wrapProductVariantsWithOfferPrice = async (
     effectiveSellerId = (sellers?.[0] as { id?: string })?.id
   }
 
+  const effectiveChannel = resolveChannel(req as unknown as MedusaStoreRequest)
+
   const eligibleOffers = (offers as OfferPriceRow[]).filter((offer) => {
+    if (effectiveChannel) {
+      if (effectiveChannel === "wholesale") {
+        if (offer.offer_type !== "wholesale") {
+          return false
+        }
+      } else if (effectiveChannel === "retail") {
+        if (offer.offer_type && offer.offer_type !== "retail") {
+          return false
+        }
+      }
+    }
     // If querying in a tenant or seller-scoped context, only this seller's offers are eligible
     if (effectiveSellerId && offer.seller_id !== effectiveSellerId) {
       return false
@@ -472,6 +511,50 @@ export const wrapProductVariantsWithOfferPrice = async (
         variant.manage_inventory = hit.manageInventory
         variant.allow_backorder = hit.allowBackorder
         variant.inventory_quantity = hit.inventoryQuantity
+
+        const winningOffer = offerById.get(hit.offerId)
+        if (winningOffer) {
+          const bundleSize =
+            winningOffer.bundle_size && winningOffer.bundle_size >= 1
+              ? Number(winningOffer.bundle_size)
+              : 1
+          const offerType =
+            winningOffer.offer_type || effectiveChannel || "retail"
+
+          variant.offer_type = offerType
+          variant.bundle_size = bundleSize
+          variant.mrp =
+            winningOffer.mrp != null ? Number(winningOffer.mrp) : null
+
+          const calcPriceObj = (hit.price as { calculated_price?: Record<string, unknown> })?.calculated_price
+          const unitAmount =
+            typeof calcPriceObj?.calculated_amount === "number"
+              ? calcPriceObj.calculated_amount
+              : typeof (hit.price as Record<string, unknown>)?.calculated_amount === "number"
+                ? ((hit.price as Record<string, unknown>).calculated_amount as number)
+                : undefined
+
+          const currencyCode =
+            typeof calcPriceObj?.currency_code === "string"
+              ? calcPriceObj.currency_code
+              : typeof (hit.price as Record<string, unknown>)?.currency_code === "string"
+                ? ((hit.price as Record<string, unknown>).currency_code as string)
+                : undefined
+
+          if (typeof unitAmount === "number") {
+            const packPriceAmount = unitAmount * bundleSize
+            variant.pack_price = {
+              amount: packPriceAmount,
+              currency_code: currencyCode,
+              unit_amount: unitAmount,
+              bundle_size: bundleSize,
+            }
+            if (calcPriceObj) {
+              calcPriceObj.pack_price = packPriceAmount
+              calcPriceObj.bundle_size = bundleSize
+            }
+          }
+        }
       }
     }
   }

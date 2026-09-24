@@ -26,6 +26,34 @@ browser. **Open risk**: the messaging block's panel SSE (`EventSource` + `withCr
 send a bearer header, so it falls back to polling until it gets a token-exchange flow.
 Uncommitted.
 
+## Session — Wholesale Order Grid & PDP 2-Column Redesign
+- **Wholesale PDP 2-Column Layout**:
+  - Reorganized `ProductTemplate` in `apps/storefront-wholesale` into a 2-column layout: left column contains sticky featured `ImageGallery` with interactive thumbnail selector; right column contains product title, badges, and the cart addition grid.
+  - Added formatted Description Box and Product Information specifications accordion (`ProductTabs`) directly below the grid.
+- **Variant Order Grid & Cart Steps**:
+  - Upgraded `QuickVariantGrid` with columns for Variant & monospace copyable Variant ID, MRP with savings percentage, Wholesale Unit & Pack Price, and `+/-` pack stepper.
+  - Enforced pack increments (`bundle_size`) on `+/-` and input blur, preventing invalid pack quantity checkout errors.
+  - Added row-level "+ Add" and bulk summary cart addition ("Add Selected to Cart", "WhatsApp Quote").
+- **Vendor Panel Wholesale Offer Persistence**:
+  - Updated batch create (`POST /vendor/offers/batch`) and update workflows to persist `offer_type`, `bundle_size`, `mrp`, and `lead_time_days` to database columns.
+  - Updated vendor offer edit and pricing display components.
+
+## Session — Subdomain Scoping & Buybox Inventory Fixes
+- **Tenant Subdomain Scoping**:
+  - Implemented tenant header propagation in `apps/storefront/src/lib/data/cookies.ts` (`getAuthHeaders` now reads `x-tenant-handle`, `x-seller-id`, `x-is-tenant`, `x-channel` via `next/headers`).
+  - Scoped cache tags (`tenant-${handle}-...`) and isolated cart cookies (`_medusa_cart_${handle}`).
+  - Scoped catalog queries in `apps/storefront/src/lib/data/products.ts` (`listProducts`, `listProductsWithSort`, `searchProducts`) and `apps/storefront/src/lib/data/offers.ts` (`listOffers`) to tenant seller.
+  - Updated category/collection listing pages (`categories/page.tsx`, `categories/[category]/page.tsx`, `collections/[handle]/page.tsx`) to pass resolved `seller_id` to `SearchProductsListing` and `ProductListing`.
+  - Added RLS scoping to `GET /store/offers` and `GET /store/offers/:id` in `packages/core` to respect `x-tenant-handle` and `x-seller-id`.
+- **Zero-Stock & Buybox Reserved Stock Fix**:
+  - Fixed `isPurchasable` import in `ProductDetailsHeader.tsx`.
+  - Updated store offer helpers and query config to calculate net available stock (`stocked_quantity - reserved_quantity`).
+  - Disabled Add-to-Cart and updated button label when available stock is 0.
+- **Verification**:
+  - Full workspace build: `turbo run build` (13/13 successful).
+  - Next.js storefront build: `next build` in `apps/storefront` (Compiled successfully in 11.8s).
+  - Integration tests passing: `channel-scoping-pricing.spec.ts` (7/7) and `domain-resolution.spec.ts` (8/8).
+
 ## Session — Admin Inventory (MER-139), branch `feat/admin-inventory`
 
 Spec + audit: `docs/specs/spec-3-admin-inventory/`. Implemented (type-clean; deps built; lint
@@ -130,6 +158,27 @@ checkout / CI (fresh worktree has no install).
 
 ## Session Log
 
+### Session: 2026-09-24 -- Fix Out-of-Stock on Product Details & Buybox Inventory Resolution
+
+- **Issue.** Vendor retail offer defined on Shirt-102 (`http://localhost:3000/in/products/shirt-102?men%27s+size=38&color=Grey`) displayed "OUT OF STOCK" on retail storefront despite vendor having stock and active offer.
+- **Root Cause Analysis.**
+  1. `packages/core/src/api/store/offers/query-config.ts`: `defaultStoreOfferFields` was missing `manage_inventory` and `allow_backorder`.
+  2. `packages/core/src/api/store/offers/helpers.ts`: `wrapOffersWithInventoryQuantityForSalesChannel` strictly filtered levels by `channelLocationIds.has(level.location_id)`. When the default sales channel had no linked stock locations configured (`channelLocationIds.size === 0`), stocked count evaluated to 0 for all offers. Also, offers with `manage_inventory === false` or `allow_backorder === true` were not handled.
+  3. `apps/storefront/src/lib/helpers/buybox.ts` & `ProductDetailsHeader.tsx`: `getOfferStock` and `isPurchasable` solely checked `inventory_quantity > 0`, ignoring `allow_backorder` and `manage_inventory === false`.
+  4. Database: `sales_channel_stock_location` had 0 rows for `sloc_01M394WZJH8QMEGSZY085QHZRV` (Pehnava Store) and `product_sales_channel` had 0 rows for `shirt-102`.
+- **Changes Applied.**
+  - `packages/core/src/api/store/offers/query-config.ts`: Added `manage_inventory` and `allow_backorder` to `defaultStoreOfferFields`.
+  - `packages/core/src/api/store/offers/helpers.ts`: Enhanced `wrapOffersWithInventoryQuantityForSalesChannel` to:
+    - Grant in-stock status and default stock for `manage_inventory === false` and `allow_backorder === true`.
+    - Fall back gracefully to available location levels if `channelLocationIds.size === 0`.
+  - `apps/storefront/src/lib/helpers/buybox.ts`: Updated `StoreOffer`, `getOfferStock`, and `isPurchasable` to support `manage_inventory === false` and `allow_backorder === true`.
+  - `apps/storefront/src/components/cells/ProductDetailsHeader/ProductDetailsHeader.tsx` & `OfferCard.tsx`: Updated `isStockMaxLimitReached` and button state to respect backorders and unmanaged inventory.
+  - Linked `sloc_01M394WZJH8QMEGSZY085QHZRV` and products to `sc_01KYRTC7GDYH13MCEX0HS51H31` in `release` database.
+- **Verification.**
+  - `apps/storefront`: `tsc --noEmit` and `next build` passed cleanly.
+  - Workspace: All 13 packages built successfully via `turbo run build`.
+  - Integration tests: `dual-channel-offers.spec.ts` (8/8) and `channel-scoping-pricing.spec.ts` (7/7) passed.
+
 ### Session: 2026-07-29 -- Admin Reviews (MER-152, SPEC-2)
 
 - **Goal.** Promote reviews from the registry block into `@mercurjs/core` and build the
@@ -216,7 +265,16 @@ Newest first. One entry per session, kept to a few lines: goal, what landed,
 how it was verified, what's owed/next. Move durable facts into
 `docs/specs/SPEC-*.md` Evidence or into memory — not here.
 
-### Template
+### Session: 2026-09-24 -- Dual-Channel Offer Architecture (Retail ThreadBuy + Wholesale FactoryTribe) & Subdomain SaaS
+
+- **Goal.** Implement unified dual-channel commerce engine across Retail and Wholesale with vendor subdomain SaaS, channel-specific offer policies, pack sizes, optional MRP, and domain tenancy.
+- **Landed.**
+  - `packages/types`: Added `SellerType.RETAILER`, domain DTOs (`DomainMappingDTO`, `CreateDomainMappingDTO`, `UpdateDomainMappingDTO`, `DomainVerificationStatus`, `DomainChannelType`).
+  - `packages/core`: `Offer` model extended with `offer_type`, `bundle_size`, `mrp`, `lead_time_days`, and composite unique index migrated to `["seller_id", "sku", "offer_type"]`. Added `seller_type_check` migration. Dedicated `domain` module + `domain-seller` remote link with fast `GET /store/domains/resolve?hostname=...`. Added `validateOfferSellerTypeStep` guarding retailer capabilities. Channel-scoping on `/store/products`, `/store/offers`, and pricing wrappers via `x-channel: 'retail' | 'wholesale'`. Cart line-item pack size (`bundle_size`) validation. Admin/vendor domain management with Node `dns.promises` TXT/CNAME resolution.
+  - `packages/vendor` & `packages/admin`: Vendor offer creation channel selector, freight profiles, pack size, MRP inputs/badges, offer list tabs, and dual-domain store settings. Admin domain management with manual approval overrides.
+  - `apps/storefront` & `apps/storefront-wholesale`: Algorithmic subdomain extraction, `x-channel` header injection, retail buy-box MRP savings, and Wholesale PDP Bulk Add Matrix component.
+- **Verified.** Workspace `bun run build` passed (`13 successful, 13 total`). All 5 dual-channel integration test suites passed (`32 passed, 32 total` across `dual-channel-offers.spec.ts`, `domain-resolution.spec.ts`, `wholesale-cart-validation.spec.ts`, `channel-scoping-pricing.spec.ts`, `domain-migration.spec.ts`).
+- **Next.** Deploy wildcard DNS configs (`*.threadbuy.com`, `*.factorytribe.com`) to staging/production clusters.
 
 ### Session NN: YYYY-MM-DD -- <spec / short title>
 

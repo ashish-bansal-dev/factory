@@ -37,7 +37,11 @@ addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
 
   const { data: offers } = await query.graph({
     entity: "offer",
-    fields: requiredOfferFieldsForInventoryConfirmation,
+    fields: [
+      ...requiredOfferFieldsForInventoryConfirmation,
+      "offer_type",
+      "bundle_size",
+    ],
     filters: { id: offerIds },
   })
 
@@ -48,6 +52,31 @@ addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
       MedusaError.Types.NOT_FOUND,
       `Offer ${missing} not found`,
     )
+  }
+
+  const offerMap = new Map(
+    (
+      offers as Array<{
+        id: string
+        offer_type?: string
+        bundle_size?: number
+      }>
+    ).map((o) => [o.id, o])
+  )
+  for (const item of items) {
+    const offer = item.offer_id ? offerMap.get(item.offer_id) : undefined
+    if (
+      offer?.offer_type === "wholesale" &&
+      offer.bundle_size &&
+      offer.bundle_size > 1
+    ) {
+      if (Number(item.quantity) % offer.bundle_size !== 0) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          `Quantity must be a multiple of pack size (${offer.bundle_size})`
+        )
+      }
+    }
   }
 
   const { items: confirmInputs } = prepareOfferInventoryInput({
@@ -105,20 +134,55 @@ updateLineItemInCartWorkflow.hooks.validate(
 
     const { data: cartLines } = await query.graph({
       entity: "line_item",
-      fields: ["id", "offer.id"],
+      fields: ["id", "offer.id", "offer.offer_type", "offer.bundle_size"],
       filters: { id: [input.item_id] },
     })
-    const offerId = (cartLines[0] as { offer?: { id?: string } } | undefined)
-      ?.offer?.id
+    const cartLine = cartLines[0] as
+      | {
+          id: string
+          offer?: {
+            id?: string
+            offer_type?: string
+            bundle_size?: number
+          }
+        }
+      | undefined
+    const offerId = cartLine?.offer?.id
     if (!offerId) {
       return
     }
 
     const { data: offers } = await query.graph({
       entity: "offer",
-      fields: requiredOfferFieldsForInventoryConfirmation,
+      fields: [
+        ...requiredOfferFieldsForInventoryConfirmation,
+        "offer_type",
+        "bundle_size",
+      ],
       filters: { id: [offerId] },
     })
+
+    const offer = offers[0] as
+      | {
+          id: string
+          offer_type?: string
+          bundle_size?: number
+        }
+      | undefined
+
+    const effectiveOffer = offer || cartLine?.offer
+    if (
+      effectiveOffer?.offer_type === "wholesale" &&
+      effectiveOffer.bundle_size &&
+      effectiveOffer.bundle_size > 1
+    ) {
+      if (Number(newQuantity) % effectiveOffer.bundle_size !== 0) {
+        throw new MedusaError(
+          MedusaError.Types.INVALID_DATA,
+          `Quantity must be a multiple of pack size (${effectiveOffer.bundle_size})`
+        )
+      }
+    }
 
     const { items: confirmInputs } = prepareOfferInventoryInput({
       input: {

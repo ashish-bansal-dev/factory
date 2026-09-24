@@ -1,5 +1,6 @@
 'use server';
 
+import { HttpTypes } from '@medusajs/types';
 import { StoreCardShippingMethod } from '@/components/sections/CartShippingMethodsSection/CartShippingMethodsSection';
 import { sdk } from '@/lib/client';
 
@@ -68,13 +69,13 @@ export const calculatePriceForShippingOption = async (
   optionId: string,
   cartId: string,
   data?: Record<string, unknown>
-) => {
+): Promise<HttpTypes.StoreCartShippingOption | null> => {
   const next = {
     ...(await getCacheOptions('fulfillment'))
   };
 
   return sdk.store.shippingOptions.$id.calculate
-    .mutate({
+    .mutate<{ shipping_option: HttpTypes.StoreCartShippingOption }>({
       $id: optionId,
       cart_id: cartId,
       ...(data ? { data } : {}),

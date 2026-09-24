@@ -12,6 +12,7 @@ import {
   getOfferAmount,
   getOfferStock,
   getVariantOffers,
+  isPurchasable,
   StoreOffer,
 } from "@/lib/helpers/buybox"
 import { Chat } from "@/components/organisms/Chat/Chat"
@@ -67,10 +68,10 @@ export const ProductDetailsHeader = ({
     : allSearchParams
 
   const variantId =
-    product.variants?.find(({ options }: { options: any }) =>
-      options?.every((option: any) =>
-        selectedVariant[option.option?.title.toLowerCase() || ""]?.includes(
-          option.value
+    product.variants?.find(({ options }: { options?: HttpTypes.StoreProductOptionValue[] | null }) =>
+      options?.every((option: HttpTypes.StoreProductOptionValue) =>
+        selectedVariant[option.option?.title?.toLowerCase() || ""]?.includes(
+          option.value || ""
         )
       )
     )?.id || ""
@@ -99,13 +100,23 @@ export const ProductDetailsHeader = ({
     ? convertToLocale({ amount: offerAmount as number, currency_code: offerCurrency })
     : variantPrice?.calculated_price
 
+  const offerMrp = winnerOffer?.mrp != null ? Number(winnerOffer.mrp) : null
+  const hasSavings = offerMrp !== null && offerAmount !== null && offerMrp > offerAmount
+  const savingsAmount = hasSavings ? offerMrp - offerAmount : 0
+  const savingsPercent = hasSavings && offerMrp > 0 ? Math.round((savingsAmount / offerMrp) * 100) : 0
+
   const quantityInCart =
     cart?.items?.find((item) => item.metadata?.offer_id === winnerOffer?.id)
       ?.quantity ?? 0
-  const isStockMaxLimitReached = quantityInCart >= offerStock
+  const isStockMaxLimitReached =
+    !winnerOffer?.allow_backorder &&
+    winnerOffer?.manage_inventory !== false &&
+    quantityInCart >= offerStock
+
+  const isPurchasableOffer = winnerOffer ? isPurchasable(winnerOffer) : false
 
   const isAddToCartDisabled =
-    !hasOffer || !offerStock || isStockMaxLimitReached
+    !hasOffer || !isPurchasableOffer || isStockMaxLimitReached
 
   const handleAddToCart = async () => {
     if (!winnerOffer || isAddToCartDisabled) return
@@ -150,9 +161,29 @@ export const ProductDetailsHeader = ({
           <h1 className="heading-lg text-primary" data-testid="product-title">{product.title}</h1>
           <div className="mt-2 flex flex-col gap-1" data-testid="product-price-container">
             {hasOffer ? (
-              <span className="heading-md text-primary" data-testid="product-price-current">
-                {displayPrice}
-              </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="heading-md text-primary" data-testid="product-price-current">
+                    {displayPrice}
+                  </span>
+                  {hasSavings && (
+                    <span
+                      className="text-sm text-secondary line-through"
+                      data-testid="product-price-mrp"
+                    >
+                      {convertToLocale({ amount: offerMrp, currency_code: offerCurrency })}
+                    </span>
+                  )}
+                </div>
+                {hasSavings && (
+                  <span
+                    className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded w-fit"
+                    data-testid="product-price-savings"
+                  >
+                    Save {savingsPercent}% off MRP ({convertToLocale({ amount: savingsAmount, currency_code: offerCurrency })})
+                  </span>
+                )}
+              </div>
             ) : hasAnyPrice && variantPrice ? (
               <span className="heading-md text-primary" data-testid="product-price-current">
                 {variantPrice.calculated_price}
@@ -178,7 +209,7 @@ export const ProductDetailsHeader = ({
       >
         {!hasOffer
           ? "NOT AVAILABLE"
-          : offerStock
+          : isPurchasableOffer
           ? "ADD TO CART"
           : "OUT OF STOCK"}
       </Button>

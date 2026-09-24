@@ -9,6 +9,12 @@ export const defaultStoreOfferFields = [
   "upc",
   "leadtime_to_ship",
   "condition_id",
+  "lead_time_days",
+  "offer_type",
+  "bundle_size",
+  "mrp",
+  "manage_inventory",
+  "allow_backorder",
   "metadata",
   "created_at",
   "updated_at",
@@ -37,6 +43,9 @@ export const defaultStoreOfferFields = [
   "inventory_item_link.inventory_item.location_levels.id",
   "inventory_item_link.inventory_item.location_levels.location_id",
   "inventory_item_link.inventory_item.location_levels.stocked_quantity",
+  "inventory_item_link.inventory_item.location_levels.reserved_quantity",
+  "inventory_item_link.inventory_item.location_levels.raw_stocked_quantity",
+  "inventory_item_link.inventory_item.location_levels.raw_reserved_quantity",
 ]
 
 export const storeOfferQueryConfig = {

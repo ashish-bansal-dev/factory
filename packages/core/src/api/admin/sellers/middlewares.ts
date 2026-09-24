@@ -269,4 +269,82 @@ export const adminSellersMiddlewares: MiddlewareRoute[] = [
       },
     ],
   },
+  {
+    method: ["GET"],
+    matcher: "/admin/sellers/:id/domains",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.read,
+      },
+    ],
+  },
+  {
+    method: ["POST"],
+    matcher: "/admin/sellers/:id/domains",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.update,
+      },
+    ],
+  },
+  {
+    method: ["GET"],
+    matcher: "/admin/sellers/:id/domains/:domain_id",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.read,
+      },
+    ],
+  },
+  {
+    method: ["POST", "PUT"],
+    matcher: "/admin/sellers/:id/domains/:domain_id",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.update,
+      },
+    ],
+  },
+  {
+    method: ["DELETE"],
+    matcher: "/admin/sellers/:id/domains/:domain_id",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.delete,
+      },
+    ],
+  },
+  {
+    method: ["POST"],
+    matcher: "/admin/sellers/:id/domains/:domain_id/verify",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.update,
+      },
+    ],
+  },
+  {
+    method: ["POST"],
+    matcher: "/admin/sellers/:id/domains/:domain_id/check-dns",
+    middlewares: [],
+    policies: [
+      {
+        resource: PolicyResource.seller,
+        operation: PolicyOperation.update,
+      },
+    ],
+  },
 ]
+

@@ -17,7 +17,10 @@ import { transformAndValidateSalesChannelIds } from "@medusajs/medusa/api/utils/
 
 type OfferLocationLevel = {
   location_id: string
-  stocked_quantity: number
+  stocked_quantity?: number | null
+  reserved_quantity?: number | null
+  raw_stocked_quantity?: { value: string; precision: number } | null
+  raw_reserved_quantity?: { value: string; precision: number } | null
 }
 
 type OfferInventoryLink = {
@@ -35,6 +38,8 @@ export type EnrichableOffer = {
   calculated_price?: Record<string, unknown> | null
   inventory_quantity?: number | null
   in_stock?: boolean
+  manage_inventory?: boolean
+  allow_backorder?: boolean
 }
 
 type StoreRequestWithContext = MedusaStoreRequest<unknown> & {
@@ -249,10 +254,21 @@ export const wrapOffersWithInventoryQuantityForSalesChannel = async (
   )
 
   for (const offer of offers) {
+    if (offer.manage_inventory === false) {
+      offer.inventory_quantity = 999999
+      offer.in_stock = true
+      continue
+    }
+
     const links = offer.inventory_item_link ?? []
     if (!links.length) {
-      offer.inventory_quantity = 0
-      offer.in_stock = false
+      if (offer.allow_backorder) {
+        offer.inventory_quantity = 999999
+        offer.in_stock = true
+      } else {
+        offer.inventory_quantity = 0
+        offer.in_stock = false
+      }
       continue
     }
 
@@ -260,17 +276,39 @@ export const wrapOffersWithInventoryQuantityForSalesChannel = async (
     for (const link of links) {
       const requiredQuantity = link.required_quantity ?? 1
       const levels = link.inventory_item?.location_levels ?? []
-      const stocked = levels
-        .filter((level) => channelLocationIds.has(level.location_id))
-        .reduce((sum, level) => sum + (level.stocked_quantity ?? 0), 0)
+      const available = levels
+        .filter(
+          (level) =>
+            channelLocationIds.size === 0 ||
+            channelLocationIds.has(level.location_id)
+        )
+        .reduce((sum, level) => {
+          const stocked = Number(
+            (level.raw_stocked_quantity as { value?: string } | undefined)?.value ??
+              level.stocked_quantity ??
+              0
+          )
+          const reserved = Number(
+            (level.raw_reserved_quantity as { value?: string } | undefined)?.value ??
+              level.reserved_quantity ??
+              0
+          )
+          const availableStock = Math.max(0, stocked - reserved)
+          return sum + availableStock
+        }, 0)
       const itemAvailability =
-        requiredQuantity > 0 ? Math.floor(stocked / requiredQuantity) : 0
+        requiredQuantity > 0 ? Math.floor(available / requiredQuantity) : 0
       offerAvailability = Math.min(offerAvailability, itemAvailability)
     }
 
     const quantity = Number.isFinite(offerAvailability) ? offerAvailability : 0
-    offer.inventory_quantity = quantity
-    offer.in_stock = quantity > 0
+    if (offer.allow_backorder) {
+      offer.inventory_quantity = quantity > 0 ? quantity : 999999
+      offer.in_stock = true
+    } else {
+      offer.inventory_quantity = quantity
+      offer.in_stock = quantity > 0
+    }
   }
 }
 

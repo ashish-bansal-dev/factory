@@ -432,6 +432,12 @@ export type Routes = {
                 unsuspend: typeof import("../src/api/admin/sellers/[id]/unsuspend/route");
                 unterminate: typeof import("../src/api/admin/sellers/[id]/unterminate/route");
                 domainApproval: typeof import("../src/api/admin/sellers/[id]/domain-approval/route");
+                domains: typeof import("../src/api/admin/sellers/[id]/domains/route") & {
+                    $domainId: typeof import("../src/api/admin/sellers/[id]/domains/[domain_id]/route") & {
+                        checkDns: typeof import("../src/api/admin/sellers/[id]/domains/[domain_id]/check-dns/route");
+                        verify: typeof import("../src/api/admin/sellers/[id]/domains/[domain_id]/verify/route");
+                    };
+                };
             };
             statistics: typeof import("../src/api/admin/sellers/statistics/route");
         };
@@ -659,6 +665,9 @@ export type Routes = {
         };
         brands: typeof import("../src/api/store/brands/route") & {
             $handle: typeof import("../src/api/store/brands/[handle]/route");
+        };
+        domains: {
+            resolve: typeof import("../src/api/store/domains/resolve/route");
         };
         inquiries: typeof import("../src/api/store/inquiries/route");
         reviews: typeof import("../src/api/store/reviews/route") & {
@@ -957,6 +966,11 @@ export type Routes = {
         };
         brands: typeof import("../src/api/vendor/brands/route") & {
             $id: typeof import("../src/api/vendor/brands/[id]/route");
+        };
+        domains: typeof import("../src/api/vendor/domains/route") & {
+            $domainId: typeof import("../src/api/vendor/domains/[domain_id]/route") & {
+                checkDns: typeof import("../src/api/vendor/domains/[domain_id]/check-dns/route");
+            };
         };
         inquiries: typeof import("../src/api/vendor/inquiries/route");
         reviews: typeof import("../src/api/vendor/reviews/route") & {

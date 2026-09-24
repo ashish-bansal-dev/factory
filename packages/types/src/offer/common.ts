@@ -32,6 +32,11 @@ export interface OfferInventoryItemLinkDTO {
  */
 export type OfferPriceDTO = MoneyAmountDTO
 
+export enum OfferType {
+  RETAIL = "retail",
+  WHOLESALE = "wholesale",
+}
+
 /**
  * An operator-defined physical condition an offer can be listed under
  * (e.g. `new`, `refurbished`, `used_like_new`). Sellers pick from the active
@@ -69,6 +74,10 @@ export interface OfferDTO {
   sku: string
   ean: string | null
   upc: string | null
+  offer_type: OfferType | "retail" | "wholesale"
+  bundle_size: number
+  mrp: number | null
+  lead_time_days: number | null
   manage_inventory: boolean
   allow_backorder: boolean
   leadtime_to_ship: number | null

@@ -1,9 +1,12 @@
 import { ProductDetails, ProductGallery } from "@/components/organisms"
+import { HttpTypes } from "@medusajs/types"
 import { listProducts } from "@/lib/data/products"
 import { listOffers } from "@/lib/data/offers"
 import { StoreOffer } from "@/lib/helpers/buybox"
 import { HomeProductSection } from "../HomeProductSection/HomeProductSection"
 import NotFound from "@/app/not-found"
+
+import { Product } from "@/types/product"
 
 export const ProductDetailsPage = async ({
   handle,
@@ -17,9 +20,11 @@ export const ProductDetailsPage = async ({
     queryParams: { handle: [handle], limit: 1 },
   }).then(({ response }) => response.products[0])
 
-  if (!prod) return null
+  if (!prod) return NotFound()
 
-  if (prod.seller?.store_status === "SUSPENDED") {
+  const prodSeller = (prod as HttpTypes.StoreProduct & { seller?: { store_status?: string; products?: HttpTypes.StoreProduct[] } }).seller
+
+  if (prodSeller?.store_status === "SUSPENDED") {
     return NotFound()
   }
 
@@ -45,7 +50,7 @@ export const ProductDetailsPage = async ({
       <div className="my-8">
         <HomeProductSection
           heading="Similar items"
-          products={prod.seller?.products}
+          products={prodSeller?.products as unknown as Product[]}
           locale={locale}
         />
       </div>

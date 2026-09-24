@@ -6,7 +6,7 @@ import { Button } from "@/components/atoms"
 import { toast } from "@/lib/helpers/toast"
 import LocalizedClientLink from "@/components/molecules/LocalizedLink/LocalizedLink"
 import { useCartContext } from "@/components/providers"
-import { getOfferAmount, getOfferStock, type StoreOffer } from "@/lib/helpers/buybox"
+import { getOfferAmount, getOfferStock, isPurchasable, type StoreOffer } from "@/lib/helpers/buybox"
 import { convertToLocale } from "@/lib/helpers/money"
 import { cn } from "@/lib/utils"
 
@@ -48,11 +48,18 @@ export const OfferCard = ({
       convertToLocale({ amount: minAmount as number, currency_code: currency })
     : null
 
+  const mrp = offer.mrp != null ? Number(offer.mrp) : null
+  const hasSavings = mrp !== null && minAmount !== null && mrp > minAmount
+  const savingsPercent = hasSavings && mrp > 0 ? Math.round(((mrp - minAmount) / mrp) * 100) : 0
+
   const quantityInCart =
     cart?.items?.find((item) => item.metadata?.offer_id === offer.id)?.quantity ?? 0
-  const isStockMaxLimitReached = quantityInCart >= stock
+  const isStockMaxLimitReached =
+    !offer.allow_backorder &&
+    offer.manage_inventory !== false &&
+    quantityInCart >= stock
   const singleAmount = getOfferAmount(offer)
-  const isAddToCartDisabled = !hasPrice || !stock || isStockMaxLimitReached
+  const isAddToCartDisabled = !hasPrice || !isPurchasable(offer) || isStockMaxLimitReached
 
   const handleAddToCart = async () => {
     if (isAddToCartDisabled || singleAmount === null) return
@@ -126,11 +133,23 @@ export const OfferCard = ({
           <h3 className="heading-sm truncate" data-testid="offer-card-title">
             {productName}
           </h3>
-          <div className="flex items-center gap-2 mt-2" data-testid="offer-card-price">
+          <div className="flex items-center gap-2 mt-2 flex-wrap" data-testid="offer-card-price">
             {displayPrice ? (
-              <p className="font-medium" data-testid="offer-card-current-price">
-                {displayPrice}
-              </p>
+              <>
+                <p className="font-medium" data-testid="offer-card-current-price">
+                  {displayPrice}
+                </p>
+                {hasSavings && (
+                  <span className="text-xs text-secondary line-through" data-testid="offer-card-mrp">
+                    {convertToLocale({ amount: mrp, currency_code: currency })}
+                  </span>
+                )}
+                {hasSavings && (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">
+                    {savingsPercent}% OFF
+                  </span>
+                )}
+              </>
             ) : (
               <p className="label-md text-secondary" data-testid="offer-card-price-unavailable">
                 Not available in your region
@@ -177,7 +196,7 @@ export const OfferCard = ({
             className="w-full uppercase py-3 flex justify-center"
             data-testid="offer-card-add-to-cart-button"
           >
-            {!hasPrice ? "NOT AVAILABLE" : stock ? "ADD TO CART" : "OUT OF STOCK"}
+            {!hasPrice ? "NOT AVAILABLE" : isPurchasable(offer) ? "ADD TO CART" : "OUT OF STOCK"}
           </Button>
         )}
       </div>

@@ -6,6 +6,7 @@ export interface TenantContext {
   handle: string | null
   customDomain?: string | null
   baseDomain: string
+  channel: "wholesale"
 }
 
 export function resolveTenant(
@@ -18,7 +19,7 @@ export function resolveTenant(
   const defaultBaseDomain =
     configuredBaseDomain ||
     process.env.NEXT_PUBLIC_BASE_DOMAIN ||
-    "localhost:8000"
+    "factorytribe.com"
 
   const baseDomain = defaultBaseDomain.toLowerCase()
 
@@ -26,21 +27,28 @@ export function resolveTenant(
   if (
     !host ||
     host === baseDomain ||
+    host === `www.${baseDomain}` ||
     host === "localhost" ||
     host === "127.0.0.1" ||
-    host === `localhost:8000`
+    host === "localhost:8000"
   ) {
     return {
       isTenant: false,
       tenantType: "marketplace",
       handle: null,
       baseDomain,
+      channel: "wholesale",
     }
   }
 
-  // Handle subdomain matching: host ends with .${baseDomain}
-  if (host.endsWith(`.${baseDomain}`)) {
-    const subdomain = host.slice(0, -(baseDomain.length + 1))
+  // Handle subdomain matching: host ends with .${baseDomain} or .factorytribe.com
+  const factorytribeDomain = "factorytribe.com"
+  const matchesBase = host.endsWith(`.${baseDomain}`)
+  const matchesFactorytribe = host.endsWith(`.${factorytribeDomain}`)
+
+  if (matchesBase || matchesFactorytribe) {
+    const activeDomain = matchesBase ? baseDomain : factorytribeDomain
+    const subdomain = host.slice(0, -(activeDomain.length + 1))
 
     // Reserved system subdomains
     if (["www", "api", "admin", "vendor", "app"].includes(subdomain)) {
@@ -49,6 +57,7 @@ export function resolveTenant(
         tenantType: "marketplace",
         handle: null,
         baseDomain,
+        channel: "wholesale",
       }
     }
 
@@ -57,6 +66,7 @@ export function resolveTenant(
       tenantType: "subdomain",
       handle: subdomain,
       baseDomain,
+      channel: "wholesale",
     }
   }
 
@@ -70,6 +80,7 @@ export function resolveTenant(
         tenantType: "subdomain",
         handle: subdomain,
         baseDomain,
+        channel: "wholesale",
       }
     }
   }
@@ -81,5 +92,6 @@ export function resolveTenant(
     handle: null,
     customDomain: host,
     baseDomain,
+    channel: "wholesale",
   }
 }

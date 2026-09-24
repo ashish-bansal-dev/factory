@@ -1,4 +1,4 @@
-import { Text } from "@medusajs/ui"
+import { Badge, Text } from "@medusajs/ui"
 import { createColumnHelper } from "@tanstack/react-table"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -15,8 +15,8 @@ import {
   ProductStatusHeader,
 } from "../../../components/table/table-cells/product/product-status-cell"
 import { PlaceholderCell } from "../../../components/table/table-cells/common/placeholder-cell"
-import { ProductStatus } from "@mercurjs/types"
-import { OfferProduct } from "../common/types"
+import { OfferDTO, ProductStatus } from "@mercurjs/types"
+import { OfferProduct, OfferProductVariant } from "../common/types"
 import { OfferActions } from "./offer-actions"
 
 /**
@@ -29,10 +29,14 @@ import { OfferActions } from "./offer-actions"
 const columnHelper = createColumnHelper<OfferProduct>()
 
 const countOfferedVariants = (row: OfferProduct) =>
-  (row.variants ?? []).filter((v) => (v.offers?.length ?? 0) > 0).length
+  ((row.variants ?? []) as OfferProductVariant[]).filter(
+    (v) => ((v.offers ?? []) as OfferDTO[]).length > 0,
+  ).length
 
 export const collectOfferIds = (row: OfferProduct) =>
-  (row.variants ?? []).flatMap((v) => (v.offers ?? []).map((o) => o.id))
+  ((row.variants ?? []) as OfferProductVariant[]).flatMap(
+    (v) => ((v.offers ?? []) as OfferDTO[]).map((o) => o.id),
+  )
 
 export const useOfferTableColumns = () => {
   const { t } = useTranslation()
@@ -50,6 +54,46 @@ export const useOfferTableColumns = () => {
             }}
           />
         ),
+      }),
+      columnHelper.display({
+        id: "channel",
+        header: "Channel",
+        cell: ({ row }) => {
+          const offers = ((row.original.variants ?? []) as OfferProductVariant[]).flatMap(
+            (v) => (v.offers ?? []) as OfferDTO[],
+          )
+          const hasRetail = offers.some((o) => (o.offer_type ?? "retail") === "retail")
+          const hasWholesale = offers.some((o) => o.offer_type === "wholesale")
+          if (!hasRetail && !hasWholesale) return <PlaceholderCell />
+          return (
+            <div className="flex items-center gap-1 flex-wrap">
+              {hasRetail && <Badge color="blue" size="2xsmall">Retail</Badge>}
+              {hasWholesale && <Badge color="purple" size="2xsmall">Wholesale</Badge>}
+            </div>
+          )
+        },
+      }),
+      columnHelper.display({
+        id: "bundle_size",
+        header: "Pack Size",
+        cell: ({ row }) => {
+          const offers = ((row.original.variants ?? []) as OfferProductVariant[]).flatMap(
+            (v) => (v.offers ?? []) as OfferDTO[],
+          )
+          const bundleSizes = Array.from(
+            new Set(offers.map((o) => o.bundle_size ?? 1)),
+          )
+          if (!bundleSizes.length) return <PlaceholderCell />
+          return (
+            <div className="flex items-center gap-1 flex-wrap">
+              {bundleSizes.map((size) => (
+                <Badge key={size} size="2xsmall" color="grey">
+                  Pack of {size}
+                </Badge>
+              ))}
+            </div>
+          )
+        },
       }),
       columnHelper.display({
         id: "categories",

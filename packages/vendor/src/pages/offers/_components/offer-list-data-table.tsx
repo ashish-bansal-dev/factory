@@ -1,6 +1,7 @@
+import { Button } from "@medusajs/ui"
 import { keepPreviousData } from "@tanstack/react-query"
 import { type ColumnDef } from "@tanstack/react-table"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import {
@@ -14,7 +15,7 @@ import { _DataTable } from "../../../components/table/data-table"
 import { useDataTable } from "../../../hooks/use-data-table"
 import { useProducts } from "../../../hooks/api/products"
 import { OFFERS_PAGE_SIZE } from "../common/constants"
-import { OfferProduct } from "../common/types"
+import { OfferProduct, OfferProductVariant } from "../common/types"
 import { useOfferTableColumns } from "./use-offer-table-columns"
 import { useOfferTableFilters } from "./use-offer-table-filters"
 import { useOfferTableQuery } from "./use-offer-table-query"
@@ -28,6 +29,8 @@ import { useOfferTableQuery } from "./use-offer-table-query"
 export const OfferListDataTable = () => {
   const { t } = useTranslation()
 
+  const [channelTab, setChannelTab] = useState<"all" | "retail" | "wholesale">("all")
+
   const { raw, searchParams } = useOfferTableQuery({
     pageSize: OFFERS_PAGE_SIZE,
   })
@@ -37,7 +40,20 @@ export const OfferListDataTable = () => {
     { placeholderData: keepPreviousData },
   )
 
-  const rows = (products ?? []) as OfferProduct[]
+  const rows = (products ?? []) as unknown as OfferProduct[]
+
+  const filteredRows = useMemo(() => {
+    if (channelTab === "all") return rows
+    return rows.filter((product) => {
+      const variants = (product.variants ?? []) as OfferProductVariant[]
+      return variants.some((v) =>
+        (v.offers ?? []).some((o) => {
+          const type = o.offer_type || "retail"
+          return type === channelTab
+        }),
+      )
+    })
+  }, [rows, channelTab])
 
   const baseFilters = useOfferTableFilters()
   const { columns, filters: extFilters } = useColumns()
@@ -47,9 +63,9 @@ export const OfferListDataTable = () => {
   )
 
   const { table } = useDataTable({
-    data: rows,
+    data: filteredRows,
     columns,
-    count,
+    count: channelTab === "all" ? count : filteredRows.length,
     enablePagination: true,
     getRowId: (row) => row.id,
     pageSize: OFFERS_PAGE_SIZE,
@@ -63,33 +79,51 @@ export const OfferListDataTable = () => {
   }
 
   return (
-    <_DataTable
-      table={table}
-      columns={columns}
-      pageSize={OFFERS_PAGE_SIZE}
-      count={count}
-      isLoading={isLoading}
-      pagination
-      search
-      filters={filters}
-      queryObject={raw}
-      orderBy={[
-        { key: "title", label: t("fields.title") },
-        { key: "created_at", label: t("fields.createdAt") },
-        { key: "updated_at", label: t("fields.updatedAt") },
-      ]}
-      defaultOrderBy="title"
-      navigateTo={(row) => `${row.original.id}`}
-      noRecords={{
-        title: t("offers.empty.heading"),
-        message: t("offers.empty.description"),
-        action: {
-          to: "create",
-          label: t("offers.actions.create"),
-          permission: "offers:edit",
-        },
-      }}
-    />
+    <div className="flex flex-col">
+      <div className="flex items-center gap-x-2 px-6 py-2.5 border-b border-ui-border-base bg-ui-bg-subtle/50">
+        {(["all", "retail", "wholesale"] as const).map((tab) => (
+          <Button
+            key={tab}
+            size="small"
+            variant={channelTab === tab ? "primary" : "secondary"}
+            onClick={() => setChannelTab(tab)}
+          >
+            {tab === "all"
+              ? "All Channels"
+              : tab === "retail"
+              ? "Retail (ThreadBuy)"
+              : "Wholesale (FactoryTribe)"}
+          </Button>
+        ))}
+      </div>
+      <_DataTable
+        table={table}
+        columns={columns}
+        pageSize={OFFERS_PAGE_SIZE}
+        count={channelTab === "all" ? count : filteredRows.length}
+        isLoading={isLoading}
+        pagination
+        search
+        filters={filters}
+        queryObject={raw}
+        orderBy={[
+          { key: "title", label: t("fields.title") },
+          { key: "created_at", label: t("fields.createdAt") },
+          { key: "updated_at", label: t("fields.updatedAt") },
+        ]}
+        defaultOrderBy="title"
+        navigateTo={(row) => `${row.original.id}`}
+        noRecords={{
+          title: t("offers.empty.heading"),
+          message: t("offers.empty.description"),
+          action: {
+            to: "create",
+            label: t("offers.actions.create"),
+            permission: "offers:edit",
+          },
+        }}
+      />
+    </div>
   )
 }
 

@@ -27,6 +27,7 @@ import {
   ensureVariantPriceSetsStep,
   validateOfferConditionsStep,
 } from "../steps"
+import { validateOfferSellerTypeStep } from "../steps/validate-offer-seller-type"
 import { linkSellerInventoryItemStep } from "../../inventory-item/steps"
 import { OfferWorkflowEvents } from "../../events"
 import { OFFER_PRICE_FIELDS, pickOfferPrices } from "./upsert-offer-prices"
@@ -68,6 +69,8 @@ export const createOffersWorkflow: ReturnWorkflow<
   createOffersWorkflowId,
   function (input: CreateOffersWorkflowInput) {
     const validate = createHook("validate", { input })
+
+    validateOfferSellerTypeStep({ offers: input.offers })
 
     const variantIds = transform({ input }, ({ input }) =>
       Array.from(new Set(input.offers.map((o) => o.variant_id))),
@@ -187,6 +190,10 @@ export const createOffersWorkflow: ReturnWorkflow<
             product_id: variant.product?.id,
             shipping_profile_id: offer.shipping_profile_id,
             sku: offer.sku,
+            offer_type: offer.offer_type ?? "retail",
+            bundle_size: offer.bundle_size ?? 1,
+            mrp: offer.mrp ?? null,
+            lead_time_days: offer.lead_time_days ?? null,
             ean: offer.ean ?? variant.ean ?? null,
             upc: offer.upc ?? variant.upc ?? null,
             manage_inventory: offer.manage_inventory ?? true,

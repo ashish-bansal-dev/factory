@@ -34,8 +34,31 @@ export default async function OrderCompletedTemplate({
             className="flex flex-col gap-y-3 text-ui-fg-base text-3xl mb-4"
           >
             <span>Thank you!</span>
-            <span>Your order was placed successfully.</span>
+            <span>Your wholesale order was placed successfully.</span>
           </Heading>
+
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4 my-2">
+            <div className="flex flex-col gap-y-1">
+              <div className="font-semibold text-sm flex items-center gap-1.5 text-emerald-800">
+                <span>Wholesale Quote / Order Submitted (Zero Upfront Payment)</span>
+              </div>
+              <p className="text-xs text-emerald-700">
+                Your order has been recorded with zero upfront payment. The supplier will review your order details, generate your invoice, and coordinate payment and delivery terms.
+              </p>
+            </div>
+            <a
+              href={`https://wa.me/${process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919999999999"}?text=${encodeURIComponent(
+                `Hello! I just placed wholesale order #${order.display_id || order.id} on the marketplace. Let's connect regarding the invoice, payment terms, and delivery schedule.`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold whitespace-nowrap transition shadow-sm"
+              data-testid="order-complete-whatsapp-button"
+            >
+              Connect with Seller on WhatsApp →
+            </a>
+          </div>
+
           <OrderDetails order={order} />
           <Heading level="h2" className="flex flex-row text-3xl-regular">
             Summary

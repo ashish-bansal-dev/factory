@@ -6,6 +6,8 @@
  * the typed `@mercurjs/client`) can target the same DTOs.
  */
 
+import { OfferType } from "./common"
+
 /**
  * One entry on a new offer's `inventory_items` array. Each entry
  * describes a brand-new `InventoryItem` to create and link to the offer
@@ -63,6 +65,10 @@ export interface CreateOfferDTO {
   shipping_profile_id: string
   inventory_items: CreateOfferInventoryItemDTO[]
   prices: CreateOfferPriceDTO[]
+  offer_type?: OfferType | "retail" | "wholesale"
+  bundle_size?: number
+  mrp?: number | null
+  lead_time_days?: number | null
   ean?: string | null
   upc?: string | null
   manage_inventory?: boolean
@@ -86,6 +92,10 @@ export interface CreateOfferRowDTO {
   product_id: string
   shipping_profile_id: string
   sku: string
+  offer_type?: OfferType | "retail" | "wholesale"
+  bundle_size?: number
+  mrp?: number | null
+  lead_time_days?: number | null
   ean: string | null
   upc: string | null
   manage_inventory?: boolean
@@ -106,6 +116,10 @@ export interface UpdateOfferDTO {
   id: string
   sku?: string
   shipping_profile_id?: string
+  offer_type?: OfferType | "retail" | "wholesale"
+  bundle_size?: number
+  mrp?: number | null
+  lead_time_days?: number | null
   manage_inventory?: boolean
   allow_backorder?: boolean
   leadtime_to_ship?: number | null

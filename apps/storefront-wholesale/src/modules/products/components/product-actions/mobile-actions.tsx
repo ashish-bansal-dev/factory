@@ -121,19 +121,11 @@ const MobileActions: React.FC<MobileActionsProps> = ({
                   <ChevronDown />
                 </div>
               </Button>}
-              {!isTenant ? (
-                <Button
-                  onClick={onOpenInquiry}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                  data-testid="mobile-inquiry-button"
-                >
-                  WhatsApp Inquiry →
-                </Button>
-              ) : (
+              <div className="flex gap-2">
                 <Button
                   onClick={handleAddToCart}
                   disabled={!inStock || !variant || !hasOffer}
-                  className="w-full"
+                  className="flex-1"
                   isLoading={isAdding}
                   data-testid="mobile-cart-button"
                 >
@@ -145,7 +137,14 @@ const MobileActions: React.FC<MobileActionsProps> = ({
                     ? "Out of stock"
                     : "Add to cart"}
                 </Button>
-              )}
+                <Button
+                  onClick={onOpenInquiry}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3 shrink-0 text-xs"
+                  data-testid="mobile-inquiry-button"
+                >
+                  WhatsApp →
+                </Button>
+              </div>
             </div>
           </div>
         </Transition>

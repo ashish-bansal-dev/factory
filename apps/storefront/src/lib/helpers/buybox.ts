@@ -4,16 +4,29 @@ import { OfferDTO } from '@mercurjs/types';
  * `inventory_quantity` is a computed field the store offers route adds when
  * `+inventory_quantity` is requested; it is not part of `OfferDTO`.
  */
-export type StoreOffer = OfferDTO & { inventory_quantity?: number | null };
+export type StoreOffer = OfferDTO & {
+  inventory_quantity?: number | null;
+  manage_inventory?: boolean;
+  allow_backorder?: boolean;
+};
 
 export const getOfferAmount = (offer: StoreOffer): number | null =>
   offer.calculated_price?.calculated_amount ?? null;
 
-export const getOfferStock = (offer: StoreOffer): number =>
-  offer.inventory_quantity ?? 0;
+export const getOfferStock = (offer: StoreOffer): number => {
+  if (offer.manage_inventory === false || offer.allow_backorder) {
+    return offer.inventory_quantity && offer.inventory_quantity > 0
+      ? offer.inventory_quantity
+      : 999999;
+  }
+  return offer.inventory_quantity ?? 0;
+};
 
-export const isPurchasable = (offer: StoreOffer): boolean =>
-  getOfferStock(offer) > 0 && getOfferAmount(offer) !== null;
+export const isPurchasable = (offer: StoreOffer): boolean => {
+  if (getOfferAmount(offer) === null) return false;
+  if (offer.allow_backorder || offer.manage_inventory === false) return true;
+  return getOfferStock(offer) > 0;
+};
 
 /**
  * Buybox comparator (best first): in-stock before out-of-stock, then lowest

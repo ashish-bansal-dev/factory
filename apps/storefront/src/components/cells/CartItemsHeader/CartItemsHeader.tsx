@@ -4,10 +4,18 @@ import { format } from "date-fns"
 import { SellerAvatar } from "../SellerAvatar/SellerAvatar"
 import LocalizedClientLink from "@/components/molecules/LocalizedLink/LocalizedLink"
 
+export type CartSeller = Partial<SingleProductSeller> & {
+  id: string
+  name: string
+  handle?: string
+  photo?: string | null
+  created_at?: string | Date
+}
+
 export const CartItemsHeader = ({
   seller,
 }: {
-  seller: SingleProductSeller
+  seller: CartSeller
 }) => {
   return (
     <LocalizedClientLink href={`/sellers/${seller.handle}`}>

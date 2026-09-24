@@ -221,6 +221,120 @@ export async function addToCart({
   }
 }
 
+export async function addMultipleToCart(
+  items: Array<{
+    variantId: string
+    offerId?: string
+    quantity: number
+  }>,
+  countryCode: string
+) {
+  if (!items || items.length === 0) {
+    return
+  }
+
+  const validItems = items.filter((item) => item.quantity > 0)
+  if (validItems.length === 0) {
+    return
+  }
+
+  let cart = await getOrSetCart(countryCode)
+  if (!cart) {
+    throw new Error("Error retrieving or creating cart")
+  }
+
+  const headers: Record<string, string> = {
+    ...(await getAuthHeaders()),
+  }
+
+  const headersList = await nextHeaders().catch(() => null)
+  const isTenant = headersList?.get("x-is-tenant") === "true"
+  const tenantHandle = headersList?.get("x-tenant-handle")
+
+  if (isTenant && tenantHandle) {
+    headers["x-tenant-handle"] = tenantHandle
+  }
+
+  const missingOfferVariantIds = validItems
+    .filter((item) => !item.offerId)
+    .map((item) => item.variantId)
+
+  const variantOfferMap = new Map<string, string>()
+  if (missingOfferVariantIds.length > 0) {
+    const { products } = await sdk.client
+      .fetch<{ products: HttpTypes.StoreProduct[] }>(`/store/products`, {
+        method: "GET",
+        query: {
+          fields: "*variants.calculated_price",
+          limit: 50,
+        },
+        headers,
+      })
+      .catch(() => ({ products: [] }))
+
+    for (const p of products) {
+      for (const v of p.variants ?? []) {
+        const vTyped = v as { id: string; offer_id?: string }
+        if (vTyped?.offer_id) {
+          variantOfferMap.set(vTyped.id, vTyped.offer_id)
+        }
+      }
+    }
+  }
+
+  for (const item of validItems) {
+    const effectiveOfferId = item.offerId || variantOfferMap.get(item.variantId)
+    if (!effectiveOfferId) {
+      continue
+    }
+
+    const currentItem = cart.items?.find(
+      (ci) => ci.metadata?.offer_id === effectiveOfferId
+    )
+
+    if (currentItem) {
+      const resp = await sdk.client
+        .fetch<HttpTypes.StoreCartResponse>(
+          `/store/carts/${cart.id}/line-items/${currentItem.id}`,
+          {
+            method: "POST",
+            body: {
+              quantity: currentItem.quantity + item.quantity,
+            },
+            headers,
+          }
+        )
+        .catch(medusaError)
+      if (resp?.cart) {
+        cart = resp.cart
+      }
+    } else {
+      const resp = await sdk.client
+        .fetch<HttpTypes.StoreCartResponse>(
+          `/store/carts/${cart.id}/line-items`,
+          {
+            method: "POST",
+            body: {
+              offer_id: effectiveOfferId,
+              quantity: item.quantity,
+            },
+            headers,
+          }
+        )
+        .catch(medusaError)
+      if (resp?.cart) {
+        cart = resp.cart
+      }
+    }
+  }
+
+  const cartCacheTag = await getCacheTag("carts")
+  revalidateTag(cartCacheTag)
+
+  const fulfillmentCacheTag = await getCacheTag("fulfillment")
+  revalidateTag(fulfillmentCacheTag)
+}
+
 export async function updateLineItem({
   lineId,
   quantity,

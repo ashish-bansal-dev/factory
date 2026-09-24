@@ -14,6 +14,8 @@ export const StoreGetProductParams = createSelectParams().merge(
   z.object({
     region_id: z.string().optional(),
     currency_code: z.string().optional(),
+    channel: z.enum(["retail", "wholesale"]).optional(),
+    offer_type: z.enum(["retail", "wholesale"]).optional(),
   }),
 )
 
@@ -28,6 +30,8 @@ const StoreGetProductsParamsFields = z.object({
   tag_id: z.union([z.string(), z.array(z.string())]).optional(),
   seller_id: z.union([z.string(), z.array(z.string())]).optional(),
   brand_id: z.union([z.string(), z.array(z.string())]).optional(),
+  channel: z.enum(["retail", "wholesale"]).optional(),
+  offer_type: z.enum(["retail", "wholesale"]).optional(),
   is_giftcard: booleanString().optional(),
   region_id: z.string().optional(),
   currency_code: z.string().optional(),

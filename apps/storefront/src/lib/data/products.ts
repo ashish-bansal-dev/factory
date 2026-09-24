@@ -1,6 +1,7 @@
 'use server';
 
 import { HttpTypes } from '@medusajs/types';
+import { headers as nextHeaders } from 'next/headers';
 
 import { sortProducts } from '@/lib/helpers/sort-products';
 import { SortOptions } from '@/types/product';
@@ -9,6 +10,7 @@ import { sdk } from '../client';
 import { getAuthHeaders } from './cookies';
 import { CACHE_TAGS, getGlobalCacheOptions } from './cache-tags';
 import { getRegion, retrieveRegion } from './regions';
+import { getSellerByHandle } from './seller';
 
 const PRODUCT_LIST_FIELDS =
   '*variants.calculated_price,+variants.inventory_quantity,*variants.options,*attribute_values,*attribute_values.attribute';
@@ -72,7 +74,7 @@ export const listProducts = async ({
 }: {
   pageParam?: number;
   queryParams?: HttpTypes.FindParams &
-    HttpTypes.StoreProductParams & { handle?: string[] };
+    HttpTypes.StoreProductParams & { handle?: string[]; seller_id?: string };
   category_id?: string | string[];
   collection_id?: string;
   countryCode?: string;
@@ -98,19 +100,56 @@ export const listProducts = async ({
     return { response: { products: [], count: 0 }, nextPage: null };
   }
 
+  let isTenant = false;
+  let tenantHandle: string | null = null;
+  try {
+    const headersList = await nextHeaders();
+    isTenant = headersList.get('x-is-tenant') === 'true';
+    tenantHandle = headersList.get('x-tenant-handle');
+  } catch {}
+
+  const authHeaders = await getAuthHeaders();
+  const headers: Record<string, string> = { ...authHeaders };
+
+  const effectiveQueryParams: Record<string, unknown> = {
+    category_id,
+    collection_id,
+    limit,
+    offset,
+    region_id: region.id,
+    fields: PRODUCT_LIST_FIELDS,
+    ...queryParams,
+  };
+
+  if (isTenant && tenantHandle) {
+    headers['x-tenant-handle'] = tenantHandle;
+    headers['x-is-tenant'] = 'true';
+    if (!effectiveQueryParams.seller_id) {
+      const seller = await getSellerByHandle(tenantHandle).catch(() => null);
+      if (seller) {
+        effectiveQueryParams.seller_id = seller.id;
+        headers['x-seller-id'] = seller.id;
+      }
+    } else {
+      headers['x-seller-id'] = effectiveQueryParams.seller_id as string;
+    }
+  } else if (effectiveQueryParams.seller_id) {
+    headers['x-seller-id'] = effectiveQueryParams.seller_id as string;
+  }
+
+
+  const cacheTag =
+    isTenant && tenantHandle
+      ? `tenant-${tenantHandle}-${CACHE_TAGS.products}`
+      : CACHE_TAGS.products;
+
   return (
     sdk.store.products.query({
-      category_id,
-      collection_id,
-      limit,
-      offset,
-      region_id: region.id,
-      fields: PRODUCT_LIST_FIELDS,
-      ...queryParams,
+      ...effectiveQueryParams,
       fetchOptions: {
-        headers: { ...(await getAuthHeaders()) },
+        headers,
         cache: 'force-cache',
-        next: getGlobalCacheOptions(CACHE_TAGS.products),
+        next: getGlobalCacheOptions(cacheTag),
       },
     } as never) as unknown as Promise<{ products: HttpTypes.StoreProduct[]; count: number }>
   )
@@ -137,6 +176,7 @@ export const listProductsWithSort = async ({
   countryCode,
   category_id,
   collection_id,
+  seller_id,
 }: {
   page?: number;
   queryParams?: HttpTypes.FindParams & HttpTypes.StoreProductParams;
@@ -144,6 +184,7 @@ export const listProductsWithSort = async ({
   countryCode: string;
   category_id?: string | string[];
   collection_id?: string;
+  seller_id?: string;
 }): Promise<{
   response: { products: HttpTypes.StoreProduct[]; count: number };
   nextPage: number | null;
@@ -155,17 +196,13 @@ export const listProductsWithSort = async ({
     response: { products, count },
   } = await listProducts({
     pageParam: 0,
-    queryParams: { ...queryParams, limit: 100 },
+    queryParams: { ...queryParams, seller_id, limit: 100 },
     category_id,
     collection_id,
     countryCode,
   });
 
-  const pricedProducts = products.filter(prod =>
-    prod.variants?.some(variant => variant.calculated_price !== null)
-  );
-
-  const sortedProducts = sortProducts(pricedProducts, sortBy);
+  const sortedProducts = sortProducts(products, sortBy);
 
   const pageParam = (page - 1) * limit;
   const nextPage = count > pageParam + limit ? pageParam + limit : null;
@@ -241,18 +278,50 @@ export const searchProducts = async ({
   const hasAttributeFilters =
     attributes && Object.keys(attributes).length > 0;
 
+  let isTenant = false;
+  let tenantHandle: string | null = null;
+  try {
+    const headersList = await nextHeaders();
+    isTenant = headersList.get('x-is-tenant') === 'true';
+    tenantHandle = headersList.get('x-tenant-handle');
+  } catch {}
+
+  let effectiveSellerId = seller_id;
+  const authHeaders = await getAuthHeaders();
+  const headers: Record<string, string> = { ...authHeaders };
+
+  if (isTenant && tenantHandle) {
+    headers['x-tenant-handle'] = tenantHandle;
+    headers['x-is-tenant'] = 'true';
+    if (!effectiveSellerId) {
+      const seller = await getSellerByHandle(tenantHandle).catch(() => null);
+      if (seller) {
+        effectiveSellerId = seller.id;
+        headers['x-seller-id'] = seller.id;
+      }
+    } else {
+      headers['x-seller-id'] = Array.isArray(effectiveSellerId)
+        ? effectiveSellerId[0]
+        : effectiveSellerId;
+    }
+  } else if (effectiveSellerId) {
+    headers['x-seller-id'] = Array.isArray(effectiveSellerId)
+      ? effectiveSellerId[0]
+      : effectiveSellerId;
+  }
+
   const { products, count } = await (sdk.store.products.query({
     q: query || undefined,
     region_id: region.id,
     category_id,
     collection_id,
-    seller_id,
+    seller_id: effectiveSellerId,
     attributes: hasAttributeFilters ? attributes : undefined,
     order,
     limit,
     offset,
     fields: PRODUCT_LIST_FIELDS,
-    fetchOptions: { headers: { ...(await getAuthHeaders()) }, cache: 'no-cache' },
+    fetchOptions: { headers, cache: 'no-cache' },
   } as never) as unknown as Promise<{
     products: HttpTypes.StoreProduct[];
     count: number;
@@ -270,3 +339,4 @@ export const searchProducts = async ({
 
   return { products: ordered, count, nextPage };
 };
+

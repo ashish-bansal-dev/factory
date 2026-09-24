@@ -28,26 +28,22 @@ type CountrySelectProps = {
 }
 
 const CountrySelect = ({ regions }: CountrySelectProps) => {
-  const [current, setCurrent] = useState<
-    | { country: string | undefined; region: string; label: string | undefined }
-    | undefined
-  >(undefined)
+  const [current, setCurrent] = useState<CountryOption | undefined>(undefined)
 
   const { locale: countryCode } = useParams()
   const router = useRouter()
   const currentPath = usePathname().split(`/${countryCode}`)[1]
 
   const options = useMemo(() => {
-    return regions
-      ?.map((r) => {
-        return r.countries?.map((c) => ({
-          country: c.iso_2,
+    return (regions ?? [])
+      .flatMap((r) => {
+        return (r.countries ?? []).map((c) => ({
+          country: c.iso_2 ?? "",
           region: r.id,
-          label: c.display_name,
+          label: c.display_name ?? "",
         }))
       })
-      .flat()
-      .sort((a, b) => (a?.label ?? "").localeCompare(b?.label ?? ""))
+      .sort((a, b) => a.label.localeCompare(b.label))
   }, [regions])
 
   useEffect(() => {
@@ -71,10 +67,11 @@ const CountrySelect = ({ regions }: CountrySelectProps) => {
 
       router.push(result.newPath)
       router.refresh()
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Failed to update region. Please try again."
       toast.error({
         title: "Error switching region",
-        description: error?.message || "Failed to update region. Please try again.",
+        description: msg,
       })
     }
   }

@@ -13,6 +13,8 @@ const VariantRowSchema = z.object({
   sku: z.string().max(64).default(""),
   shipping_profile_id: z.string().default(""),
   condition_id: z.string().default(""),
+  bundle_size: z.union([z.coerce.number().int().min(1), z.literal("")]).optional(),
+  mrp: optionalFloat,
   prices: z.record(z.string(), optionalFloat).default({}),
   inventory: z
     .record(
@@ -32,6 +34,7 @@ export const CreateOfferSchema = z.object({
   // The catalogue tab selects whole products (SPEC-009); the stock &
   // prices tab fans them out to their variants.
   selected_product_ids: z.array(z.string().min(1)).min(1),
+  channel: z.enum(["retail", "wholesale"]).default("retail"),
   variants: z.array(VariantRowSchema).min(1),
 })
 

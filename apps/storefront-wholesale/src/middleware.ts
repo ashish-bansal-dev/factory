@@ -170,14 +170,17 @@ export async function middleware(request: NextRequest) {
     if (
       lowerKey.startsWith("x-tenant") ||
       lowerKey === "x-is-tenant" ||
-      lowerKey === "x-custom-domain"
+      lowerKey === "x-custom-domain" ||
+      lowerKey === "x-channel"
     ) {
       requestHeaders.delete(key)
     }
   }
 
+  requestHeaders.set("x-channel", "wholesale")
   requestHeaders.set("x-is-tenant", String(tenant.isTenant))
   requestHeaders.set("x-tenant-type", tenant.tenantType)
+
   if (tenant.handle) {
     requestHeaders.set("x-tenant-handle", tenant.handle)
   }

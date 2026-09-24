@@ -108,9 +108,41 @@ async function getCountryCode(
   }
 }
 
+import { resolveTenant } from './lib/tenant/resolver';
+
 export async function middleware(request: NextRequest) {
   if (request.nextUrl.pathname.includes('.')) {
     return NextResponse.next();
+  }
+
+  const host =
+    request.headers.get('x-forwarded-host') ||
+    request.headers.get('host') ||
+    '';
+  const tenant = resolveTenant(host, process.env.NEXT_PUBLIC_BASE_DOMAIN);
+
+  const requestHeaders = new Headers(request.headers);
+
+  for (const key of Array.from(requestHeaders.keys())) {
+    const lowerKey = key.toLowerCase();
+    if (
+      lowerKey.startsWith('x-tenant') ||
+      lowerKey === 'x-is-tenant' ||
+      lowerKey === 'x-custom-domain' ||
+      lowerKey === 'x-channel'
+    ) {
+      requestHeaders.delete(key);
+    }
+  }
+
+  requestHeaders.set('x-channel', 'retail');
+  requestHeaders.set('x-is-tenant', String(tenant.isTenant));
+  requestHeaders.set('x-tenant-type', tenant.tenantType);
+  if (tenant.handle) {
+    requestHeaders.set('x-tenant-handle', tenant.handle);
+  }
+  if (tenant.customDomain) {
+    requestHeaders.set('x-custom-domain', tenant.customDomain);
   }
 
   const { pathname } = request.nextUrl;
@@ -140,10 +172,18 @@ export async function middleware(request: NextRequest) {
   }
 
   if (looksLikeLocale && cacheIdCookie) {
-    return NextResponse.next();
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
   }
 
-  let response = NextResponse.next();
+  let response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 
   if (!cacheIdCookie) {
     response.cookies.set('_medusa_cache_id', cacheId, {

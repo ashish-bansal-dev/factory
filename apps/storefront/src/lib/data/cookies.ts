@@ -1,17 +1,36 @@
 import 'server-only';
-import { cookies as nextCookies } from 'next/headers';
+import { cookies as nextCookies, headers as nextHeaders } from 'next/headers';
 
-export const getAuthHeaders = async (): Promise<
-  { authorization: string } | {}
-> => {
-  const cookies = await nextCookies();
-  const token = cookies.get('_medusa_jwt')?.value;
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const headers: Record<string, string> = { 'x-channel': 'retail' };
+  try {
+    const cookies = await nextCookies();
+    const token = cookies.get('_medusa_jwt')?.value;
 
-  if (!token) {
-    return {};
-  }
+    if (token) {
+      headers.authorization = `Bearer ${token}`;
+    }
+  } catch {}
 
-  return { authorization: `Bearer ${token}` };
+  try {
+    const headersList = await nextHeaders();
+    const isTenant = headersList.get('x-is-tenant') === 'true';
+    const tenantHandle = headersList.get('x-tenant-handle');
+    if (isTenant && tenantHandle) {
+      headers['x-tenant-handle'] = tenantHandle;
+      headers['x-is-tenant'] = 'true';
+    }
+    const sellerId = headersList.get('x-seller-id');
+    if (sellerId) {
+      headers['x-seller-id'] = sellerId;
+    }
+    const channel = headersList.get('x-channel');
+    if (channel) {
+      headers['x-channel'] = channel;
+    }
+  } catch {}
+
+  return headers;
 };
 
 export const getCacheTag = async (
@@ -20,12 +39,21 @@ export const getCacheTag = async (
   try {
     const cookies = await nextCookies();
     const cacheId = cookies.get('_medusa_cache_id')?.value;
+    let tenantPrefix = '';
+    try {
+      const headersList = await nextHeaders();
+      const isTenant = headersList.get('x-is-tenant') === 'true';
+      const handle = headersList.get('x-tenant-handle');
+      if (isTenant && handle) {
+        tenantPrefix = `tenant-${handle}-`;
+      }
+    } catch {}
 
-    if (!cacheId) {
+    if (!cacheId && !tenantPrefix) {
       return '';
     }
 
-    return `${tag}-${cacheId}`;
+    return `${tenantPrefix}${tag}-${cacheId || 'default'}`;
   } catch (error) {
     return '';
   }
@@ -64,14 +92,28 @@ export const removeAuthToken = async () => {
   });
 };
 
-export const getCartId = async () => {
+async function resolveCartCookieName(): Promise<string> {
+  try {
+    const headersList = await nextHeaders();
+    const isTenant = headersList.get('x-is-tenant') === 'true';
+    const handle = headersList.get('x-tenant-handle');
+    if (isTenant && handle) {
+      return `_medusa_cart_${handle}`;
+    }
+  } catch {}
+  return '_medusa_cart_id';
+}
+
+export const getCartId = async (tenantHandle?: string | null) => {
   const cookies = await nextCookies();
-  return cookies.get('_medusa_cart_id')?.value;
+  const cookieName = tenantHandle ? `_medusa_cart_${tenantHandle}` : await resolveCartCookieName();
+  return cookies.get(cookieName)?.value;
 };
 
-export const setCartId = async (cartId: string) => {
+export const setCartId = async (cartId: string, tenantHandle?: string | null) => {
   const cookies = await nextCookies();
-  cookies.set('_medusa_cart_id', cartId, {
+  const cookieName = tenantHandle ? `_medusa_cart_${tenantHandle}` : await resolveCartCookieName();
+  cookies.set(cookieName, cartId, {
     maxAge: 60 * 60 * 24 * 7,
     httpOnly: true,
     sameSite: 'strict',
@@ -79,9 +121,10 @@ export const setCartId = async (cartId: string) => {
   });
 };
 
-export const removeCartId = async () => {
+export const removeCartId = async (tenantHandle?: string | null) => {
   const cookies = await nextCookies();
-  cookies.set('_medusa_cart_id', '', {
+  const cookieName = tenantHandle ? `_medusa_cart_${tenantHandle}` : await resolveCartCookieName();
+  cookies.set(cookieName, '', {
     maxAge: -1,
   });
 };

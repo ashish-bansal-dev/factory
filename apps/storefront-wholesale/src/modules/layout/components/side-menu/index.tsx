@@ -36,6 +36,7 @@ const SideMenu = ({ regions, locales, currentLocale, isTenant }: SideMenuProps) 
         Brands: "/brands",
         Categories: "/categories",
         Account: "/account",
+        Cart: "/cart",
       }
 
   return (

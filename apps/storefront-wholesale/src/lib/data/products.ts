@@ -72,6 +72,7 @@ export const listProducts = async ({
 
   const headers: Record<string, string> = {
     ...(await getAuthHeaders()),
+    "x-channel": "wholesale",
   }
 
   if (isTenant && tenantHandle) {
@@ -85,7 +86,10 @@ export const listProducts = async ({
     } else {
       headers["x-seller-id"] = effectiveQueryParams.seller_id
     }
+  } else if (effectiveQueryParams.seller_id) {
+    headers["x-seller-id"] = effectiveQueryParams.seller_id
   }
+
 
   const next = {
     ...(await getCacheOptions("products")),

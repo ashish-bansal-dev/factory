@@ -66,6 +66,10 @@ export const updateOffersWorkflow: ReturnWorkflow<
         id: o.id,
         sku: o.sku,
         shipping_profile_id: o.shipping_profile_id,
+        offer_type: o.offer_type,
+        bundle_size: o.bundle_size,
+        mrp: o.mrp,
+        lead_time_days: o.lead_time_days,
         manage_inventory: o.manage_inventory,
         allow_backorder: o.allow_backorder,
         leadtime_to_ship: o.leadtime_to_ship,
@@ -73,6 +77,7 @@ export const updateOffersWorkflow: ReturnWorkflow<
         metadata: o.metadata,
       })),
     )
+
 
     const offers = updateOffersStep(rowUpdates)
 

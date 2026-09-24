@@ -23,6 +23,7 @@ export enum SellerType {
   MANUFACTURER = "manufacturer",
   DISTRIBUTOR = "distributor",
   WHOLESALER = "wholesaler",
+  RETAILER = "retailer",
 }
 
 export interface ProfessionalDetailsDTO {

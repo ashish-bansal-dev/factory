@@ -12,6 +12,10 @@ const Offer = model
     sku: model.text().searchable(),
     ean: model.text().searchable().nullable(),
     upc: model.text().searchable().nullable(),
+    offer_type: model.enum(["retail", "wholesale"]).default("retail"),
+    bundle_size: model.number().default(1),
+    mrp: model.bigNumber().nullable(),
+    lead_time_days: model.number().nullable(),
     manage_inventory: model.boolean().default(true),
     allow_backorder: model.boolean().default(false),
     leadtime_to_ship: model.number().nullable(),
@@ -25,7 +29,7 @@ const Offer = model
   .indexes([
     {
       name: "IDX_offer_seller_sku_unique",
-      on: ["seller_id", "sku"],
+      on: ["seller_id", "sku", "offer_type"],
       unique: true,
       where: "deleted_at IS NULL",
     },
@@ -63,6 +67,11 @@ const Offer = model
       name: "IDX_offer_upc",
       on: ["upc"],
       where: "deleted_at IS NULL AND upc IS NOT NULL",
+    },
+    {
+      name: "IDX_offer_offer_type",
+      on: ["offer_type"],
+      where: "deleted_at IS NULL",
     },
   ])
 

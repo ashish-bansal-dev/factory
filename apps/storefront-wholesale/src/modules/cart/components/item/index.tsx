@@ -40,9 +40,19 @@ const Item = ({ item, type = "full", currencyCode }: ItemProps) => {
       })
   }
 
-  // TODO: Update this to grab the actual max inventory
-  const maxQtyFromInventory = 10
-  const maxQuantity = item.variant?.manage_inventory ? 10 : maxQtyFromInventory
+  const bundleSize =
+    Number((item.metadata as any)?.bundle_size) ||
+    Number((item.variant as any)?.bundle_size) ||
+    1
+
+  const quantityOptions = Array.from(
+    { length: 10 },
+    (_, i) => (i + 1) * bundleSize
+  )
+  if (!quantityOptions.includes(item.quantity)) {
+    quantityOptions.push(item.quantity)
+    quantityOptions.sort((a, b) => a - b)
+  }
 
   return (
     <Table.Row className="w-full" data-testid="product-row">
@@ -69,6 +79,11 @@ const Item = ({ item, type = "full", currencyCode }: ItemProps) => {
         >
           {item.product_title}
         </Text>
+        {bundleSize > 1 && (
+          <span className="text-[11px] font-medium text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200 inline-block my-0.5">
+            Pack of {bundleSize}
+          </span>
+        )}
         <LineItemOptions variant={item.variant} data-testid="product-variant" />
       </Table.Cell>
 
@@ -79,30 +94,21 @@ const Item = ({ item, type = "full", currencyCode }: ItemProps) => {
             <CartItemSelect
               value={item.quantity}
               onChange={(value) => changeQuantity(parseInt(value.target.value))}
-              className="w-14 h-10 p-4"
+              className="w-16 h-10 p-2 text-xs"
               data-testid="product-select-button"
             >
-              {/* TODO: Update this with the v2 way of managing inventory */}
-              {Array.from(
-                {
-                  length: Math.min(maxQuantity, 10),
-                },
-                (_, i) => (
-                  <option value={i + 1} key={i}>
-                    {i + 1}
-                  </option>
-                )
-              )}
-
-              <option value={1} key={1}>
-                1
-              </option>
+              {quantityOptions.map((qty) => (
+                <option value={qty} key={qty}>
+                  {qty}
+                </option>
+              ))}
             </CartItemSelect>
             {updating && <Spinner />}
           </div>
           <ErrorMessage error={error} data-testid="product-error-message" />
         </Table.Cell>
       )}
+
 
       {type === "full" && (
         <Table.Cell className="hidden small:table-cell">

@@ -18,7 +18,14 @@ export const POST = async (
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
   const { data: offers } = await query.graph({
     entity: "offer",
-    fields: ["id", "variant_id", "seller_id", "product_id"],
+    fields: [
+      "id",
+      "variant_id",
+      "seller_id",
+      "product_id",
+      "offer_type",
+      "bundle_size",
+    ],
     filters: { id: offer_id },
   })
 
@@ -28,6 +35,8 @@ export const POST = async (
         variant_id: string
         seller_id?: string
         product_id?: string
+        offer_type?: string
+        bundle_size?: number
       }
     | undefined
   if (!offer) {
@@ -35,6 +44,19 @@ export const POST = async (
       MedusaError.Types.NOT_FOUND,
       `Offer ${offer_id} not found`,
     )
+  }
+
+  if (
+    offer.offer_type === "wholesale" &&
+    offer.bundle_size &&
+    offer.bundle_size > 1
+  ) {
+    if (item.quantity % offer.bundle_size !== 0) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `Quantity must be a multiple of pack size (${offer.bundle_size})`,
+      )
+    }
   }
 
   if (offer.seller_id) {
@@ -96,12 +118,19 @@ export const POST = async (
           variant_id: offer.variant_id,
           offer_id,
           requires_shipping: true,
-          metadata: { ...(metadata ?? {}), offer_id },
+          metadata: {
+            ...(metadata ?? {}),
+            offer_id,
+            bundle_size: offer.bundle_size ?? 1,
+            offer_type: offer.offer_type ?? "retail",
+            mrp: (offer as any).mrp ?? null,
+          },
         },
       ],
       additional_data,
     },
   })
+
 
   const cart = await refetchCart(cart_id, req.scope, defaultStoreCartFields)
   res.status(200).json({ cart })

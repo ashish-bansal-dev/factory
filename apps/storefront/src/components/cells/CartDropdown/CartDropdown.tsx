@@ -12,7 +12,9 @@ import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useCartContext } from "@/components/providers"
 
-const getItemCount = (cart: HttpTypes.StoreCart | null) => {
+import { Cart } from "@/types/cart"
+
+const getItemCount = (cart: HttpTypes.StoreCart | Cart | null) => {
   return cart?.items?.reduce((acc, item) => acc + item.quantity, 0) || 0
 }
 

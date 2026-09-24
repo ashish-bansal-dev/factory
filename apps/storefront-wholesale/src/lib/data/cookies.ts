@@ -1,22 +1,34 @@
 import "server-only"
 import { cookies as nextCookies, headers as nextHeaders } from "next/headers"
 
-export const getAuthHeaders = async (): Promise<
-  { authorization: string } | {}
-> => {
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
+  const headers: Record<string, string> = { "x-channel": "wholesale" }
   try {
     const cookies = await nextCookies()
     const token = cookies.get("_medusa_jwt")?.value
 
-    if (!token) {
-      return {}
+    if (token) {
+      headers.authorization = `Bearer ${token}`
     }
+  } catch {}
 
-    return { authorization: `Bearer ${token}` }
-  } catch {
-    return {}
-  }
+  try {
+    const headersList = await nextHeaders()
+    const isTenant = headersList.get("x-is-tenant") === "true"
+    const tenantHandle = headersList.get("x-tenant-handle")
+    if (isTenant && tenantHandle) {
+      headers["x-tenant-handle"] = tenantHandle
+      headers["x-is-tenant"] = "true"
+    }
+    const sellerId = headersList.get("x-seller-id")
+    if (sellerId) {
+      headers["x-seller-id"] = sellerId
+    }
+  } catch {}
+
+  return headers
 }
+
 
 export const getCacheTag = async (tag: string): Promise<string> => {
   try {

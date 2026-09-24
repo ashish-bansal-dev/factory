@@ -25,6 +25,7 @@ import {
 
 const DEFAULTS: CreateOfferFormValues = {
   selected_product_ids: [],
+  channel: "retail",
   variants: [],
 };
 
@@ -71,7 +72,7 @@ export const CreateOfferForm = () => {
   });
 
   const { mutateAsync: bulkCreateOffers } = useBulkCreateOffers();
-  const { currency_code } = useCurrentSeller();
+  const { currency_code, seller } = useCurrentSeller();
   const canViewLocations = useCan("stock_locations");
   const { stock_locations } = useStockLocations(
     { limit: 100 },
@@ -122,6 +123,7 @@ export const CreateOfferForm = () => {
       existing.map((row) => [row.variant_id, row]),
     );
 
+    const currentChannel = form.getValues("channel") ?? "retail";
     const next: OfferVariantRow[] = [];
     for (const product of fetchedProducts ?? []) {
       for (const variant of product.variants ?? []) {
@@ -147,6 +149,8 @@ export const CreateOfferForm = () => {
           sku: variant.sku ?? "",
           shipping_profile_id: "",
           condition_id: defaultConditionId,
+          bundle_size: currentChannel === "wholesale" ? 6 : 1,
+          mrp: "",
           prices: { ...emptyPrices },
           inventory: { ...emptyInventory },
         });
@@ -174,6 +178,12 @@ export const CreateOfferForm = () => {
     }
 
     if (!currency_code) {
+      return;
+    }
+
+    const channel = values.channel ?? "retail";
+    if (channel === "wholesale" && seller?.type === "retailer") {
+      toast.error("Retailer accounts can only create retail offers.");
       return;
     }
 
@@ -249,11 +259,28 @@ export const CreateOfferForm = () => {
         });
       }
 
+      const bundleSizeNum =
+        channel === "wholesale"
+          ? (row.bundle_size ? Number(row.bundle_size) : 6)
+          : 1;
+      const mrpNum =
+        row.mrp !== "" && row.mrp !== undefined && row.mrp !== null
+          ? castNumber(row.mrp)
+          : undefined;
+
       return {
         sku,
         variant_id: row.variant_id,
         shipping_profile_id: row.shipping_profile_id,
         ...(row.condition_id ? { condition_id: row.condition_id } : {}),
+        offer_type: channel,
+        bundle_size: bundleSizeNum,
+        mrp: mrpNum,
+        metadata: {
+          offer_type: channel,
+          bundle_size: bundleSizeNum,
+          mrp: mrpNum,
+        },
         prices,
         inventory_items: [
           {

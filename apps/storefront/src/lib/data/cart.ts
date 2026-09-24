@@ -3,6 +3,7 @@
 import { HttpTypes } from '@medusajs/types';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { Cart } from '@/types/cart';
 
 import medusaError from '@/lib/helpers/medusa-error';
 import { parseVariantIdsFromError } from '@/lib/helpers/parse-variant-error';
@@ -30,7 +31,7 @@ export async function retrieveCart(cartId?: string) {
   };
 
   return await sdk.store.carts.$id
-    .query({
+    .query<{ cart: Cart }>({
       $id: id,
       fields:
         '*items,*region, *items.product, *items.variant, *items.variant.options,' +
@@ -45,21 +46,21 @@ export async function retrieveCart(cartId?: string) {
     });
 }
 
-export async function getOrSetCart(countryCode: string) {
+export async function getOrSetCart(countryCode: string): Promise<Cart> {
   const region = await getRegion(countryCode);
 
   if (!region) {
     throw new Error(`Region not found for country code: ${countryCode}`);
   }
 
-  let cart = await retrieveCart();
+  let cart: Cart | null = await retrieveCart();
 
   const headers = {
     ...(await getAuthHeaders())
   };
 
   if (!cart) {
-    const cartResp = await sdk.store.carts.mutate({
+    const cartResp = await sdk.store.carts.mutate<{ cart: Cart }>({
       region_id: region.id,
       fetchOptions: { headers }
     });
@@ -72,7 +73,7 @@ export async function getOrSetCart(countryCode: string) {
   }
 
   if (cart && cart?.region_id !== region.id) {
-    await sdk.store.carts.$id.mutate({
+    await sdk.store.carts.$id.mutate<{ cart: Cart }>({
       $id: cart.id,
       region_id: region.id,
       fetchOptions: { headers }
@@ -132,7 +133,7 @@ export async function addToCart({
   // distinct offers and two distinct lines. Dedup by the offer stamped on
   // `metadata.offer_id` (requested by `retrieveCart`).
   const currentItem = cart.items?.find(
-    item => item.metadata?.offer_id === offerId
+    (item: HttpTypes.StoreCartLineItem) => item.metadata?.offer_id === offerId
   );
 
   if (currentItem) {
@@ -257,11 +258,15 @@ export async function initiatePaymentSession(
     let paymentCollection = cart.payment_collection;
 
     if (!paymentCollection) {
-      const { payment_collection } = await sdk.store.paymentCollections.mutate({
+      const { payment_collection } = await sdk.store.paymentCollections.mutate<{ payment_collection: HttpTypes.StorePaymentCollection }>({
         cart_id: cart.id,
         fetchOptions: { headers }
       });
       paymentCollection = payment_collection;
+    }
+
+    if (!paymentCollection?.id) {
+      throw new Error('Payment collection not found');
     }
 
     const resp = await sdk.store.paymentCollections.$id.paymentSessions.mutate({
@@ -484,15 +489,15 @@ export async function updateRegionWithValidation(
       }
 
       try {
-        const { cart } = await sdk.store.carts.$id.query({
+        const { cart } = await sdk.store.carts.$id.query<{ cart: Cart }>({
           $id: cartId,
           fields: '*items',
           fetchOptions: { headers, cache: 'no-cache' }
         });
 
         for (const variantId of problematicVariantIds) {
-          const item = cart?.items?.find(item => item.variant_id === variantId);
-          if (item) {
+          const item = cart?.items?.find((item: HttpTypes.StoreCartLineItem) => item.variant_id === variantId);
+          if (item && cart) {
             try {
               await sdk.store.carts.$id.lineItems.$lineId.delete({
                 $id: cart.id,

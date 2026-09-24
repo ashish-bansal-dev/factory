@@ -83,6 +83,10 @@ const CreateOffer = z
     allow_backorder: z.boolean().optional(),
     leadtime_to_ship: z.number().int().min(0).nullish(),
     condition_id: z.string().min(1).nullish(),
+    lead_time_days: z.number().int().min(0).nullish(),
+    offer_type: z.enum(["retail", "wholesale"]).optional(),
+    bundle_size: z.number().int().min(1).optional(),
+    mrp: z.number().positive().nullish(),
     metadata: z.record(z.string(), z.unknown()).nullish(),
   })
   .strict()
@@ -98,6 +102,10 @@ const UpdateOffer = z
     allow_backorder: z.boolean().optional(),
     leadtime_to_ship: z.number().int().min(0).nullish(),
     condition_id: z.string().min(1).nullish(),
+    lead_time_days: z.number().int().min(0).nullish(),
+    offer_type: z.enum(["retail", "wholesale"]).optional(),
+    bundle_size: z.number().int().min(1).optional(),
+    mrp: z.number().positive().nullish(),
     metadata: z.record(z.string(), z.unknown()).nullish(),
     prices: z.array(VendorOfferUpsertPrice).optional(),
   })
@@ -149,6 +157,10 @@ const VendorCreateOffersBatchItem = z
     allow_backorder: z.boolean().optional(),
     leadtime_to_ship: z.number().int().min(0).nullish(),
     condition_id: z.string().min(1).nullish(),
+    lead_time_days: z.number().int().min(0).nullish(),
+    offer_type: z.enum(["retail", "wholesale"]).optional(),
+    bundle_size: z.number().int().min(1).optional(),
+    mrp: z.number().positive().nullish(),
     metadata: z.record(z.string(), z.unknown()).nullish(),
   })
   .strict()

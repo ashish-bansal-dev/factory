@@ -31,7 +31,7 @@ export const paymentInfoMap: Record<
     icon: <PayPal />,
   },
   pp_system_default: {
-    title: "Manual Payment",
+    title: "Order without Payment / Wholesale Net Terms (Quote)",
     icon: <CreditCard />,
   },
   // Add more payment providers here

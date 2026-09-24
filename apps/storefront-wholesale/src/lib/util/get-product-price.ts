@@ -7,10 +7,19 @@ export const getPricesForVariant = (variant: any) => {
     return null
   }
 
+  const bundleSize =
+    variant.bundle_size ?? variant.calculated_price.bundle_size ?? 1
+  const mrpNumber = variant.mrp != null ? Number(variant.mrp) : null
+  const unitAmount = variant.calculated_price.calculated_amount
+  const packPriceAmount =
+    variant.pack_price?.amount ??
+    variant.calculated_price.pack_price ??
+    unitAmount * bundleSize
+
   return {
-    calculated_price_number: variant.calculated_price.calculated_amount,
+    calculated_price_number: unitAmount,
     calculated_price: convertToLocale({
-      amount: variant.calculated_price.calculated_amount,
+      amount: unitAmount,
       currency_code: variant.calculated_price.currency_code,
     }),
     original_price_number: variant.calculated_price.original_amount,
@@ -19,13 +28,28 @@ export const getPricesForVariant = (variant: any) => {
       currency_code: variant.calculated_price.currency_code,
     }),
     currency_code: variant.calculated_price.currency_code,
-    price_type: variant.calculated_price.calculated_price.price_list_type,
+    price_type: variant.calculated_price.calculated_price?.price_list_type,
     percentage_diff: getPercentageDiff(
       variant.calculated_price.original_amount,
-      variant.calculated_price.calculated_amount
+      unitAmount
     ),
+    bundle_size: bundleSize,
+    mrp_number: mrpNumber,
+    mrp:
+      mrpNumber != null
+        ? convertToLocale({
+            amount: mrpNumber,
+            currency_code: variant.calculated_price.currency_code,
+          })
+        : null,
+    pack_price_number: packPriceAmount,
+    pack_price: convertToLocale({
+      amount: packPriceAmount,
+      currency_code: variant.calculated_price.currency_code,
+    }),
   }
 }
+
 
 export function getProductPrice({
   product,
