@@ -34,7 +34,7 @@ export const ProductDetails = async ({
   const seller = getBuyboxWinner(rankOffers(offers))?.seller
 
   return (
-    <div>
+    <div className="flex flex-col gap-4">
       <ProductDetailsHeader
         product={product}
         locale={locale}

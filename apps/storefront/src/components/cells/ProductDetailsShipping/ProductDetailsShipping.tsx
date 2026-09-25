@@ -7,19 +7,16 @@ export const ProductDetailsShipping = () => {
       defaultOpen={false}
     >
       <div className='product-details'>
-        <ul>
+        <ul className='space-y-2 text-sm text-secondary'>
           <li>
-            Free standard shipping on all orders within the
-            continental U.S. Expedited shipping options are
-            available at an additional cost. Orders
-            typically ship within 3-5 business days.
+            Free standard shipping on qualifying orders. Orders typically ship
+            within 3–5 business days. Expedited delivery options may be selected
+            at checkout.
           </li>
           <li>
-            We offer a 30-day return policy. If you are not
-            completely satisfied with your purchase, you can
-            return the chair for a full refund or exchange,
-            provided it is in its original condition and
-            packaging.
+            30-day return policy. If you are not completely satisfied with your
+            purchase, you may return the item in its original condition and
+            packaging for a refund or exchange.
           </li>
         </ul>
       </div>

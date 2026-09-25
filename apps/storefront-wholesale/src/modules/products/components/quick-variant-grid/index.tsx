@@ -41,7 +41,7 @@ export default function QuickVariantGrid({
   const handleQuantityInputChange = (
     variantId: string,
     rawVal: string,
-    stepSize: number
+    _stepSize: number
   ) => {
     if (rawVal === "") {
       setQuantities((prev) => ({ ...prev, [variantId]: 0 }))
@@ -111,7 +111,7 @@ export default function QuickVariantGrid({
         setQuantities((prev) => ({ ...prev, [variant.id]: stepSize }))
       }
       setFeedback({
-        message: `Added ${qty} units of "${variant.title || "variant"}" to Curated Quote Basket 📋`,
+        message: `Added ${qty} units of "${variant.title || "variant"}" to Curated Quote Basket`,
         type: "success",
       })
       setTimeout(() => setFeedback(null), 3500)
@@ -154,7 +154,7 @@ export default function QuickVariantGrid({
       Boolean((v as { offer_id?: string | null }).offer_id)
     )
     const withoutOffer = selected.filter(
-      (v) => !Boolean((v as { offer_id?: string | null }).offer_id)
+      (v) => !(v as { offer_id?: string | null }).offer_id
     )
 
     setIsAddingAll(true)
@@ -190,9 +190,9 @@ export default function QuickVariantGrid({
       const totalUnits = selected.reduce((sum, v) => sum + quantities[v.id], 0)
       const message =
         withoutOffer.length > 0 && withOffer.length > 0
-          ? `Added ${withOffer.length} variant(s) to Cart and ${withoutOffer.length} to Curated Quote Basket 📋`
+          ? `Added ${withOffer.length} variant(s) to Cart and ${withoutOffer.length} to Curated Quote Basket`
           : withoutOffer.length > 0
-          ? `Added ${totalUnits} units across ${withoutOffer.length} variant(s) to Curated Quote Basket 📋`
+          ? `Added ${totalUnits} units across ${withoutOffer.length} variant(s) to Curated Quote Basket`
           : `Added ${totalUnits} units across ${withOffer.length} variant(s) to Cart`
 
       setFeedback({
@@ -454,6 +454,7 @@ export default function QuickVariantGrid({
                         step={bundleSize}
                         value={qty === 0 ? "" : qty}
                         placeholder="0"
+                        aria-label="Quantity"
                         onChange={(e) =>
                           handleQuantityInputChange(
                             variant.id,
@@ -503,7 +504,7 @@ export default function QuickVariantGrid({
                           : "hover:bg-ui-bg-base hover:text-white"
                       )}
                     >
-                      {!hasOffer ? "+ Quote 📋" : "+ Add"}
+                      {!hasOffer ? "+ Quote" : "+ Add"}
                     </Button>
                   </td>
                 </tr>
@@ -543,7 +544,7 @@ export default function QuickVariantGrid({
             className="flex-1 sm:flex-none h-9 px-5 text-xs font-semibold"
           >
             {!anyVariantHasOffer
-              ? `Add Selected to Quote Basket (${totalUnits}) 📋`
+              ? `Add Selected to Quote Basket (${totalUnits})`
               : `Add Selected to Cart (${totalUnits})`}
           </Button>
           {onOpenInquiry && (

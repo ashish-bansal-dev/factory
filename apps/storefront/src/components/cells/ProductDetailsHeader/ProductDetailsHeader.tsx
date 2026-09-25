@@ -177,10 +177,12 @@ export const ProductDetailsHeader = ({
                 </div>
                 {hasSavings && (
                   <span
-                    className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded w-fit"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded w-fit"
                     data-testid="product-price-savings"
                   >
-                    Save {savingsPercent}% off MRP ({convertToLocale({ amount: savingsAmount, currency_code: offerCurrency })})
+                    <span>{savingsPercent}% OFF</span>
+                    <span className="text-emerald-500 font-normal">·</span>
+                    <span>Save {convertToLocale({ amount: savingsAmount, currency_code: offerCurrency })}</span>
                   </span>
                 )}
               </div>
@@ -220,7 +222,7 @@ export const ProductDetailsHeader = ({
           className="w-full uppercase mb-4"
           data-testid="compare-offers-button"
         >
-          {`Compare other ${otherOffersCount} offers`}
+          {`Compare ${otherOffersCount} other offer${otherOffersCount > 1 ? "s" : ""}`}
         </Button>
       )}
       {isCompareOpen && (

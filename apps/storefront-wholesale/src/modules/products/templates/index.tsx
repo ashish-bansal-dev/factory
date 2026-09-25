@@ -90,10 +90,10 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
             </Text>
           </div>
 
-          {/* Below it: Product Information etc. */}
+          {/* Below it: Specifications & Shipping */}
           <div className="border border-ui-border-base rounded-xl p-5 bg-white shadow-sm flex flex-col gap-y-3">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-ui-fg-base">
-              Product Information
+              Specifications & Shipping
             </h3>
             <ProductTabs product={product} />
           </div>

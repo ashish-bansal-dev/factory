@@ -14,11 +14,11 @@ type ProductTabsProps = {
 const ProductTabs = ({ product }: ProductTabsProps) => {
   const tabs = [
     {
-      label: "Product Information",
+      label: "Specifications",
       component: <ProductInfoTab product={product} />,
     },
     {
-      label: "Shipping & Returns",
+      label: "Shipping & Fulfillment",
       component: <ShippingInfoTab />,
     },
   ]
@@ -26,9 +26,9 @@ const ProductTabs = ({ product }: ProductTabsProps) => {
   return (
     <div className="w-full">
       <Accordion type="multiple">
-        {tabs.map((tab, i) => (
+        {tabs.map((tab) => (
           <Accordion.Item
-            key={i}
+            key={tab.label}
             title={tab.label}
             headingSize="medium"
             value={tab.label}
@@ -85,31 +85,30 @@ const ShippingInfoTab = () => {
         <div className="flex items-start gap-x-2">
           <FastDelivery />
           <div>
-            <span className="font-semibold">Fast delivery</span>
+            <span className="font-semibold">Commercial Freight & Courier</span>
             <p className="max-w-sm">
-              Your package will arrive in 3-5 business days at your pick up
-              location or in the comfort of your home.
+              Standard freight and courier shipping options available. Transit
+              times typically range from 3–7 business days depending on volume and destination.
             </p>
           </div>
         </div>
         <div className="flex items-start gap-x-2">
           <Refresh />
           <div>
-            <span className="font-semibold">Simple exchanges</span>
+            <span className="font-semibold">Quality Guarantee</span>
             <p className="max-w-sm">
-              Is the fit not quite right? No worries - we&apos;ll exchange your
-              product for a new one.
+              All inventory undergoes supplier quality checks before dispatch.
+              Damaged shipments or manufacturing defects are eligible for replacement or credit.
             </p>
           </div>
         </div>
         <div className="flex items-start gap-x-2">
           <Back />
           <div>
-            <span className="font-semibold">Easy returns</span>
+            <span className="font-semibold">Wholesale Returns & Claims</span>
             <p className="max-w-sm">
-              Just return your product and we&apos;ll refund your money. No
-              questions asked – we&apos;ll do our best to make sure your return
-              is hassle-free.
+              Return policies are governed by wholesale commercial agreements.
+              Contact the supplier directly or connect with support to initiate an inquiry.
             </p>
           </div>
         </div>

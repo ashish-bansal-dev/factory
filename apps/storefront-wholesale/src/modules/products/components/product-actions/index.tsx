@@ -345,7 +345,7 @@ export default function ProductActions({
                 className="w-full h-11 border-purple-400 bg-purple-50/50 hover:bg-purple-100 text-purple-900 font-semibold text-xs flex items-center justify-center gap-2 shadow-sm transition"
                 data-testid="add-curated-quote-button"
               >
-                <span>Add to Curated Quote Basket ({quantity || 1}) 📋</span>
+                <span>Add to Curated Quote Basket ({quantity || 1})</span>
               </Button>
             ) : (
               <Button
