@@ -1,9 +1,12 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import useEmblaCarousel from "embla-carousel-react"
 import { HttpTypes } from "@medusajs/types"
 import Image from "next/image"
 import { ProductCarouselIndicator } from "@/components/molecules"
+import { ImageZoomModal } from "@/components/organisms/ImageZoomModal/ImageZoomModal"
+import { SearchIcon } from "@/icons"
 import { useScreenSize } from "@/hooks/useScreenSize"
 
 export const ProductCarousel = ({
@@ -12,6 +15,9 @@ export const ProductCarousel = ({
   slides: HttpTypes.StoreProduct["images"]
 }) => {
   const screenSize = useScreenSize()
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
+  const [zoomIndex, setZoomIndex] = useState(0)
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0)
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     axis:
@@ -22,8 +28,35 @@ export const ProductCarousel = ({
     align: "start",
   })
 
+  useEffect(() => {
+    if (!emblaApi) return
+    const onSelect = () => {
+      setActiveSlideIndex(emblaApi.selectedScrollSnap())
+    }
+    emblaApi.on("select", onSelect)
+    return () => {
+      emblaApi.off("select", onSelect)
+    }
+  }, [emblaApi])
+
   return (
     <div className="embla relative" data-testid="product-carousel">
+      {/* Minimal, elegant expand button */}
+      {slides?.length ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setZoomIndex(activeSlideIndex)
+            setIsZoomOpen(true)
+          }}
+          aria-label="Expand product image"
+          className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/90 hover:bg-white text-neutral-700 hover:text-black shadow-sm border border-neutral-200/80 backdrop-blur-sm transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+        >
+          <SearchIcon size={16} color="currentColor" />
+        </button>
+      ) : null}
+
       <div
         className="embla__viewport overflow-hidden rounded-xs"
         ref={emblaRef}
@@ -33,7 +66,11 @@ export const ProductCarousel = ({
           {(slides || []).map((slide, idx) => (
             <div
               key={slide.id}
-              className="embla__slide min-w-0 h-[350px] lg:h-fit"
+              onClick={() => {
+                setZoomIndex(idx)
+                setIsZoomOpen(true)
+              }}
+              className="embla__slide min-w-0 h-[350px] lg:h-fit cursor-zoom-in relative"
               data-testid={`product-carousel-slide-${idx}`}
             >
               <Image
@@ -55,6 +92,13 @@ export const ProductCarousel = ({
           <ProductCarouselIndicator slides={slides} embla={emblaApi} />
         ) : null}
       </div>
+
+      <ImageZoomModal
+        isOpen={isZoomOpen}
+        onClose={() => setIsZoomOpen(false)}
+        images={slides}
+        initialIndex={zoomIndex}
+      />
     </div>
   )
 }

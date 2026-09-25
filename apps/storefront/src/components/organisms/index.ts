@@ -23,6 +23,7 @@ import { ProductDetails } from "./ProductDetails/ProductDetails"
 import { CompareOffersModal } from "./CompareOffersModal/CompareOffersModal"
 import { Addresses } from "./Addressess/Addresses"
 import { CartEmpty } from "./CartEmpty/CartEmpty"
+import { ImageZoomModal } from "./ImageZoomModal/ImageZoomModal"
 
 export {
   ProductCard,
@@ -50,4 +51,5 @@ export {
   Addresses,
   CartEmpty,
   OfferCard,
+  ImageZoomModal,
 }

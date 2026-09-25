@@ -2,8 +2,10 @@
 
 import { HttpTypes } from "@medusajs/types"
 import { Container, clx } from "@medusajs/ui"
+import { MagnifyingGlass } from "@medusajs/icons"
 import Image from "next/image"
 import { useState } from "react"
+import { ImageZoomModal } from "../image-zoom-modal"
 
 type ImageGalleryProps = {
   images: HttpTypes.StoreProductImage[]
@@ -11,6 +13,7 @@ type ImageGalleryProps = {
 
 const ImageGallery = ({ images }: ImageGalleryProps) => {
   const [selectedIdx, setSelectedIdx] = useState(0)
+  const [isZoomOpen, setIsZoomOpen] = useState(false)
 
   if (!images || images.length === 0) {
     return (
@@ -27,8 +30,22 @@ const ImageGallery = ({ images }: ImageGalleryProps) => {
       {/* Featured Main Image */}
       <Container
         id={activeImage.id}
-        className="relative aspect-[4/5] w-full overflow-hidden bg-ui-bg-subtle rounded-xl border border-ui-border-base shadow-sm"
+        onClick={() => setIsZoomOpen(true)}
+        className="relative aspect-[4/5] w-full overflow-hidden bg-ui-bg-subtle rounded-xl border border-ui-border-base shadow-sm cursor-zoom-in"
       >
+        {/* Minimal, elegant expand button */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setIsZoomOpen(true)
+          }}
+          aria-label="Expand image"
+          className="absolute top-3 right-3 z-10 p-2 rounded-full bg-white/90 hover:bg-white text-neutral-700 hover:text-black shadow-sm border border-neutral-200/80 backdrop-blur-sm transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer"
+        >
+          <MagnifyingGlass className="w-4 h-4 text-neutral-800" />
+        </button>
+
         {activeImage.url && (
           <Image
             src={activeImage.url}
@@ -69,6 +86,13 @@ const ImageGallery = ({ images }: ImageGalleryProps) => {
           ))}
         </div>
       )}
+
+      <ImageZoomModal
+        isOpen={isZoomOpen}
+        onClose={() => setIsZoomOpen(false)}
+        images={images}
+        initialIndex={selectedIdx}
+      />
     </div>
   )
 }
