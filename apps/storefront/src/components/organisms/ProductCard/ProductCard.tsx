@@ -11,9 +11,11 @@ import { Product } from "@/types/product"
 export const ProductCard = ({
   product,
   className,
+  priority = false,
 }: {
   product: HttpTypes.StoreProduct | Product,
   className?: string
+  priority?: boolean
 }) => {
   if (!product) {
     return null
@@ -42,24 +44,25 @@ export const ProductCard = ({
           <div className="overflow-hidden rounded-sm w-full h-full flex justify-center align-center ">
             {product.thumbnail ? (
               <Image
-                priority
-                fetchPriority="high"
+                priority={priority}
+                loading={priority ? "eager" : "lazy"}
+                {...(priority ? { fetchPriority: "high" } : {})}
                 src={decodeURIComponent(product.thumbnail)}
                 alt={`${productName} image`}
-                width={100}
-                height={100}
+                width={300}
+                height={300}
                 sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
                 className="object-contain aspect-square w-full object-center h-full lg:group-hover:-mt-14 transition-all duration-300 rounded-xs"
                 data-testid="product-card-image"
               />
             ) : (
               <Image
-                priority
-                fetchPriority="high"
+                priority={priority}
+                loading={priority ? "eager" : "lazy"}
                 src="/images/placeholder.svg"
                 alt={`${productName} image placeholder`}
-                width={100}
-                height={100}
+                width={300}
+                height={300}
                 sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
                 data-testid="product-card-placeholder-image"
               />

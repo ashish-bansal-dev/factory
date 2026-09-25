@@ -1,6 +1,7 @@
-import { ArrowDownTray } from "@medusajs/icons";
+import { ArrowDownTray, Spinner } from "@medusajs/icons";
 import { Text, clx } from "@medusajs/ui";
 import { ChangeEvent, DragEvent, useRef, useState } from "react";
+import { compressImage } from "../../../utils/image-compression";
 
 export interface FileType {
   id: string;
@@ -28,10 +29,12 @@ export const FileUpload = ({
   uploadedImage = "",
 }: FileUploadProps) => {
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLButtonElement>(null);
 
   const handleOpenFileSelector = () => {
+    if (isProcessing) return;
     inputRef.current?.click();
   };
 
@@ -61,24 +64,44 @@ export const FileUpload = ({
     setIsDragOver(false);
   };
 
-  const handleUploaded = (files: FileList | null) => {
+  const handleUploaded = async (files: FileList | null) => {
     if (!files) {
       return;
     }
 
-    const fileList = Array.from(files);
-    const fileObj = fileList.map((file) => {
-      const id = Math.random().toString(36).substring(7);
+    setIsProcessing(true);
+    try {
+      const fileList = Array.from(files);
+      const processedFiles = await Promise.all(
+        fileList.map((file) => compressImage(file))
+      );
 
-      const previewUrl = URL.createObjectURL(file);
-      return {
-        id: id,
-        url: previewUrl,
-        file,
-      };
-    });
+      const fileObj = processedFiles.map((file) => {
+        const id = Math.random().toString(36).substring(7);
+        const previewUrl = URL.createObjectURL(file);
+        return {
+          id,
+          url: previewUrl,
+          file,
+        };
+      });
 
-    onUploaded(fileObj);
+      onUploaded(fileObj);
+    } catch {
+      const fileList = Array.from(files);
+      const fileObj = fileList.map((file) => {
+        const id = Math.random().toString(36).substring(7);
+        const previewUrl = URL.createObjectURL(file);
+        return {
+          id,
+          url: previewUrl,
+          file,
+        };
+      });
+      onUploaded(fileObj);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleDrop = (event: DragEvent) => {
@@ -87,7 +110,9 @@ export const FileUpload = ({
 
     setIsDragOver(false);
 
-    handleUploaded(event.dataTransfer?.files);
+    if (!isProcessing) {
+      handleUploaded(event.dataTransfer?.files);
+    }
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -99,6 +124,7 @@ export const FileUpload = ({
       <button
         ref={dropZoneRef}
         type="button"
+        disabled={isProcessing}
         onClick={handleOpenFileSelector}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
@@ -111,10 +137,16 @@ export const FileUpload = ({
           {
             "!border-ui-border-error": hasError,
             "!border-ui-border-interactive": isDragOver,
+            "opacity-75 cursor-wait": isProcessing,
           },
         )}
       >
-        {uploadedImage ? (
+        {isProcessing ? (
+          <div className="text-ui-fg-subtle flex items-center gap-x-2">
+            <Spinner className="animate-spin" />
+            <Text>Optimizing images...</Text>
+          </div>
+        ) : uploadedImage ? (
           <div>
             <img src={uploadedImage} alt="" className="w-32 h-32 rounded-md" />
           </div>

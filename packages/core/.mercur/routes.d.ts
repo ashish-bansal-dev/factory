@@ -960,7 +960,9 @@ export type Routes = {
             };
         };
         stores: typeof import("../src/api/vendor/stores/route");
-        uploads: typeof import("../src/api/vendor/uploads/route");
+        uploads: typeof import("../src/api/vendor/uploads/route") & {
+            presignedUrls: typeof import("../src/api/vendor/uploads/presigned-urls/route");
+        };
         offerConditions: typeof import("../src/api/vendor/offer-conditions/route") & {
             $id: typeof import("../src/api/vendor/offer-conditions/[id]/route");
         };
