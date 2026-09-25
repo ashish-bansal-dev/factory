@@ -8,6 +8,7 @@ export * from "./collections";
 export * from "./commissions";
 export * from "./currencies";
 export * from "./customer-groups";
+export * from "./domains";
 export * from "./customers";
 export * from "./fulfillment";
 export * from "./fulfillment-providers";

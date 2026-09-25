@@ -12,6 +12,7 @@ import {
   useAdminUpdateSellerDomain,
   useAdminVerifySellerDomain,
 } from "../../../../hooks/api/domains"
+import { useUpdateSeller } from "../../../../hooks/api/sellers"
 import { sdk } from "../../../../lib/client"
 
 interface StoreDomainSectionProps {
@@ -28,13 +29,25 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
   const { mutateAsync: checkDomainDns, isPending: isCheckingDns } = useAdminCheckSellerDomainDns(seller.id)
   const { mutateAsync: verifyDomain, isPending: isVerifying } = useAdminVerifySellerDomain(seller.id)
   const { mutateAsync: deleteDomain, isPending: isDeleting } = useAdminDeleteSellerDomain(seller.id)
+  const { mutateAsync: updateSeller, isPending: isUpdatingSeller } = useUpdateSeller(seller.id)
 
   const [retailInput, setRetailInput] = useState("")
   const [wholesaleInput, setWholesaleInput] = useState("")
   const [editingDomainId, setEditingDomainId] = useState<string | null>(null)
   const [editingDomainInput, setEditingDomainInput] = useState("")
+  const [editingSubdomainChannel, setEditingSubdomainChannel] = useState<"retail" | "wholesale" | null>(null)
+  const [subdomainInput, setSubdomainInput] = useState("")
   const [activeActionDomainId, setActiveActionDomainId] = useState<string | null>(null)
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false)
+
+  const normalizeDomain = (rawDomain: string): string => {
+    return rawDomain
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//i, "")
+      .split("/")[0]
+      .split(":")[0]
+  }
 
   const domainList = (domains ?? []) as DomainMappingDTO[]
   const retailCustomDomain = domainList.find(
@@ -76,9 +89,60 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
     toast.success("Copied to clipboard!")
   }
 
+  const handleSaveSubdomain = async () => {
+    const cleanHandle = subdomainInput
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\.(threadbuy|factorytribe)\..*$/, "")
+      .replace(/[^a-z0-9_-]/g, "")
+
+    if (!cleanHandle) {
+      toast.error("Please enter a valid subdomain handle.")
+      return
+    }
+
+    if (cleanHandle === seller.handle) {
+      setEditingSubdomainChannel(null)
+      setSubdomainInput("")
+      return
+    }
+
+    const payload: {
+      handle: string
+      metadata?: Record<string, unknown>
+    } = { handle: cleanHandle }
+
+    if (domainSettings.subdomain_request?.status === "pending") {
+      payload.metadata = {
+        ...currentMetadata,
+        domain_settings: {
+          ...domainSettings,
+          subdomain: cleanHandle,
+          subdomain_request: {
+            ...domainSettings.subdomain_request,
+            status: "approved",
+            approved_at: new Date().toISOString(),
+          },
+        },
+      }
+    }
+
+    try {
+      await updateSeller(payload)
+      toast.success("Platform subdomain updated successfully!")
+      setEditingSubdomainChannel(null)
+      setSubdomainInput("")
+      queryClient.invalidateQueries({ queryKey: [["seller", seller.id]] })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update platform subdomain."
+      toast.error(message)
+    }
+  }
+
   const handleAddDomain = async (channel: "retail" | "wholesale") => {
     const rawInput = channel === "retail" ? retailInput : wholesaleInput
-    const cleanDomain = rawInput.trim().toLowerCase()
+    const cleanDomain = normalizeDomain(rawInput)
     if (!cleanDomain) {
       toast.error("Please enter a domain name.")
       return
@@ -103,7 +167,7 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
   }
 
   const handleSaveDomainEdit = async (domain: DomainMappingDTO) => {
-    const cleanDomain = editingDomainInput.trim().toLowerCase()
+    const cleanDomain = normalizeDomain(editingDomainInput)
     if (!cleanDomain) {
       toast.error("Please enter a domain name.")
       return
@@ -335,30 +399,97 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
           </div>
 
           {/* Platform Subdomain */}
-          <div className="flex items-center justify-between gap-2 p-3 bg-ui-bg-subtle rounded-lg border border-ui-border-base">
-            <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-ui-fg-muted">Active Platform Subdomain</span>
-              <span className="font-mono text-xs text-ui-fg-base mt-0.5">
-                {retailSubdomain}
-              </span>
+          <div className="flex flex-col gap-2 p-3 bg-ui-bg-subtle rounded-lg border border-ui-border-base">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col">
+                <span className="text-[11px] font-medium text-ui-fg-muted">Active Platform Subdomain</span>
+                {editingSubdomainChannel !== "retail" && (
+                  <span className="font-mono text-xs text-ui-fg-base mt-0.5">
+                    {retailSubdomain}
+                  </span>
+                )}
+              </div>
+              {editingSubdomainChannel !== "retail" && (
+                <div className="flex items-center gap-x-2 shrink-0">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => {
+                      setEditingSubdomainChannel("retail")
+                      setSubdomainInput(seller.handle || "")
+                    }}
+                  >
+                    <PencilSquare className="w-3.5 h-3.5 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => handleCopy(`http://${retailSubdomain}`)}
+                  >
+                    Copy URL
+                  </Button>
+                  <a
+                    href={`http://${retailSubdomain}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-ui-fg-interactive font-medium hover:underline px-2"
+                  >
+                    Visit <ArrowUpRightOnBox className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-x-2 shrink-0">
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={() => handleCopy(`http://${retailSubdomain}`)}
-              >
-                Copy URL
-              </Button>
-              <a
-                href={`http://${retailSubdomain}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-ui-fg-interactive font-medium hover:underline px-2"
-              >
-                Visit <ArrowUpRightOnBox className="w-3 h-3" />
-              </a>
-            </div>
+
+            {editingSubdomainChannel === "retail" && (
+              <div className="flex flex-col gap-y-2 mt-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-1">
+                    <Input
+                      size="small"
+                      value={subdomainInput}
+                      onChange={(e) => setSubdomainInput(e.target.value)}
+                      placeholder="e.g. brand"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          handleSaveSubdomain()
+                        } else if (e.key === "Escape") {
+                          e.preventDefault()
+                          setEditingSubdomainChannel(null)
+                          setSubdomainInput("")
+                        }
+                      }}
+                    />
+                    <span className="text-xs font-mono text-ui-fg-muted ml-2 shrink-0">
+                      .{retailBaseDomain}
+                    </span>
+                  </div>
+                  <Button
+                    size="small"
+                    variant="primary"
+                    isLoading={isUpdatingSeller}
+                    onClick={() => handleSaveSubdomain()}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="secondary"
+                    disabled={isUpdatingSeller}
+                    onClick={() => {
+                      setEditingSubdomainChannel(null)
+                      setSubdomainInput("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  Updating platform subdomain changes the store handle for both retail and wholesale channels.
+                </Text>
+              </div>
+            )}
           </div>
 
           {/* Custom Retail Domain */}
@@ -462,7 +593,7 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
                   </div>
                 )}
 
-                {retailCustomDomain.verification_token && (
+                {retailCustomDomain.verification_token ? (
                   <div className="p-2.5 bg-ui-bg-subtle rounded border border-ui-border-base text-xs space-y-1">
                     <div className="text-ui-fg-muted font-medium">Expected DNS Records:</div>
                     <div className="font-mono text-[11px]">CNAME &rarr; {retailBaseDomain}</div>
@@ -470,7 +601,7 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
                       TXT &rarr; threadbuy-verify={retailCustomDomain.verification_token}
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -512,30 +643,97 @@ export const StoreDomainSection = ({ seller }: StoreDomainSectionProps) => {
           </div>
 
           {/* Platform Subdomain */}
-          <div className="flex items-center justify-between gap-2 p-3 bg-ui-bg-subtle rounded-lg border border-ui-border-base">
-            <div className="flex flex-col">
-              <span className="text-[11px] font-medium text-ui-fg-muted">Active Platform Subdomain</span>
-              <span className="font-mono text-xs text-ui-fg-base mt-0.5">
-                {wholesaleSubdomain}
-              </span>
+          <div className="flex flex-col gap-2 p-3 bg-ui-bg-subtle rounded-lg border border-ui-border-base">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col">
+                <span className="text-[11px] font-medium text-ui-fg-muted">Active Platform Subdomain</span>
+                {editingSubdomainChannel !== "wholesale" && (
+                  <span className="font-mono text-xs text-ui-fg-base mt-0.5">
+                    {wholesaleSubdomain}
+                  </span>
+                )}
+              </div>
+              {editingSubdomainChannel !== "wholesale" && (
+                <div className="flex items-center gap-x-2 shrink-0">
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => {
+                      setEditingSubdomainChannel("wholesale")
+                      setSubdomainInput(seller.handle || "")
+                    }}
+                  >
+                    <PencilSquare className="w-3.5 h-3.5 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    onClick={() => handleCopy(`http://${wholesaleSubdomain}`)}
+                  >
+                    Copy URL
+                  </Button>
+                  <a
+                    href={`http://${wholesaleSubdomain}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-ui-fg-interactive font-medium hover:underline px-2"
+                  >
+                    Visit <ArrowUpRightOnBox className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-x-2 shrink-0">
-              <Button
-                variant="secondary"
-                size="small"
-                onClick={() => handleCopy(`http://${wholesaleSubdomain}`)}
-              >
-                Copy URL
-              </Button>
-              <a
-                href={`http://${wholesaleSubdomain}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-ui-fg-interactive font-medium hover:underline px-2"
-              >
-                Visit <ArrowUpRightOnBox className="w-3 h-3" />
-              </a>
-            </div>
+
+            {editingSubdomainChannel === "wholesale" && (
+              <div className="flex flex-col gap-y-2 mt-1">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center flex-1">
+                    <Input
+                      size="small"
+                      value={subdomainInput}
+                      onChange={(e) => setSubdomainInput(e.target.value)}
+                      placeholder="e.g. brand"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          handleSaveSubdomain()
+                        } else if (e.key === "Escape") {
+                          e.preventDefault()
+                          setEditingSubdomainChannel(null)
+                          setSubdomainInput("")
+                        }
+                      }}
+                    />
+                    <span className="text-xs font-mono text-ui-fg-muted ml-2 shrink-0">
+                      .{wholesaleBaseDomain}
+                    </span>
+                  </div>
+                  <Button
+                    size="small"
+                    variant="primary"
+                    isLoading={isUpdatingSeller}
+                    onClick={() => handleSaveSubdomain()}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="secondary"
+                    disabled={isUpdatingSeller}
+                    onClick={() => {
+                      setEditingSubdomainChannel(null)
+                      setSubdomainInput("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  Updating platform subdomain changes the store handle for both retail and wholesale channels.
+                </Text>
+              </div>
+            )}
           </div>
 
           {/* Custom Wholesale Domain */}
