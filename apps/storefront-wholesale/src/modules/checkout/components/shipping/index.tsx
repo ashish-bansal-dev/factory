@@ -81,11 +81,17 @@ const Shipping: React.FC<ShippingProps> = ({
     }
   }
 
-  const _shippingMethods = availableShippingMethods?.filter(
+  const safeMethods = Array.isArray(availableShippingMethods)
+    ? availableShippingMethods
+    : Array.isArray((availableShippingMethods as any)?.shipping_options)
+    ? (availableShippingMethods as any).shipping_options
+    : []
+
+  const _shippingMethods = safeMethods.filter(
     (sm) => (sm as ShippingOptionWithServiceZone).service_zone?.fulfillment_set?.type !== "pickup"
   )
 
-  const _pickupMethods = availableShippingMethods?.filter(
+  const _pickupMethods = safeMethods.filter(
     (sm) => (sm as ShippingOptionWithServiceZone).service_zone?.fulfillment_set?.type === "pickup"
   )
 

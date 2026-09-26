@@ -47,7 +47,7 @@ export default function Summary({ cart }: SummaryProps) {
       `Hello! I would like to request a wholesale quote for the following items:\n\n${itemsList}\n\nEstimated Total: ${totalStr}\n\nPlease share your wholesale invoice, payment terms, and delivery timeline.`
     )
 
-    const targetPhone = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919999999999"
+    const targetPhone = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919782077711"
     window.open(`https://wa.me/${targetPhone}?text=${message}`, "_blank")
   }
 

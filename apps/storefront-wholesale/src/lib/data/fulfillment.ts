@@ -26,9 +26,17 @@ export const listCartShippingMethods = async (cartId: string) => {
         cache: "force-cache",
       }
     )
-    .then(({ shipping_options }) => shipping_options)
+    .then((res: any) => {
+      if (Array.isArray(res?.shipping_options)) {
+        return res.shipping_options
+      }
+      if (Array.isArray(res)) {
+        return res
+      }
+      return []
+    })
     .catch(() => {
-      return null
+      return []
     })
 }
 

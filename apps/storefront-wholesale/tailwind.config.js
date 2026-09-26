@@ -87,6 +87,7 @@ module.exports = {
       },
       fontFamily: {
         serif: [
+          "var(--font-serif)",
           "Playfair Display",
           "Georgia",
           "Cambria",
@@ -94,14 +95,13 @@ module.exports = {
           "serif",
         ],
         sans: [
+          "var(--font-sans)",
           "Plus Jakarta Sans",
           "Inter",
           "-apple-system",
           "BlinkMacSystemFont",
           "Segoe UI",
           "Roboto",
-          "Helvetica Neue",
-          "Ubuntu",
           "sans-serif",
         ],
       },

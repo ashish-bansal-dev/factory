@@ -33,7 +33,7 @@ export default function ItemsTemplate({ cart }: ItemsTemplateProps) {
       const seller = (item.variant?.product as any)?.seller || (item as any)?.seller
       const vendorId = seller?.id || (item.metadata as any)?.seller_id || "direct-factory"
       const vendorName = seller?.name || (item.metadata as any)?.seller_name || "FactoryTribe Direct Brand"
-      const mov = Number(seller?.metadata?.minimum_order_value) || 15000 // default $150.00 in cents
+      const mov = Number(seller?.metadata?.minimum_order_value) || Number(seller?.metadata?.mov) || 0
 
       const itemTotal = Number(item.total ?? (item.unit_price * item.quantity))
 
@@ -109,13 +109,15 @@ export default function ItemsTemplate({ cart }: ItemsTemplateProps) {
               </div>
             </div>
 
-            {/* Vendor Minimum Order Value Progress Bar */}
-            <VendorMOVProgressBar
-              vendorName={group.vendorName}
-              currentTotal={group.subtotal}
-              minimumOrderValue={group.minimumOrderValue}
-              currencyCode={cart?.currency_code || "USD"}
-            />
+            {/* Vendor Minimum Order Value Progress Bar (rendered only if configured in backend) */}
+            {group.minimumOrderValue > 0 && (
+              <VendorMOVProgressBar
+                vendorName={group.vendorName}
+                currentTotal={group.subtotal}
+                minimumOrderValue={group.minimumOrderValue}
+                currencyCode={cart?.currency_code || "INR"}
+              />
+            )}
 
             {/* Items Table for this vendor */}
             <div className="overflow-x-auto -mx-2 sm:mx-0">

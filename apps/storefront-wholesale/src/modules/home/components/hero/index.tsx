@@ -49,7 +49,7 @@ export default function Hero() {
               Minimum Orders
             </span>
             <span className="font-serif text-xl sm:text-2xl font-bold text-charcoal-900">
-              From $100
+              From ₹1000
             </span>
             <span className="text-xs text-stone-500 mt-0.5">
               Low barrier opening orders

@@ -1,6 +1,6 @@
 "use client"
 
-import { addToCart, addMultipleToCart } from "@lib/data/cart"
+import { addMultipleToCart } from "@lib/data/cart"
 import { getPricesForVariant } from "@lib/util/get-product-price"
 import { convertToLocale } from "@lib/util/money"
 import { HttpTypes } from "@medusajs/types"
@@ -12,14 +12,12 @@ interface QuickVariantGridProps {
   product: HttpTypes.StoreProduct
   countryCode: string
   disabled?: boolean
-  onOpenInquiry?: () => void
 }
 
 export default function QuickVariantGrid({
   product,
   countryCode,
   disabled = false,
-  onOpenInquiry,
 }: QuickVariantGridProps) {
   const sortedVariants = useMemo(() => {
     if (!product.variants || product.variants.length === 0) return []
@@ -32,9 +30,57 @@ export default function QuickVariantGrid({
   }, [product.variants])
 
   const [quantities, setQuantities] = useState<Record<string, number>>({})
-  const [addingVariantId, setAddingVariantId] = useState<string | null>(null)
   const [isAddingAll, setIsAddingAll] = useState(false)
   const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" } | null>(null)
+
+  const getVariantAttributes = (variant: HttpTypes.StoreProductVariant) => {
+    let size = ""
+    let color = ""
+
+    const optionsMap = (variant.options || []).reduce((acc: Record<string, string>, opt: any) => {
+      const title = (opt.option?.title || "").toLowerCase()
+      if (title.includes("size")) size = opt.value
+      if (title.includes("color") || title.includes("colour")) color = opt.value
+      acc[opt.option_id] = opt.value
+      return acc
+    }, {})
+
+    if (!size || !color) {
+      for (const prodOpt of product.options || []) {
+        const optTitle = (prodOpt.title || "").toLowerCase()
+        const val = optionsMap[prodOpt.id]
+        if (val) {
+          if (!size && optTitle.includes("size")) size = val
+          if (!color && (optTitle.includes("color") || optTitle.includes("colour"))) color = val
+        }
+      }
+    }
+
+    if (!size && !color && variant.title && variant.title !== "Default" && variant.title !== "Default Variant") {
+      const parts = variant.title.split("/").map((s) => s.trim())
+      if (parts.length >= 2) {
+        const sizeRegex = /^(xs|s|m|l|xl|xxl|2xl|3xl|4xl|one size|free size|\d{2,3})$/i
+        if (sizeRegex.test(parts[0])) {
+          size = parts[0]
+          color = parts.slice(1).join(" / ")
+        } else if (sizeRegex.test(parts[1])) {
+          size = parts[1]
+          color = parts[0]
+        } else {
+          color = parts[0]
+          size = parts.slice(1).join(" / ")
+        }
+      } else if (parts.length === 1) {
+        size = parts[0]
+        color = "Standard"
+      }
+    }
+
+    if (!size) size = variant.title && variant.title !== "Default" ? variant.title : "Standard"
+    if (!color) color = "Standard"
+
+    return { size, color }
+  }
 
   const handleQuantityInputChange = (
     variantId: string,
@@ -81,80 +127,26 @@ export default function QuickVariantGrid({
 
   const { addItem: addCuratedQuoteItem } = useCuratedQuote()
 
-  const handleAddSingle = async (
-    variant: HttpTypes.StoreProductVariant,
-    stepSize: number
-  ) => {
-    const currentQty = quantities[variant.id] || 0
-    const qty = currentQty > 0 ? currentQty : stepSize
-    const offerId = (variant as { offer_id?: string | null }).offer_id ?? undefined
-    const hasOffer = Boolean(offerId)
-
-    setAddingVariantId(variant.id)
-    setFeedback(null)
-
-    if (!hasOffer) {
-      addCuratedQuoteItem({
-        productId: product.id,
-        productTitle: product.title,
-        productHandle: product.handle,
-        thumbnail: product.thumbnail,
-        variantId: variant.id,
-        variantTitle: variant.title || "Default Variant",
-        sku: variant.sku || null,
-        quantity: qty,
-      })
-      setQuantities((prev) => ({ ...prev, [variant.id]: 0 }))
-      setFeedback({
-        message: `Added ${qty} units (${variant.title || "variant"}) to Curated Quote Basket`,
-        type: "success",
-      })
-      setAddingVariantId(null)
-      setTimeout(() => setFeedback(null), 3000)
-      return
-    }
-
-    try {
-      await addToCart({
-        variantId: variant.id,
-        quantity: qty,
-        countryCode,
-        offerId,
-      })
-      setQuantities((prev) => ({ ...prev, [variant.id]: 0 }))
-      setFeedback({
-        message: `Added ${qty} units (${variant.title || "variant"}) to wholesale cart`,
-        type: "success",
-      })
-      setTimeout(() => setFeedback(null), 3000)
-    } catch (err: any) {
-      setFeedback({
-        message: err?.message || "Failed to add to cart",
-        type: "error",
-      })
-    } finally {
-      setAddingVariantId(null)
-    }
-  }
-
   const handleAddAll = async () => {
     const selected = sortedVariants.filter((v) => (quantities[v.id] || 0) > 0)
     if (selected.length === 0) return
 
-    const withOffer = selected.filter((v) =>
-      Boolean((v as { offer_id?: string | null }).offer_id)
-    )
-    const withoutOffer = selected.filter(
-      (v) => !(v as { offer_id?: string | null }).offer_id
-    )
+    const canAddToCart = (v: HttpTypes.StoreProductVariant) => {
+      const hasOffer = Boolean((v as { offer_id?: string | null }).offer_id)
+      const inStock = v.allow_backorder || (v.inventory_quantity ?? 0) > 0
+      return hasOffer && inStock
+    }
+
+    const itemsForCart = selected.filter(canAddToCart)
+    const itemsForQuote = selected.filter((v) => !canAddToCart(v))
 
     setIsAddingAll(true)
     setFeedback(null)
 
     try {
-      if (withOffer.length > 0) {
+      if (itemsForCart.length > 0) {
         await addMultipleToCart(
-          withOffer.map((v) => ({
+          itemsForCart.map((v) => ({
             variantId: v.id,
             offerId: (v as { offer_id?: string | null }).offer_id ?? undefined,
             quantity: quantities[v.id],
@@ -163,8 +155,8 @@ export default function QuickVariantGrid({
         )
       }
 
-      if (withoutOffer.length > 0) {
-        withoutOffer.forEach((v) => {
+      if (itemsForQuote.length > 0) {
+        itemsForQuote.forEach((v) => {
           addCuratedQuoteItem({
             productId: product.id,
             productTitle: product.title,
@@ -180,21 +172,24 @@ export default function QuickVariantGrid({
 
       const totalUnits = selected.reduce((sum, v) => sum + quantities[v.id], 0)
       const message =
-        withoutOffer.length > 0 && withOffer.length > 0
-          ? `Added ${withOffer.length} variant(s) to Cart and ${withoutOffer.length} to Quote Basket`
-          : withoutOffer.length > 0
-          ? `Added ${totalUnits} pcs across ${withoutOffer.length} variant(s) to Quote Basket`
-          : `Added ${totalUnits} pcs across ${withOffer.length} variant(s) to wholesale cart`
+        itemsForQuote.length > 0 && itemsForCart.length > 0
+          ? `Added ${itemsForCart.length} variant(s) to Cart and ${itemsForQuote.length} to Quote Basket`
+          : itemsForQuote.length > 0
+          ? `Added ${totalUnits} pcs across ${itemsForQuote.length} variant(s) to Quote Basket`
+          : `Added ${totalUnits} pcs to wholesale cart`
 
       setFeedback({
         message,
         type: "success",
       })
       setQuantities({})
+      if (itemsForCart.length > 0 && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("open-cart-drawer"))
+      }
       setTimeout(() => setFeedback(null), 4000)
     } catch (err: any) {
       setFeedback({
-        message: err?.message || "Failed to add items",
+        message: err?.message || "Failed to process items",
         type: "error",
       })
     } finally {
@@ -237,12 +232,6 @@ export default function QuickVariantGrid({
     return { sum, currency }
   }, [sortedVariants, quantities])
 
-  const anyVariantHasOffer = useMemo(() => {
-    return sortedVariants.some((v) =>
-      Boolean((v as { offer_id?: string | null })?.offer_id)
-    )
-  }, [sortedVariants])
-
   if (sortedVariants.length === 0) {
     return null
   }
@@ -253,25 +242,16 @@ export default function QuickVariantGrid({
       <div className="flex items-center justify-between pb-2 border-b border-stone-200">
         <div>
           <h2 className="font-serif text-lg font-bold text-charcoal-900">
-            Wholesale Packs & Size Curve
+            Wholesale Packs & Size Matrix
           </h2>
           <p className="text-xs text-stone-500">
-            Select pack quantities for each size/color variant
+            Select pack quantities for each Color & Size
           </p>
         </div>
         <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sand-100 text-charcoal-900 border border-stone-200">
           {sortedVariants.length} {sortedVariants.length === 1 ? "Option" : "Options"}
         </span>
       </div>
-
-      {!anyVariantHasOffer && (
-        <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-xs text-amber-900">
-          <span className="font-semibold block mb-0.5">Custom Manufacturing / Sample Orders</span>
-          <p className="text-[11px] text-amber-800">
-            No live catalog inventory is listed for instant checkout. You can place a sample request or inquire directly for bulk production pricing.
-          </p>
-        </div>
-      )}
 
       {feedback && (
         <div
@@ -286,13 +266,12 @@ export default function QuickVariantGrid({
         </div>
       )}
 
-      {/* MOBILE VIEW: Touch-friendly Card List (Traversal-friendly for phone screens) */}
+      {/* MOBILE-FIRST VIEW: Traversal-friendly Compact Variant Cards */}
       <div className="flex flex-col gap-2.5 sm:hidden">
         {sortedVariants.map((variant) => {
+          const { size, color } = getVariantAttributes(variant)
           const prices = getPricesForVariant(variant)
-          const inStock = variant.allow_backorder || (variant.inventory_quantity ?? 0) > 0
           const qty = quantities[variant.id] ?? 0
-          const isRowAdding = addingVariantId === variant.id
           const bundleSize =
             Number((variant as any)?.bundle_size) ||
             Number((variant as any)?.calculated_price?.bundle_size) ||
@@ -306,55 +285,47 @@ export default function QuickVariantGrid({
               ? Math.round(((mrpNum - unitPriceNum) / mrpNum) * 100)
               : 0
 
-          const hasOffer = Boolean((variant as { offer_id?: string | null })?.offer_id)
-
           return (
             <div
               key={variant.id}
               className={clx(
-                "p-3.5 rounded-xl border transition-all duration-150 bg-white",
+                "p-3 rounded-xl border transition-all duration-150 bg-white",
                 qty > 0
-                  ? "border-terracotta-600 bg-terracotta-50/20 shadow-sm"
+                  ? "border-terracotta-600 bg-terracotta-50/20 shadow-xs ring-1 ring-terracotta-600/20"
                   : "border-stone-200 hover:border-stone-300"
               )}
             >
-              {/* Row 1: Title, SKU, In-Stock */}
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div>
-                  <h3 className="font-semibold text-charcoal-900 text-sm">
-                    {variant.title || "Default"}
-                  </h3>
-                  {variant.sku && (
-                    <span className="font-mono text-[10px] text-stone-500">
-                      SKU: {variant.sku}
-                    </span>
-                  )}
+              {/* Row 1: Distinct Color & Size Badges + Pack Info (Stock Removed) */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Distinct Color Column */}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-stone-100 text-charcoal-900 border border-stone-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-stone-500 inline-block" />
+                    {color}
+                  </span>
+
+                  {/* Distinct Size Column */}
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-sand-200/80 text-charcoal-900 border border-sand-300">
+                    Size: {size}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-semibold text-charcoal-800 bg-sand-100 border border-stone-200 px-2 py-0.5 rounded-full">
+
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-semibold text-charcoal-700 bg-sand-100 px-2 py-0.5 rounded-full border border-stone-200">
                     {bundleSize} pcs/pack
                   </span>
-                  {!inStock ? (
-                    <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full">
-                      Out
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-medium text-forest-700 bg-forest-50 px-2 py-0.5 rounded-full">
-                      In Stock
-                    </span>
-                  )}
                 </div>
               </div>
 
               {/* Row 2: Price & Margin */}
               <div className="flex items-baseline justify-between py-1.5 border-t border-stone-100 text-xs">
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-baseline gap-1.5">
                   <span className="font-bold text-sm text-charcoal-900">
                     {prices ? prices.calculated_price : "Quote"}
                   </span>
                   <span className="text-[11px] text-stone-500">/ pc</span>
                   {prices?.mrp && (
-                    <span className="text-[11px] line-through text-stone-400">
+                    <span className="text-[11px] line-through text-stone-400 ml-1">
                       MRP {prices.mrp}
                     </span>
                   )}
@@ -366,14 +337,24 @@ export default function QuickVariantGrid({
                 )}
               </div>
 
-              {/* Row 3: Touch Stepper & Add */}
+              {/* Row 3: Auto-Selecting Quantity Stepper (Active for all items to enable quote request) */}
               <div className="flex items-center justify-between pt-2 border-t border-stone-100">
+                <span className="text-[11px] text-stone-500 font-medium">
+                  {qty > 0 ? (
+                    <strong className="text-terracotta-700 font-semibold">
+                      {Math.round(qty / bundleSize)} pk ({qty} pcs) selected
+                    </strong>
+                  ) : (
+                    "Quantity to order:"
+                  )}
+                </span>
+
                 <div className="flex items-center border border-stone-300 rounded-lg bg-white overflow-hidden shadow-xs">
                   <button
                     type="button"
                     onClick={() => handleStep(variant.id, -bundleSize, bundleSize)}
-                    disabled={qty <= 0 || disabled || !inStock}
-                    className="w-9 h-9 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-lg font-bold select-none"
+                    disabled={qty <= 0 || disabled}
+                    className="w-10 h-10 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-lg font-bold select-none"
                     aria-label="Decrease quantity"
                   >
                     −
@@ -384,35 +365,32 @@ export default function QuickVariantGrid({
                   <button
                     type="button"
                     onClick={() => handleStep(variant.id, bundleSize, bundleSize)}
-                    disabled={disabled || !inStock}
-                    className="w-9 h-9 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-lg font-bold select-none"
+                    disabled={disabled}
+                    className="w-10 h-10 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-lg font-bold select-none"
                     aria-label="Increase quantity"
                   >
                     +
                   </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleAddSingle(variant, bundleSize)}
-                  disabled={disabled || !inStock || isRowAdding || isAddingAll}
-                  className="h-9 px-4 rounded-lg bg-charcoal-900 text-white text-xs font-semibold hover:bg-stone-800 disabled:opacity-40 transition shadow-xs"
-                >
-                  {isRowAdding ? "..." : !hasOffer ? "+ Quote" : "+ Add Pack"}
-                </button>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* DESKTOP VIEW: Structured Tabular Grid */}
+      {/* DESKTOP VIEW: Structured Tabular Grid with Distinct Color & Size Columns (Stock Removed) */}
       <div className="hidden sm:block overflow-x-auto border border-stone-200 rounded-xl bg-white shadow-sm">
         <table className="w-full text-left text-xs divide-y divide-stone-200">
           <thead className="bg-sand-100/80 text-stone-600 uppercase text-[10px] tracking-wider font-semibold">
             <tr>
               <th scope="col" className="py-3 px-3.5">
-                Variant & SKU
+                Color
+              </th>
+              <th scope="col" className="py-3 px-3.5">
+                Size
+              </th>
+              <th scope="col" className="py-3 px-3.5">
+                Pack & SKU
               </th>
               <th scope="col" className="py-3 px-3.5">
                 Retail MRP
@@ -420,20 +398,16 @@ export default function QuickVariantGrid({
               <th scope="col" className="py-3 px-3.5">
                 Wholesale Price
               </th>
-              <th scope="col" className="py-3 px-3.5 text-center min-w-[130px]">
+              <th scope="col" className="py-3 px-3.5 text-center min-w-[140px]">
                 Pack Quantity
-              </th>
-              <th scope="col" className="py-3 px-3.5 text-right">
-                Action
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100 bg-white">
             {sortedVariants.map((variant) => {
+              const { size, color } = getVariantAttributes(variant)
               const prices = getPricesForVariant(variant)
-              const inStock = variant.allow_backorder || (variant.inventory_quantity ?? 0) > 0
               const qty = quantities[variant.id] ?? 0
-              const isRowAdding = addingVariantId === variant.id
               const bundleSize =
                 Number((variant as any)?.bundle_size) ||
                 Number((variant as any)?.calculated_price?.bundle_size) ||
@@ -447,8 +421,6 @@ export default function QuickVariantGrid({
                   ? Math.round(((mrpNum - unitPriceNum) / mrpNum) * 100)
                   : 0
 
-              const hasOffer = Boolean((variant as { offer_id?: string | null })?.offer_id)
-
               return (
                 <tr
                   key={variant.id}
@@ -457,37 +429,35 @@ export default function QuickVariantGrid({
                     qty > 0 && "bg-terracotta-50/30"
                   )}
                 >
-                  <td className="py-3.5 px-3.5 align-middle">
-                    <div className="font-semibold text-charcoal-900 text-sm leading-snug">
-                      {variant.title || "Default"}
-                    </div>
+                  {/* Distinct Color Column */}
+                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-stone-100 text-charcoal-900 border border-stone-200">
+                      <span className="w-2 h-2 rounded-full bg-stone-500 inline-block" />
+                      {color}
+                    </span>
+                  </td>
+
+                  {/* Distinct Size Column */}
+                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-sand-200/80 text-charcoal-900 border border-sand-300">
+                      {size}
+                    </span>
+                  </td>
+
+                  {/* Pack & SKU Column */}
+                  <td className="py-3 px-3.5 align-middle">
+                    <span className="text-[11px] font-semibold text-charcoal-800 bg-sand-100 border border-stone-200 px-2 py-0.5 rounded-full inline-block">
+                      Pack of {bundleSize} pcs
+                    </span>
                     {variant.sku && (
-                      <span className="font-mono text-[10px] text-stone-500 block mt-0.5">
+                      <span className="font-mono text-[10px] text-stone-500 block mt-1">
                         SKU: {variant.sku}
                       </span>
                     )}
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                      <span className="text-[10px] font-semibold text-charcoal-800 bg-sand-100 border border-stone-200 px-2 py-0.5 rounded-full">
-                        Pack of {bundleSize} pcs
-                      </span>
-                      {!hasOffer ? (
-                        <span className="text-[10px] font-semibold text-stone-600 bg-stone-100 border border-stone-200 px-2 py-0.5 rounded-full">
-                          Quote on request
-                        </span>
-                      ) : !inStock ? (
-                        <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
-                          Out of stock
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-medium text-forest-700 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-forest-700 inline-block" />
-                          In stock
-                        </span>
-                      )}
-                    </div>
                   </td>
 
-                  <td className="py-3.5 px-3.5 align-middle whitespace-nowrap">
+                  {/* Retail MRP Column */}
+                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
                     {prices?.mrp ? (
                       <div className="flex flex-col">
                         <span className="text-stone-500 line-through font-medium text-xs">
@@ -504,7 +474,8 @@ export default function QuickVariantGrid({
                     )}
                   </td>
 
-                  <td className="py-3.5 px-3.5 align-middle whitespace-nowrap">
+                  {/* Wholesale Price Column */}
+                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
                     {prices ? (
                       <div className="flex flex-col">
                         <div className="flex items-baseline gap-1">
@@ -522,16 +493,17 @@ export default function QuickVariantGrid({
                         )}
                       </div>
                     ) : (
-                      <span className="text-stone-400 text-xs">—</span>
+                      <span className="text-stone-400 text-xs">Quote</span>
                     )}
                   </td>
 
-                  <td className="py-3.5 px-3.5 align-middle">
+                  {/* Pack Quantity Stepper (Enabled for all variants so zero-stock items can be quoted) */}
+                  <td className="py-3 px-3.5 align-middle">
                     <div className="flex items-center justify-center border border-stone-300 rounded-lg bg-white shadow-xs overflow-hidden w-28 mx-auto">
                       <button
                         type="button"
                         onClick={() => handleStep(variant.id, -bundleSize, bundleSize)}
-                        disabled={qty <= 0 || disabled || !inStock}
+                        disabled={qty <= 0 || disabled}
                         className="w-8 h-8 flex items-center justify-center text-charcoal-900 hover:bg-sand-50 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
                       >
                         −
@@ -546,13 +518,13 @@ export default function QuickVariantGrid({
                           handleQuantityInputChange(variant.id, e.target.value, bundleSize)
                         }
                         onBlur={() => handleBlur(variant.id, bundleSize)}
-                        disabled={disabled || !inStock}
+                        disabled={disabled}
                         className="w-12 text-center text-xs py-1 font-bold text-charcoal-900 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                       <button
                         type="button"
                         onClick={() => handleStep(variant.id, bundleSize, bundleSize)}
-                        disabled={disabled || !inStock}
+                        disabled={disabled}
                         className="w-8 h-8 flex items-center justify-center text-charcoal-900 hover:bg-sand-50 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
                       >
                         +
@@ -567,17 +539,6 @@ export default function QuickVariantGrid({
                         <span>0 packs</span>
                       )}
                     </div>
-                  </td>
-
-                  <td className="py-3.5 px-3.5 text-right align-middle whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => handleAddSingle(variant, bundleSize)}
-                      disabled={disabled || !inStock || isRowAdding || isAddingAll}
-                      className="h-8 px-3 rounded-full border border-stone-300 text-xs font-semibold text-charcoal-900 hover:bg-charcoal-900 hover:text-white transition shadow-xs"
-                    >
-                      {isRowAdding ? "..." : !hasOffer ? "+ Quote" : "+ Add"}
-                    </button>
                   </td>
                 </tr>
               )
@@ -605,34 +566,21 @@ export default function QuickVariantGrid({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleAddAll}
-            disabled={totalUnits === 0 || disabled || isAddingAll}
-            className="h-10 px-6 rounded-full bg-charcoal-900 text-white hover:bg-stone-800 disabled:opacity-40 text-xs font-semibold shadow-xs transition"
-          >
-            {isAddingAll ? "Adding..." : !anyVariantHasOffer
-              ? `Request Quote (${totalUnits} pcs)`
-              : `Add Selected to Cart (${totalUnits} pcs)`}
-          </button>
-          {onOpenInquiry && (
-            <button
-              type="button"
-              onClick={onOpenInquiry}
-              className="h-10 px-4 rounded-full border border-stone-300 bg-white text-xs font-semibold text-charcoal-900 hover:bg-sand-50 shadow-xs transition"
-            >
-              Direct Inquiry
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={handleAddAll}
+          disabled={totalUnits === 0 || disabled || isAddingAll}
+          className="h-10 px-6 rounded-full bg-charcoal-900 text-white hover:bg-stone-800 disabled:opacity-40 text-xs font-semibold shadow-xs transition"
+        >
+          {isAddingAll ? "Processing..." : `Add Selected to Order (${totalUnits} pcs)`}
+        </button>
       </div>
 
-      {/* MOBILE STICKY BOTTOM BAR (Always available when scrolling on phone) */}
+      {/* MOBILE STICKY BOTTOM BAR */}
       <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-3 sm:hidden shadow-lg flex items-center justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-[11px] text-stone-500 font-medium">
-            {totalUnits > 0 ? `${totalPacks} pk (${totalUnits} pcs)` : "Select packs"}
+            {totalUnits > 0 ? `${totalPacks} pk (${totalUnits} pcs)` : "Select packs above"}
           </span>
           <span className="font-bold text-sm text-charcoal-900">
             {totalUnits > 0 && totalEstimatedAmount.sum > 0
@@ -644,25 +592,14 @@ export default function QuickVariantGrid({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {onOpenInquiry && (
-            <button
-              type="button"
-              onClick={onOpenInquiry}
-              className="h-10 px-3.5 rounded-full border border-stone-300 bg-white text-xs font-medium text-charcoal-900 shadow-xs"
-            >
-              Inquire
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleAddAll}
-            disabled={totalUnits === 0 || disabled || isAddingAll}
-            className="h-10 px-5 rounded-full bg-charcoal-900 text-white text-xs font-semibold disabled:opacity-40 shadow-xs transition"
-          >
-            {isAddingAll ? "Adding..." : `Add to Cart (${totalUnits})`}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleAddAll}
+          disabled={totalUnits === 0 || disabled || isAddingAll}
+          className="h-10 px-6 rounded-full bg-charcoal-900 text-white text-xs font-semibold disabled:opacity-40 shadow-xs transition"
+        >
+          {isAddingAll ? "Adding..." : `Add (${totalUnits} pcs)`}
+        </button>
       </div>
     </div>
   )

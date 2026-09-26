@@ -26,6 +26,27 @@ browser. **Open risk**: the messaging block's panel SSE (`EventSource` + `withCr
 send a bearer header, so it falls back to polling until it gets a token-exchange flow.
 Uncommitted.
 
+## Session — FactoryTribe Wholesale Storefront Mobile-First & Indian Market Overhaul
+- **Mobile Navigation & Side Menu**:
+  - Implemented `MobileMenu` with a left slide-over drawer via `createPortal(..., document.body)`.
+  - Multi-level nested category accordion (Department > Category > Subcategories).
+  - Central support routing to `+91-9782077711`.
+- **Slide-over Cart Drawer (`createPortal`) & Quote Items**:
+  - Re-architected cart drawer into a $100\text{vh}$ full-height slide-over drawer from the right edge, mounted on `document.body` to prevent containing block traps by `<header>`'s backdrop blur.
+  - Added support for both Checkout Orders (with unit/pack prices and line total steppers) and Curated Quote Requests (with item quantity steppers and direct WhatsApp quotation generator).
+  - Automated drawer opening on PDP variant grid additions (`open-cart-drawer` event).
+- **Categories Multi-Level Mega-Menu**:
+  - Upgraded `NestedCategoriesMenu` to display deep multi-level hierarchies with Level 1 sidebar, Level 2 subcategories, and Level 3 nested links.
+  - Eliminated hover gaps with an invisible bridge and $250\text{ms}$ debounce timer.
+- **PDP Matrix & Single-Viewport Gallery**:
+  - Implemented compact $2\times 2$ side-by-side product image gallery with click-to-zoom modal, keeping images and matrix visible in a single viewport.
+  - In `QuickVariantGrid`, separated **Color** and **Size** into distinct columns and eliminated row-level action buttons (stepping quantity auto-selects the row).
+  - Removed Stock status column and badges; enabled zero-stock variants to be stepped and submitted directly into the Quote Basket.
+- **Bug Fixes**:
+  - Fixed `TypeError: availableShippingMethods?.filter is not a function` in `shipping/index.tsx` and `fulfillment.ts`.
+  - Fixed `TypeError: promotions.filter is not a function` in `discount-code/index.tsx`.
+  - Replaced all instances of placeholder phone numbers with `+91-9782077711` (`919782077711`).
+
 ## Session — Wholesale Order Grid & PDP 2-Column Redesign
 - **Wholesale PDP 2-Column Layout**:
   - Reorganized `ProductTemplate` in `apps/storefront-wholesale` into a 2-column layout: left column contains sticky featured `ImageGallery` with interactive thumbnail selector; right column contains product title, badges, and the cart addition grid.

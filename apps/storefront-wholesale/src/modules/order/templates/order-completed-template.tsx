@@ -47,8 +47,8 @@ export default async function OrderCompletedTemplate({
               </p>
             </div>
             <a
-              href={`https://wa.me/${process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919999999999"}?text=${encodeURIComponent(
-                `Hello! I just placed wholesale order #${order.display_id || order.id} on the marketplace. Let's connect regarding the invoice, payment terms, and delivery schedule.`
+              href={`https://wa.me/${process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919782077711"}?text=${encodeURIComponent(
+                `Hello! I just placed wholesale order #${order.display_id || order.id} on FactoryTribe. Let's connect regarding the invoice, GST details, and delivery schedule.`
               )}`}
               target="_blank"
               rel="noopener noreferrer"

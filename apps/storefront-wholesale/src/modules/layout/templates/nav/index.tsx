@@ -2,10 +2,12 @@ import { Suspense } from "react"
 import { listRegions } from "@lib/data/regions"
 import { listLocales } from "@lib/data/locales"
 import { getLocale } from "@lib/data/locale-actions"
+import { listCategories } from "@lib/data/categories"
 import { StoreRegion } from "@medusajs/types"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import CartButton from "@modules/layout/components/cart-button"
-import SideMenu from "@modules/layout/components/side-menu"
+import NestedCategoriesMenu from "@modules/layout/components/nested-categories-menu"
+import MobileMenu from "@modules/layout/components/mobile-menu"
 import { headers } from "next/headers"
 import { getTenantSeller } from "@lib/data/seller"
 
@@ -15,11 +17,12 @@ export default async function Nav() {
   const tenantHandle = headersList.get("x-tenant-handle")
   const customDomain = headersList.get("x-custom-domain")
 
-  const [regions, locales, currentLocale, tenantSeller] = await Promise.all([
-    listRegions().then((regions: StoreRegion[]) => regions),
-    listLocales(),
-    getLocale(),
-    isTenant ? getTenantSeller(tenantHandle, customDomain) : Promise.resolve(null),
+  const [regions, locales, currentLocale, tenantSeller, categories] = await Promise.all([
+    listRegions().then((regions: StoreRegion[]) => regions).catch(() => []),
+    listLocales().catch(() => []),
+    getLocale().catch(() => "en"),
+    isTenant ? getTenantSeller(tenantHandle, customDomain).catch(() => null) : Promise.resolve(null),
+    listCategories().catch(() => []),
   ])
 
   return (
@@ -53,7 +56,7 @@ export default async function Nav() {
             </a>
             <span>•</span>
             <LocalizedClientLink href="/account" className="hover:text-white transition">
-              Wholesale Support
+              Support
             </LocalizedClientLink>
           </div>
         </div>
@@ -61,17 +64,15 @@ export default async function Nav() {
 
       {/* Main Header */}
       <header className="relative bg-white/95 backdrop-blur border-b border-stone-200">
-        <nav className="content-container flex items-center justify-between gap-4 h-18 py-3">
-          {/* Left: Mobile Menu & Brand Navigation */}
-          <div className="flex items-center gap-x-4">
-            <div className="h-full flex items-center">
-              <SideMenu
-                regions={regions}
-                locales={locales}
-                currentLocale={currentLocale}
-                isTenant={isTenant}
-              />
-            </div>
+        <nav className="content-container flex items-center justify-between gap-4 h-16 py-2.5">
+          {/* Left: Brand Navigation */}
+          <div className="flex items-center gap-x-2 sm:gap-x-6">
+            {/* Mobile Side Menu */}
+            <MobileMenu
+              categories={categories || []}
+              isTenant={isTenant}
+              tenantSeller={tenantSeller}
+            />
 
             {/* Logo */}
             <LocalizedClientLink
@@ -115,18 +116,18 @@ export default async function Nav() {
 
             {/* Desktop Navigation Links */}
             {!isTenant && (
-              <div className="hidden lg:flex items-center gap-x-6 text-sm font-medium text-stone-700 ml-4">
+              <div className="hidden lg:flex items-center gap-x-6 text-sm font-medium text-stone-700">
                 <LocalizedClientLink
                   href="/store"
                   className="hover:text-terracotta-600 transition"
                 >
-                  Shop Catalog
+                  Catalog
                 </LocalizedClientLink>
                 <LocalizedClientLink
                   href="/brands"
                   className="hover:text-terracotta-600 transition"
                 >
-                  Brands & Makers
+                  Brands
                 </LocalizedClientLink>
                 <LocalizedClientLink
                   href="/sellers"
@@ -134,24 +135,20 @@ export default async function Nav() {
                 >
                   Suppliers
                 </LocalizedClientLink>
-                <LocalizedClientLink
-                  href="/categories"
-                  className="hover:text-terracotta-600 transition"
-                >
-                  Categories
-                </LocalizedClientLink>
+                {/* Nested Categories Dropdown */}
+                <NestedCategoriesMenu categories={categories || []} />
               </div>
             )}
           </div>
 
           {/* Right: Actions (Account & Cart) */}
-          <div className="flex items-center gap-x-5 justify-end">
+          <div className="flex items-center gap-x-4 sm:gap-x-5 justify-end">
             <LocalizedClientLink
-              className="hidden sm:inline-flex items-center text-sm font-medium text-stone-700 hover:text-terracotta-600 transition"
+              className="inline-flex items-center text-sm font-medium text-stone-700 hover:text-terracotta-600 transition"
               href="/account"
               data-testid="nav-account-link"
             >
-              Wholesale Account
+              Account
             </LocalizedClientLink>
 
             <Suspense

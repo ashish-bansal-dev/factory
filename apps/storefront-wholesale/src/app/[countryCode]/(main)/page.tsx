@@ -94,14 +94,16 @@ export default async function Home(props: {
                   </div>
                 </div>
 
-                {seller.email && (
-                  <a
-                    href={`mailto:${seller.email}?subject=Bulk%20Order%20Inquiry`}
-                    className="px-5 py-2.5 bg-ui-button-inverted text-ui-fg-on-inverted rounded-lg text-sm font-medium hover:opacity-90 transition"
-                  >
-                    Direct Wholesale Inquiry
-                  </a>
-                )}
+                <a
+                  href={`https://wa.me/${(seller.phone || "919782077711").replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                    `Hello! I am inquiring about wholesale orders from ${seller.name} on FactoryTribe Wholesale.`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-5 py-2.5 bg-charcoal-900 text-white rounded-full text-xs font-semibold hover:bg-stone-800 transition shadow-xs text-center"
+                >
+                  Direct Wholesale WhatsApp Inquiry &rarr;
+                </a>
               </div>
 
               {seller.description && (

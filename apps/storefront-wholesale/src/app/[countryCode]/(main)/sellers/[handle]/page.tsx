@@ -4,7 +4,6 @@ import { getSellerByHandle } from "@lib/data/seller"
 import { listProducts } from "@lib/data/products"
 import { getRegion } from "@lib/data/regions"
 import ProductPreview from "@modules/products/components/product-preview"
-import { Heading, Text, Badge } from "@medusajs/ui"
 
 export async function generateMetadata(props: {
   params: Promise<{ handle: string }>
@@ -13,12 +12,12 @@ export async function generateMetadata(props: {
   const seller = await getSellerByHandle(handle)
 
   if (!seller) {
-    return { title: "Seller Not Found" }
+    return { title: "Supplier Not Found | FactoryTribe" }
   }
 
   return {
-    title: `${seller.name} - Wholesale Store`,
-    description: seller.description || `Browse wholesale products from ${seller.name}.`,
+    title: `${seller.name} - Wholesale Showroom | FactoryTribe`,
+    description: seller.description || `Browse wholesale products from verified supplier ${seller.name}.`,
   }
 }
 
@@ -52,13 +51,17 @@ export default async function SellerProfilePage(props: {
   const products = response.products
   const count = response.count
 
-  const subdomain = `${seller.handle}.${process.env.NEXT_PUBLIC_BASE_DOMAIN || "localhost:8000"}`
+  const whatsappMsg = encodeURIComponent(
+    `Hello! I would like to inquire about bulk wholesale orders and manufacturing terms from ${seller.name} on FactoryTribe Wholesale.`
+  )
+  const targetPhone = "919782077711"
+  const whatsappUrl = `https://wa.me/${targetPhone}?text=${whatsappMsg}`
 
   return (
-    <div className="content-container py-8">
+    <div className="content-container py-8 font-sans">
       {/* Seller Hero Card */}
-      <div className="rounded-2xl border border-ui-border-base overflow-hidden bg-ui-bg-base mb-12 shadow-sm">
-        <div className="h-44 bg-gradient-to-r from-ui-bg-subtle via-ui-bg-subtle-hover to-ui-bg-subtle relative">
+      <div className="rounded-2xl border border-stone-200 overflow-hidden bg-white mb-10 shadow-sm">
+        <div className="h-44 bg-sand-100 relative">
           {seller.banner && (
             <img
               src={seller.banner}
@@ -68,10 +71,10 @@ export default async function SellerProfilePage(props: {
           )}
         </div>
 
-        <div className="p-8 pt-0 relative">
+        <div className="p-6 sm:p-8 pt-0 relative">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 -mt-12 mb-6">
-            <div className="flex items-end gap-x-5">
-              <div className="w-24 h-24 rounded-2xl border-4 border-white bg-white shadow-md overflow-hidden flex items-center justify-center font-bold text-2xl text-ui-fg-base">
+            <div className="flex items-end gap-x-4">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-4 border-white bg-white shadow-md overflow-hidden flex items-center justify-center font-serif font-bold text-2xl text-charcoal-900">
                 {seller.logo ? (
                   <img
                     src={seller.logo}
@@ -83,73 +86,64 @@ export default async function SellerProfilePage(props: {
                 )}
               </div>
               <div className="mb-1">
-                <div className="flex items-center gap-x-3">
-                  <Heading level="h1" className="text-2xl font-bold">
+                <div className="flex items-center gap-x-2.5 flex-wrap">
+                  <h1 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal-900">
                     {seller.name}
-                  </Heading>
-                  {seller.is_premium && (
-                    <Badge color="orange">Verified Supplier</Badge>
-                  )}
+                  </h1>
+                  <span className="text-[11px] font-semibold text-forest-700 bg-forest-50 px-2.5 py-0.5 rounded-full border border-forest-700/20">
+                    Verified Manufacturer
+                  </span>
                 </div>
-                <Text className="text-xs text-ui-fg-muted">
-                  Direct Storefront: <span className="font-mono text-ui-fg-interactive">{subdomain}</span>
-                </Text>
+                <span className="text-xs text-stone-500">
+                  Official FactoryTribe Wholesale Partner
+                </span>
               </div>
             </div>
 
-            {seller.email && (
-              <a
-                href={`mailto:${seller.email}?subject=Wholesale%20Inquiry%20from%20Marketplace`}
-                className="px-5 py-2.5 bg-ui-button-inverted text-ui-fg-on-inverted rounded-lg text-sm font-medium hover:opacity-90 transition"
-              >
-                Inquire for Bulk Order
-              </a>
-            )}
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full sm:w-auto px-6 py-2.5 bg-charcoal-900 text-white rounded-full text-xs font-semibold hover:bg-stone-800 transition shadow-xs text-center flex items-center justify-center gap-2"
+            >
+              <span>Inquire for Bulk Order on WhatsApp &rarr;</span>
+            </a>
           </div>
 
           {seller.description && (
-            <div className="max-w-3xl mb-6">
-              <Text className="text-sm text-ui-fg-subtle leading-relaxed">
+            <div className="max-w-3xl mb-4">
+              <p className="text-sm text-stone-600 leading-relaxed">
                 {seller.description}
-              </Text>
+              </p>
             </div>
           )}
 
-          <div className="flex items-center gap-x-6 text-xs text-ui-fg-muted border-t border-ui-border-base pt-4">
-            {seller.phone && <div>Phone: <span className="font-medium text-ui-fg-base">{seller.phone}</span></div>}
-            {seller.website_url && (
-              <div>
-                Website:{" "}
-                <a
-                  href={seller.website_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-medium text-ui-fg-interactive underline"
-                >
-                  {seller.website_url}
-                </a>
-              </div>
-            )}
-            <div>Active Wholesale Items: <span className="font-semibold text-ui-fg-base">{count}</span></div>
+          <div className="flex items-center gap-x-6 text-xs text-stone-500 border-t border-stone-100 pt-4">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-forest-700 inline-block" />
+              <span>GST Verified Manufacturer</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-terracotta-600 inline-block" />
+              <span>Net 60 Financing Eligible</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Seller Products Catalog */}
-      <div className="mb-6 flex justify-between items-center">
-        <Heading level="h2" className="text-xl font-semibold">
+      <div className="mb-6 flex justify-between items-center border-b border-stone-200 pb-3">
+        <h2 className="font-serif text-xl sm:text-2xl font-bold text-charcoal-900">
           Wholesale Catalog ({count})
-        </Heading>
+        </h2>
       </div>
 
       {products.length === 0 ? (
-        <div className="text-center py-16 bg-ui-bg-subtle rounded-xl">
-          <Text className="text-ui-fg-muted">
-            No products currently listed by this supplier.
-          </Text>
+        <div className="text-center py-16 bg-sand-50 rounded-2xl border border-stone-200 text-stone-500 text-sm">
+          No products currently listed by this supplier.
         </div>
       ) : (
-        <ul className="grid grid-cols-2 small:grid-cols-3 medium:grid-cols-4 gap-x-6 gap-y-8">
+        <ul className="grid grid-cols-2 small:grid-cols-3 medium:grid-cols-4 gap-4 sm:gap-6">
           {products.map((product) => (
             <li key={product.id}>
               <ProductPreview product={product} region={region} />

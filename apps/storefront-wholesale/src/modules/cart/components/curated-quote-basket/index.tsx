@@ -86,7 +86,7 @@ export default function CuratedQuoteBasket() {
       }
 
       // 2. Open WhatsApp with pre-formatted quote
-      const targetPhone = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919999999999"
+      const targetPhone = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP_PHONE || "919782077711"
       const url = `https://wa.me/${targetPhone}?text=${encodeURIComponent(compiledNotes)}`
       window.open(url, "_blank")
 

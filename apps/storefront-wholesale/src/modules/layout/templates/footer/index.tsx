@@ -113,7 +113,7 @@ export default async function Footer() {
                 </LocalizedClientLink>
               </li>
               <li>
-                <span className="text-stone-500">WhatsApp Support: +91 99999 99999</span>
+                <span className="text-stone-500">WhatsApp Support: +91-9782077711</span>
               </li>
             </ul>
           </div>
