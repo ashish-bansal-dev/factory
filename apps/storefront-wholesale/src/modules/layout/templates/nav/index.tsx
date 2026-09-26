@@ -1,5 +1,4 @@
 import { Suspense } from "react"
-
 import { listRegions } from "@lib/data/regions"
 import { listLocales } from "@lib/data/locales"
 import { getLocale } from "@lib/data/locale-actions"
@@ -7,7 +6,6 @@ import { StoreRegion } from "@medusajs/types"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import CartButton from "@modules/layout/components/cart-button"
 import SideMenu from "@modules/layout/components/side-menu"
-
 import { headers } from "next/headers"
 import { getTenantSeller } from "@lib/data/seller"
 
@@ -25,11 +23,48 @@ export default async function Nav() {
   ])
 
   return (
-    <div className="sticky top-0 inset-x-0 z-50 group">
-      <header className="relative h-16 mx-auto border-b duration-200 bg-white border-ui-border-base">
-        <nav className="content-container txt-xsmall-plus text-ui-fg-subtle flex items-center justify-between w-full h-full text-small-regular">
-          <div className="flex-1 basis-0 h-full flex items-center gap-x-4">
-            <div className="h-full">
+    <div className="sticky top-0 inset-x-0 z-50 group font-sans">
+      {/* Editorial Trust Announcement Bar (Faire-style) */}
+      <div className="bg-forest-900 text-sand-50 py-1.5 px-4 text-xs font-medium tracking-wide">
+        <div className="content-container flex items-center justify-between">
+          <div className="flex items-center gap-6 overflow-x-auto no-scrollbar py-0.5">
+            <span className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-terracotta-500 inline-block" />
+              Wholesale Only B2B Marketplace
+            </span>
+            <span className="hidden md:inline-block text-forest-700">|</span>
+            <span className="hidden md:flex items-center gap-1.5 text-stone-300 whitespace-nowrap">
+              Net 60 Terms for Eligible Retailers
+            </span>
+            <span className="hidden lg:inline-block text-forest-700">|</span>
+            <span className="hidden lg:flex items-center gap-1.5 text-stone-300 whitespace-nowrap">
+              Direct Manufacturer Pack Pricing
+            </span>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-4 text-stone-300 text-[11px]">
+            <a
+              href="https://vendor.factorytribe.com"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white transition"
+            >
+              Sell on FactoryTribe
+            </a>
+            <span>•</span>
+            <LocalizedClientLink href="/account" className="hover:text-white transition">
+              Wholesale Support
+            </LocalizedClientLink>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Header */}
+      <header className="relative bg-white/95 backdrop-blur border-b border-stone-200">
+        <nav className="content-container flex items-center justify-between gap-4 h-18 py-3">
+          {/* Left: Mobile Menu & Brand Navigation */}
+          <div className="flex items-center gap-x-4">
+            <div className="h-full flex items-center">
               <SideMenu
                 regions={regions}
                 locales={locales}
@@ -37,61 +72,92 @@ export default async function Nav() {
                 isTenant={isTenant}
               />
             </div>
+
+            {/* Logo */}
+            <LocalizedClientLink
+              href="/"
+              className="flex items-center gap-2.5 group"
+              data-testid="nav-store-link"
+            >
+              {isTenant && tenantSeller ? (
+                <div className="flex items-center gap-2.5">
+                  {tenantSeller.logo ? (
+                    <img
+                      src={tenantSeller.logo}
+                      alt={tenantSeller.name}
+                      className="w-8 h-8 rounded-lg object-contain border border-stone-200 bg-white"
+                    />
+                  ) : (
+                    <span className="w-8 h-8 rounded-lg bg-sand-100 border border-stone-200 flex items-center justify-center font-bold text-xs text-charcoal-900">
+                      {tenantSeller.name.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
+                  <div>
+                    <span className="font-serif text-lg font-bold text-charcoal-900 group-hover:text-terracotta-600 transition">
+                      {tenantSeller.name}
+                    </span>
+                    <span className="block text-[10px] uppercase tracking-wider text-stone-500 font-sans">
+                      Wholesale Showroom
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-2">
+                  <span className="font-serif text-2xl font-bold tracking-tight text-charcoal-900 group-hover:text-terracotta-600 transition">
+                    FactoryTribe
+                  </span>
+                  <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-sand-100 text-charcoal-800 border border-stone-200">
+                    B2B Wholesale
+                  </span>
+                </div>
+              )}
+            </LocalizedClientLink>
+
+            {/* Desktop Navigation Links */}
             {!isTenant && (
-              <div className="hidden md:flex items-center gap-x-5 text-xs font-medium">
-                <LocalizedClientLink href="/sellers" className="hover:text-ui-fg-base transition">
+              <div className="hidden lg:flex items-center gap-x-6 text-sm font-medium text-stone-700 ml-4">
+                <LocalizedClientLink
+                  href="/store"
+                  className="hover:text-terracotta-600 transition"
+                >
+                  Shop Catalog
+                </LocalizedClientLink>
+                <LocalizedClientLink
+                  href="/brands"
+                  className="hover:text-terracotta-600 transition"
+                >
+                  Brands & Makers
+                </LocalizedClientLink>
+                <LocalizedClientLink
+                  href="/sellers"
+                  className="hover:text-terracotta-600 transition"
+                >
                   Suppliers
                 </LocalizedClientLink>
-                <LocalizedClientLink href="/brands" className="hover:text-ui-fg-base transition">
-                  Brands
-                </LocalizedClientLink>
-                <LocalizedClientLink href="/categories" className="hover:text-ui-fg-base transition">
+                <LocalizedClientLink
+                  href="/categories"
+                  className="hover:text-terracotta-600 transition"
+                >
                   Categories
                 </LocalizedClientLink>
               </div>
             )}
           </div>
 
-          <div className="flex items-center h-full">
+          {/* Right: Actions (Account & Cart) */}
+          <div className="flex items-center gap-x-5 justify-end">
             <LocalizedClientLink
-              href="/"
-              className="txt-compact-xlarge-plus hover:text-ui-fg-base uppercase flex items-center gap-x-2"
-              data-testid="nav-store-link"
+              className="hidden sm:inline-flex items-center text-sm font-medium text-stone-700 hover:text-terracotta-600 transition"
+              href="/account"
+              data-testid="nav-account-link"
             >
-              {isTenant && tenantSeller ? (
-                <>
-                  {tenantSeller.logo && (
-                    <img
-                      src={tenantSeller.logo}
-                      alt={tenantSeller.name}
-                      className="w-7 h-7 rounded-md object-contain inline-block"
-                    />
-                  )}
-                  <span>{tenantSeller.name}</span>
-                  <span className="text-[10px] font-normal lowercase tracking-normal px-2 py-0.5 rounded bg-ui-bg-subtle text-ui-fg-muted">
-                    Wholesale
-                  </span>
-                </>
-              ) : (
-                process.env.NEXT_PUBLIC_SITE_NAME || "Wholesale Hub"
-              )}
+              Wholesale Account
             </LocalizedClientLink>
-          </div>
 
-          <div className="flex items-center gap-x-6 h-full flex-1 basis-0 justify-end">
-            <div className="hidden small:flex items-center gap-x-6 h-full">
-              <LocalizedClientLink
-                className="hover:text-ui-fg-base"
-                href="/account"
-                data-testid="nav-account-link"
-              >
-                Account
-              </LocalizedClientLink>
-            </div>
             <Suspense
               fallback={
                 <LocalizedClientLink
-                  className="hover:text-ui-fg-base flex gap-2"
+                  className="hover:text-terracotta-600 text-sm font-medium flex items-center gap-2 px-3 py-1.5 rounded-full border border-stone-200 bg-sand-50"
                   href="/cart"
                   data-testid="nav-cart-link"
                 >
@@ -99,7 +165,9 @@ export default async function Nav() {
                 </LocalizedClientLink>
               }
             >
-              <CartButton />
+              <div className="flex items-center">
+                <CartButton />
+              </div>
             </Suspense>
           </div>
         </nav>

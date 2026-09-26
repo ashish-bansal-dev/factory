@@ -33,17 +33,22 @@ const StoreTemplate = async ({
     }
   } catch {}
 
-  const pageTitle = sellerName ? `${sellerName} Wholesale Catalog` : "All products"
+  const pageTitle = sellerName ? `${sellerName} Wholesale Showroom` : "FactoryTribe Wholesale Catalog"
 
   return (
     <div
-      className="flex flex-col small:flex-row small:items-start py-6 content-container"
+      className="flex flex-col small:flex-row small:items-start py-8 content-container font-sans"
       data-testid="category-container"
     >
       <RefinementList sortBy={sort} />
       <div className="w-full">
-        <div className="mb-8 text-2xl-semi">
-          <h1 data-testid="store-page-title">{pageTitle}</h1>
+        <div className="mb-6 pb-4 border-b border-stone-200">
+          <h1 className="font-serif text-3xl font-bold text-charcoal-900 tracking-tight" data-testid="store-page-title">
+            {pageTitle}
+          </h1>
+          <p className="text-xs text-stone-500 mt-1">
+            Verified Indian apparel manufacturers • Net wholesale pack pricing • Pan-India shipping
+          </p>
         </div>
         <Suspense fallback={<SkeletonProductGrid />}>
           <PaginatedProducts

@@ -1,12 +1,11 @@
 "use client"
 
-import { Button, Heading } from "@medusajs/ui"
-
+import React from "react"
+import { HttpTypes } from "@medusajs/types"
 import CartTotals from "@modules/common/components/cart-totals"
 import Divider from "@modules/common/components/divider"
 import DiscountCode from "@modules/checkout/components/discount-code"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
-import { HttpTypes } from "@medusajs/types"
 import { convertToLocale } from "@lib/util/money"
 
 type SummaryProps = {
@@ -25,7 +24,7 @@ function getCheckoutStep(cart: HttpTypes.StoreCart) {
   }
 }
 
-const Summary = ({ cart }: SummaryProps) => {
+export default function Summary({ cart }: SummaryProps) {
   const step = getCheckoutStep(cart)
 
   const handleSendWhatsAppQuote = () => {
@@ -53,47 +52,51 @@ const Summary = ({ cart }: SummaryProps) => {
   }
 
   return (
-    <div className="flex flex-col gap-y-4">
-      <Heading level="h2" className="text-[2rem] leading-[2.75rem]">
-        Summary
-      </Heading>
+    <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm flex flex-col gap-y-5 font-sans">
+      <h2 className="font-serif text-2xl font-bold text-charcoal-900">
+        Order Summary
+      </h2>
+
       <DiscountCode cart={cart} />
       <Divider />
       <CartTotals totals={cart} />
 
-      <div className="flex flex-col gap-y-2 pt-2">
+      {/* Net 60 Terms / B2B Badge */}
+      <div className="bg-sand-50 border border-stone-200/90 rounded-xl p-3.5 flex items-start gap-3 text-xs text-stone-600">
+        <span className="w-2 h-2 rounded-full bg-forest-700 mt-1 shrink-0" />
+        <div>
+          <span className="font-semibold text-charcoal-900 block mb-0.5">
+            Wholesale Net 60 Terms Eligible
+          </span>
+          <span>
+            Pay on invoice with 60 days financing after delivery upon credit verification.
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-y-3 pt-2">
         <LocalizedClientLink
           href={"/checkout?step=" + step}
           data-testid="checkout-button"
           className="w-full"
         >
-          <Button className="w-full h-11 text-sm font-semibold" size="large">
-            Order / Submit Quote (No Payment Required) →
-          </Button>
+          <button
+            type="button"
+            className="w-full h-12 rounded-full bg-charcoal-900 text-white hover:bg-stone-800 text-sm font-semibold shadow-sm transition flex items-center justify-center gap-2"
+          >
+            <span>Proceed to Wholesale Checkout &rarr;</span>
+          </button>
         </LocalizedClientLink>
-        <p className="text-[11px] text-ui-fg-muted text-center">
-          Zero upfront payment required. Place order directly under wholesale net terms.
-        </p>
 
-        <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-ui-border-base"></div>
-          <span className="flex-shrink mx-2 text-[10px] text-ui-fg-muted uppercase tracking-wider font-semibold">
-            or
-          </span>
-          <div className="flex-grow border-t border-ui-border-base"></div>
-        </div>
-
-        <Button
-          variant="secondary"
-          className="w-full h-10 border-emerald-500 text-emerald-700 hover:bg-emerald-50 font-medium text-xs flex items-center justify-center gap-1.5"
+        <button
+          type="button"
+          className="w-full h-11 rounded-full border border-stone-300 bg-white text-stone-700 hover:bg-sand-50 font-medium text-xs flex items-center justify-center gap-2 transition shadow-sm"
           onClick={handleSendWhatsAppQuote}
           data-testid="send-quote-whatsapp-button"
         >
-          <span>Send Quote to Seller via WhatsApp →</span>
-        </Button>
+          <span>Request Invoice / Quote via WhatsApp &rarr;</span>
+        </button>
       </div>
     </div>
   )
 }
-
-export default Summary

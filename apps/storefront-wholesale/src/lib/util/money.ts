@@ -2,7 +2,7 @@ import { isEmpty } from "./isEmpty"
 
 type ConvertToLocaleParams = {
   amount: number
-  currency_code: string
+  currency_code?: string
   minimumFractionDigits?: number
   maximumFractionDigits?: number
   locale?: string
@@ -10,15 +10,18 @@ type ConvertToLocaleParams = {
 
 export const convertToLocale = ({
   amount,
-  currency_code,
-  minimumFractionDigits,
-  maximumFractionDigits,
-  locale = "en-US",
+  currency_code = "inr",
+  minimumFractionDigits = 0,
+  maximumFractionDigits = 2,
+  locale,
 }: ConvertToLocaleParams) => {
-  return currency_code && !isEmpty(currency_code)
-    ? new Intl.NumberFormat(locale, {
+  const code = (currency_code || "inr").toLowerCase()
+  const effectiveLocale = locale || (code === "inr" ? "en-IN" : "en-US")
+
+  return code && !isEmpty(code)
+    ? new Intl.NumberFormat(effectiveLocale, {
         style: "currency",
-        currency: currency_code,
+        currency: code.toUpperCase(),
         minimumFractionDigits,
         maximumFractionDigits,
       }).format(amount)

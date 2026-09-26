@@ -10,8 +10,8 @@ import { listRegions } from "@lib/data/regions"
 import { retrieveCustomer } from "@lib/data/customer"
 
 export const metadata: Metadata = {
-  title: "Profile",
-  description: "View and edit your Medusa Store profile.",
+  title: "Wholesale Profile | FactoryTribe",
+  description: "View and edit your FactoryTribe Wholesale account.",
 }
 
 export default async function Profile() {

@@ -1,21 +1,13 @@
-import { Text } from "@medusajs/ui"
+import React from "react"
 
-import Medusa from "../../../common/icons/medusa"
-import NextJs from "../../../common/icons/nextjs"
-
-const MedusaCTA = () => {
+const FactoryTribeSeal = () => {
   return (
-    <Text className="flex gap-x-2 txt-compact-small-plus items-center">
-      Powered by
-      <a href="https://www.medusajs.com" target="_blank" rel="noreferrer">
-        <Medusa fill="#9ca3af" className="fill-[#9ca3af]" />
-      </a>
-      &
-      <a href="https://nextjs.org" target="_blank" rel="noreferrer">
-        <NextJs fill="#9ca3af" />
-      </a>
-    </Text>
+    <div className="flex items-center gap-2 text-stone-500 text-xs">
+      <span className="w-2 h-2 rounded-full bg-forest-700 inline-block" />
+      <span className="font-semibold text-charcoal-900 font-serif">FactoryTribe</span>
+      <span>• Verified Indian Wholesale Network</span>
+    </div>
   )
 }
 
-export default MedusaCTA
+export default FactoryTribeSeal

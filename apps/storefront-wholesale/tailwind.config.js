@@ -21,6 +21,33 @@ module.exports = {
         padding: "padding-top padding-right padding-bottom padding-left",
       },
       colors: {
+        linen: "#FAF9F5",
+        charcoal: {
+          900: "#18181B",
+          800: "#27272A",
+          700: "#3F3F46",
+          600: "#52525B",
+        },
+        terracotta: {
+          50: "#FDF6F0",
+          100: "#F9ECE0",
+          500: "#D9774E",
+          600: "#C85A32",
+          700: "#B24A24",
+          800: "#8C3415",
+        },
+        forest: {
+          50: "#F2F7F4",
+          700: "#2D5A43",
+          800: "#1E3A2F",
+          900: "#142921",
+        },
+        sand: {
+          50: "#F9F8F5",
+          100: "#F4F1EA",
+          200: "#E6E2D8",
+          300: "#D4CEBE",
+        },
         grey: {
           0: "#FFFFFF",
           5: "#F9FAFB",
@@ -59,7 +86,15 @@ module.exports = {
         "3xl": "2rem",
       },
       fontFamily: {
+        serif: [
+          "Playfair Display",
+          "Georgia",
+          "Cambria",
+          "Times New Roman",
+          "serif",
+        ],
         sans: [
+          "Plus Jakarta Sans",
           "Inter",
           "-apple-system",
           "BlinkMacSystemFont",

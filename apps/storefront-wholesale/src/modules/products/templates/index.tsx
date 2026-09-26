@@ -11,6 +11,7 @@ import { notFound } from "next/navigation"
 import { HttpTypes } from "@medusajs/types"
 import { Heading, Text } from "@medusajs/ui"
 
+import BrandTrustCard from "@modules/products/components/brand-trust-card"
 import ProductActionsWrapper from "./product-actions-wrapper"
 
 type ProductTemplateProps = {
@@ -30,10 +31,12 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
     return notFound()
   }
 
+  const seller = (product as any).seller
+
   return (
     <>
       <div
-        className="content-container flex flex-col lg:flex-row gap-8 lg:gap-12 items-start py-8 relative"
+        className="content-container flex flex-col lg:flex-row gap-6 lg:gap-12 items-start py-6 sm:py-10 pb-28 sm:pb-12 relative font-sans"
         data-testid="product-container"
       >
         {/* Left Column: Product Image Gallery */}
@@ -41,26 +44,32 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
           <ImageGallery images={images} />
         </div>
 
-        {/* Right Column: Title, Grid (variant id, MRP, Price, +/-), Description Box, Product Information */}
+        {/* Right Column: Title, Brand Card, Bulk Matrix, Description Box */}
         <div className="w-full lg:w-7/12 flex flex-col gap-y-6">
           {/* Product Header / Title */}
           <div className="flex flex-col gap-y-2">
             {product.collection && (
               <LocalizedClientLink
                 href={`/collections/${product.collection.handle}`}
-                className="text-xs uppercase tracking-wider font-semibold text-ui-fg-muted hover:text-ui-fg-base transition-colors"
+                className="text-xs uppercase tracking-wider font-semibold text-stone-500 hover:text-charcoal-900 transition-colors"
               >
                 {product.collection.title}
               </LocalizedClientLink>
             )}
-            <Heading
-              level="h1"
-              className="text-2xl sm:text-3xl font-bold tracking-tight text-ui-fg-base"
+            <h1
+              className="font-serif text-3xl sm:text-4xl font-bold tracking-tight text-charcoal-900"
               data-testid="product-title"
             >
               {product.title}
-            </Heading>
+            </h1>
           </div>
+
+          {/* Faire-style Brand Trust & MOV Card */}
+          <BrandTrustCard
+            seller={seller}
+            productId={product.id}
+            productTitle={product.title}
+          />
 
           <ProductOnboardingCta />
 
@@ -78,12 +87,12 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
           </Suspense>
 
           {/* Below it: Description Box */}
-          <div className="border border-ui-border-base rounded-xl p-5 bg-white shadow-sm flex flex-col gap-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-ui-fg-base">
-              Description
+          <div className="border border-stone-200 rounded-2xl p-6 bg-white shadow-sm flex flex-col gap-y-3">
+            <h3 className="font-serif text-base font-bold text-charcoal-900">
+              Product Overview & Fabric
             </h3>
             <Text
-              className="text-sm text-ui-fg-subtle whitespace-pre-line leading-relaxed"
+              className="text-sm text-stone-600 whitespace-pre-line leading-relaxed"
               data-testid="product-description"
             >
               {product.description || "No description provided for this product."}
@@ -91,9 +100,9 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
           </div>
 
           {/* Below it: Specifications & Shipping */}
-          <div className="border border-ui-border-base rounded-xl p-5 bg-white shadow-sm flex flex-col gap-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-ui-fg-base">
-              Specifications & Shipping
+          <div className="border border-stone-200 rounded-2xl p-6 bg-white shadow-sm flex flex-col gap-y-3">
+            <h3 className="font-serif text-base font-bold text-charcoal-900">
+              Wholesale Specifications & Shipping Policies
             </h3>
             <ProductTabs product={product} />
           </div>
