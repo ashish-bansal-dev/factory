@@ -42,7 +42,7 @@ const ImageGallery = ({ images }: ImageGalleryProps) => {
           <Image
             src={images[0].url}
             priority
-            className="absolute inset-0 object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+            className="absolute inset-0 object-contain w-full h-full group-hover:scale-105 transition-transform duration-300"
             alt="Product view"
             fill
             sizes="(max-width: 768px) 100vw, 50vw"
@@ -66,7 +66,7 @@ const ImageGallery = ({ images }: ImageGalleryProps) => {
                 <Image
                   src={image.url}
                   priority={index < 2}
-                  className="absolute inset-0 object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+                  className="absolute inset-0 object-contain w-full h-full group-hover:scale-105 transition-transform duration-300"
                   alt={`Product view ${index + 1}`}
                   fill
                   sizes="(max-width: 768px) 50vw, 25vw"
@@ -114,7 +114,7 @@ const ImageGallery = ({ images }: ImageGalleryProps) => {
                 src={img.url}
                 alt={`Angle ${i + 1}`}
                 fill
-                className="object-cover"
+                className="object-contain"
                 sizes="40px"
               />
             </button>
