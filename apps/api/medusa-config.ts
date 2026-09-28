@@ -1,7 +1,15 @@
 import { loadEnv } from '@medusajs/framework/utils'
 import { withMercur } from '@mercurjs/core'
+import path from 'path'
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+if (process.env.NODE_ENV === 'production') {
+  try {
+    const dotenv = require('dotenv')
+    dotenv.config({ path: path.join(process.cwd(), '.env.production'), override: true })
+  } catch {}
+} else {
+  loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+}
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
 
