@@ -50,3 +50,8 @@ apps/api/static
 .agents/*
 !.agents/rules/
 !.agents/skills/
+
+# Public tunnel artifacts
+.tunnels/
+public-endpoints.json
+public-endpoints.txt
