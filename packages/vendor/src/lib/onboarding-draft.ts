@@ -1,3 +1,5 @@
+import { SellerType } from "@mercurjs/types"
+
 export const REGISTER_DRAFT_KEY = "mercur_register_draft"
 export const ONBOARDING_DRAFT_KEY = "mercur_onboarding_draft"
 
@@ -11,6 +13,7 @@ export type StoreDraft = {
   name?: string
   email?: string
   phone?: string
+  type?: SellerType
   currency_code?: string
   description?: string
   handle?: string

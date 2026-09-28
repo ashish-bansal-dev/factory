@@ -114,6 +114,29 @@ export const StoreGeneralSection = ({
           <DisplayField
             model="seller"
             zone="general"
+            id="type"
+            data={seller}
+          >
+            <div className="text-ui-fg-subtle grid grid-cols-2 px-6 py-4">
+              <Text size="small" leading="compact" weight="plus">
+                Type
+              </Text>
+              <div>
+                {seller.type ? (
+                  <Badge size="2xsmall" color="blue" className="capitalize">
+                    {seller.type}
+                  </Badge>
+                ) : (
+                  <Text size="small" leading="compact">
+                    -
+                  </Text>
+                )}
+              </div>
+            </div>
+          </DisplayField>
+          <DisplayField
+            model="seller"
+            zone="general"
             id="currency_code"
             data={seller}
           >
@@ -142,6 +165,7 @@ export const StoreGeneralSection = ({
               "email",
               "phone",
               "website_url",
+              "type",
               "currency_code",
             ]}
           />

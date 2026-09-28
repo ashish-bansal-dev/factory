@@ -318,6 +318,9 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
                         <Select.Item value={SellerType.WHOLESALER}>
                           Wholesaler
                         </Select.Item>
+                        <Select.Item value={SellerType.RETAILER}>
+                          Retailer
+                        </Select.Item>
                       </Select.Content>
                     </Select>
                   </Form.Control>
@@ -507,7 +510,11 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
           <FormExtensionZone
             model="seller"
             zone="edit"
-            control={form.control}
+            control={
+              form.control as unknown as React.ComponentProps<
+                typeof FormExtensionZone
+              >["control"]
+            }
             data={seller}
           />
         </RouteDrawer.Body>

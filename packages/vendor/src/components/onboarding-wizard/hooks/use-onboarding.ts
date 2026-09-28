@@ -6,11 +6,13 @@ import type { OnboardingStep } from "@mercurjs/dashboard-shared";
 import { useCreateSellerAccount, useLogout } from "@hooks/api";
 import { queryClient } from "@lib/query-client";
 import type { StepSubmission } from "../steps/types";
+import { SellerType } from "@mercurjs/types";
 
 type StoreData = {
   name: string;
   email: string;
   phone?: string;
+  type?: SellerType;
   currency_code: string;
   description?: string;
   handle: string;
@@ -115,6 +117,7 @@ export const useOnboarding = (memberEmail: string, steps: OnboardingStep[]) => {
         handle: storeData.handle,
         email: storeData.email,
         phone: storeData.phone || undefined,
+        type: storeData.type || undefined,
         member_email: memberEmail,
         first_name: registerDraft.first_name,
         last_name: registerDraft.last_name,

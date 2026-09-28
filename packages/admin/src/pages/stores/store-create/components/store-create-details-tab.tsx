@@ -93,6 +93,7 @@ const Root = () => {
                       <Select.Item value={SellerType.MANUFACTURER}>Manufacturer</Select.Item>
                       <Select.Item value={SellerType.DISTRIBUTOR}>Distributor</Select.Item>
                       <Select.Item value={SellerType.WHOLESALER}>Wholesaler</Select.Item>
+                      <Select.Item value={SellerType.RETAILER}>Retailer</Select.Item>
                     </Select.Content>
                   </Select>
                 </Form.Control>

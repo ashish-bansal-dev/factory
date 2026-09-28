@@ -5,9 +5,9 @@ import {
   createAdminUser,
 } from "../../../helpers/create-admin-user"
 import { createSellerUser } from "../../../helpers/create-seller-user"
-import { SellerRole } from "@mercurjs/types"
+import { SellerRole, SellerType } from "@mercurjs/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
-import { createProductsWorkflow } from "@mercurjs/core/workflows"
+import { createProductsWorkflow, createSellerDefaultsWorkflow } from "@mercurjs/core/workflows"
 
 jest.setTimeout(50000)
 
@@ -113,6 +113,25 @@ medusaIntegrationTestRunner({
               currency_code: "usd",
             })
           )
+        })
+
+        it("should create seller with seller type", async () => {
+          const { headers } = await createUnregisteredToken()
+
+          const response = await api.post(
+            `/vendor/sellers`,
+            {
+              name: "Manufacturer Vendor",
+              email: "manufacturer@test.com",
+              member_email: "manufacturer-member@test.com",
+              currency_code: "usd",
+              type: SellerType.MANUFACTURER,
+            },
+            headers
+          )
+
+          expect(response.status).toEqual(201)
+          expect(response.data.seller.type).toEqual(SellerType.MANUFACTURER)
         })
 
         it("should auto-generate handle from name", async () => {

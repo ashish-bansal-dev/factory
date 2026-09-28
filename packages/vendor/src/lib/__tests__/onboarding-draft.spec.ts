@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest"
 
+import { SellerType } from "@mercurjs/types"
+
 import {
   ONBOARDING_DRAFT_KEY,
   REGISTER_DRAFT_KEY,
@@ -135,6 +137,7 @@ describe("onboarding draft storage", () => {
       store: {
         name: "Acme Corp",
         email: "store@acme.com",
+        type: SellerType.MANUFACTURER,
         currency_code: "usd",
       },
       address: {
@@ -150,6 +153,7 @@ describe("onboarding draft storage", () => {
     const draft = getStoredOnboardingDraft()
     expect(draft.currentStep).toBe(2)
     expect(draft.store?.name).toBe("Acme Corp")
+    expect(draft.store?.type).toBe(SellerType.MANUFACTURER)
     expect(draft.address?.city).toBe("San Francisco")
     expect(draft.company?.corporate_name).toBe("Acme Incorporated")
   })

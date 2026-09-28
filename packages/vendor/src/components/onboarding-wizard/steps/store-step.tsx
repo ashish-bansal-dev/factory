@@ -200,6 +200,7 @@ export const StoreStep = ({
                         <Select.Item value={SellerType.MANUFACTURER}>Manufacturer</Select.Item>
                         <Select.Item value={SellerType.DISTRIBUTOR}>Distributor</Select.Item>
                         <Select.Item value={SellerType.WHOLESALER}>Wholesaler</Select.Item>
+                        <Select.Item value={SellerType.RETAILER}>Retailer</Select.Item>
                       </Select.Content>
                     </Select>
                   </Form.Control>
@@ -304,7 +305,11 @@ export const StoreStep = ({
               model="seller"
               zone="onboarding"
               tab="store"
-              control={form.control}
+              control={
+                form.control as unknown as React.ComponentProps<
+                  typeof FormExtensionZone
+                >["control"]
+              }
               data={store}
             />
           </div>
