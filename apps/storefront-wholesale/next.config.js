@@ -36,11 +36,11 @@ const nextConfig = {
       },
       {
         protocol: "https",
-        hostname: "medusa-public-images.s3.eu-west-1.amazonaws.com",
+        hostname: "asset.factorytribe.com",
       },
       {
         protocol: "https",
-        hostname: "medusa-server-testing.s3.amazonaws.com",
+        hostname: "1f88d70760906ddd76020603e560b9b6.r2.cloudflarestorage.com",
       },
       {
         protocol: "https",
