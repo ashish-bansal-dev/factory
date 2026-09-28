@@ -12,7 +12,7 @@ export const Component = () => {
   const { t } = useTranslation()
 
   const { product, isLoading, isError, error } = useProduct(id!, {
-    fields: "*categories",
+    fields: "*categories,*brand",
   })
 
   if (isError) {

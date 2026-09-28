@@ -261,7 +261,7 @@ declare module "@mercurjs/dashboard-sdk" {
       formZones: "address" | "edit" | "onboarding" | "payment-details" | "professional-details"
       formTabs: Record<string, string>
       displayZones: "general" | "seller-select"
-      displayFieldIds: "currency_code" | "description" | "email" | "handle" | "phone" | "status" | "website_url"
+      displayFieldIds: "currency_code" | "description" | "email" | "handle" | "phone" | "status" | "type" | "website_url"
     }
   }
 }

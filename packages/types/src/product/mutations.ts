@@ -217,6 +217,7 @@ export type CreateProductDTO = Omit<UpstreamCreateProductDTO, "options"> & {
    * the product is creatable, and axis attributes add the real options.
    */
   attributes?: ProductAttributeBatchAdd[]
+  brand_id?: string | null
 }
 
 // --- ProductChange (Mercur-only) ---

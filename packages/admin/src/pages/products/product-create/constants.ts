@@ -45,6 +45,7 @@ export const ProductCreateSchema = z
     discountable: z.boolean(),
     globally_available: z.boolean(),
     type_id: z.string().optional(),
+    brand_id: z.string().optional(),
     collection_id: z.string().optional(),
     category_ids: z
       .array(z.string())
@@ -170,6 +171,7 @@ export const PRODUCT_CREATE_FORM_DEFAULTS: Partial<
   subtitle: "",
   title: "",
   type_id: "",
+  brand_id: "",
   weight: "",
   width: "",
 }

@@ -32,6 +32,10 @@ export const adminProductFields = [
   "categories.id",
   "categories.name",
   "categories.handle",
+  "brand.id",
+  "brand.name",
+  "brand.handle",
+  "brand.logo",
   // NOTE: native `options(.values)` and `variants.options` are intentionally
   // omitted — `product.options` populate crashes MikroORM `expandDotPaths` on
   // the 2.16 options-preview build. Axis options must be read from the

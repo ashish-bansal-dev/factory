@@ -1,6 +1,7 @@
 export * from "./api-keys";
 export * from "./product-attributes";
 export * from "./auth";
+export * from "./brands";
 export * from "./campaigns";
 export * from "./categories";
 export * from "./collections";

@@ -29,6 +29,7 @@ import { recordProductAuditChangeWorkflow } from "../../product-edit/workflows/r
 import {
   associateSellersWithProductStep,
 } from "../steps"
+import { linkProductBrandStep } from "../../brand/steps/link-product-brand"
 import { ProductWorkflowEvents } from "../events"
 
 
@@ -84,8 +85,9 @@ export const createProductsWorkflow: ReturnWorkflow<
           attributes: _attributes,
           variants: _variants,
           seller_ids: _seller_ids,
+          brand_id: _brand_id,
           ...rest
-        } = p
+        } = p as any
         return {
           ...rest,
           options: [{ title: "__default__", values: ["__default__"] }],
@@ -223,6 +225,29 @@ export const createProductsWorkflow: ReturnWorkflow<
     associateSellersWithProductStep({ links: sellerProductLinks }).config({
       name: "mercur-create-products-associate-sellers",
     })
+
+    const brandProductLinks = transform(
+      { input, createdProducts },
+      ({ input, createdProducts }) => {
+        const links: { product_id: string; brand_id: string }[] = []
+        input.products.forEach((p, idx) => {
+          const product_id = createdProducts[idx]?.id
+          const brand_id =
+            (p as any).brand_id ??
+            (p as any).additional_data?.brand_id ??
+            (input.additional_data as any)?.brand_id
+          if (product_id && brand_id) {
+            links.push({ product_id, brand_id })
+          }
+        })
+        return links
+      },
+    )
+
+    when(
+      { brandProductLinks },
+      ({ brandProductLinks }) => brandProductLinks.length > 0,
+    ).then(() => linkProductBrandStep(brandProductLinks))
 
     // Read the attributes back off the products so PRODUCT_ADD records what
     // each one started with. Without it, "which attributes did this product

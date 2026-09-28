@@ -217,6 +217,7 @@ const CreateProduct = z
     external_id: z.string().nullish(),
     type_id: z.string().nullish(),
     collection_id: z.string().nullish(),
+    brand_id: z.string().nullish(),
     seller_ids: z.array(z.string()).optional(),
     categories: z.array(IdAssociation).optional(),
     tags: z.array(IdAssociation).optional(),

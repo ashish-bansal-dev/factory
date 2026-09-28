@@ -12,6 +12,7 @@ export const PRODUCT_DETAIL_FIELDS = [
   "+product_attribute_values.*",
   "+product_attribute_values.attribute.*",
   "+product_attribute_values.attribute.values.*",
+  "*brand",
 ].join(",")
 
 export const PRODUCT_DETAIL_QUERY = { fields: PRODUCT_DETAIL_FIELDS } as const

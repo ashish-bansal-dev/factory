@@ -33,6 +33,16 @@ export const ProductCreateOrganizationSection = () => {
     enabled: collectionsGate.allowed,
   })
 
+  const brands = useComboboxData({
+    queryKey: ["brands"],
+    queryFn: (params) => sdk.admin.brands.query(params),
+    getOptions: (data) =>
+      data.brands.map((brand: { id: string; name: string }) => ({
+        label: brand.name,
+        value: brand.id,
+      })),
+  })
+
   const types = useComboboxData({
     queryKey: ["product_types"],
     queryFn: (params) => sdk.admin.productTypes.query(params),
@@ -123,6 +133,30 @@ export const ProductCreateOrganizationSection = () => {
                     </Form.Control>
                   </div>
                 </ConditionalTooltip>
+                <Form.ErrorMessage />
+              </Form.Item>
+            )
+          }}
+        />
+        <Form.Field
+          control={form.control}
+          name="brand_id"
+          render={({ field }) => {
+            return (
+              <Form.Item data-testid="product-create-organize-section-brand-item">
+                <Form.Label optional data-testid="product-create-organize-section-brand-label">
+                  Brand
+                </Form.Label>
+                <Form.Control data-testid="product-create-organize-section-brand-control">
+                  <Combobox
+                    {...field}
+                    options={brands.options}
+                    searchValue={brands.searchValue}
+                    onSearchValueChange={brands.onSearchValueChange}
+                    fetchNextPage={brands.fetchNextPage}
+                    data-testid="product-create-organize-section-brand-input"
+                  />
+                </Form.Control>
                 <Form.ErrorMessage />
               </Form.Item>
             )

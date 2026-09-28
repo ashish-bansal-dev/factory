@@ -40,6 +40,11 @@ export const normalizeProductFormValues = (
       ? values.category_ids.map((id) => ({ id }))
       : undefined,
     type_id: values.type_id || undefined,
+    brand_id: values.brand_id || undefined,
+    additional_data: {
+      ...((values as any).additional_data || {}),
+      ...(values.brand_id ? { brand_id: values.brand_id } : {}),
+    },
     handle: values.handle?.trim(),
     origin_country: values.origin_country || undefined,
     material: values.material || undefined,

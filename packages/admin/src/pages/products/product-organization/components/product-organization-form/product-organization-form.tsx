@@ -14,6 +14,7 @@ import { KeyboundForm } from "../../../../../components/utilities/keybound-form"
 import { i18n } from "../../../../../components/utilities/i18n/i18n";
 
 import {
+  useLinkProductBrand,
   useLinkProductSellers,
   useUpdateProduct,
 } from "../../../../../hooks/api/products";
@@ -24,7 +25,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 type ProductOrganizationFormProps = {
-  product: HttpTypes.AdminProduct & { sellers?: SellerDTO[] };
+  product: HttpTypes.AdminProduct & { sellers?: SellerDTO[]; brand?: { id: string; name: string } };
 };
 
 const ProductOrganizationSchema = zod
@@ -32,6 +33,7 @@ const ProductOrganizationSchema = zod
     type_id: zod.string().nullable(),
     collection_id: zod.string().nullable(),
     category_id: zod.string().optional(),
+    brand_id: zod.string().nullable().optional(),
     tag_ids: zod.array(zod.string()),
     globally_available: zod.boolean(),
     seller_ids: zod.array(zod.string()),
@@ -79,6 +81,16 @@ export const ProductOrganizationForm = ({
     enabled: typesGate.allowed,
   });
 
+  const brands = useComboboxData({
+    queryKey: ["brands"],
+    queryFn: (params) => sdk.admin.brands.query(params),
+    getOptions: (data) =>
+      data.brands.map((brand: { id: string; name: string }) => ({
+        label: brand.name,
+        value: brand.id,
+      })),
+  });
+
   const tags = useComboboxData({
     queryKey: ["product_tags"],
     queryFn: (params) => sdk.admin.productTags.query(params),
@@ -102,12 +114,14 @@ export const ProductOrganizationForm = ({
   });
 
   const initialSellerIds = product.sellers?.map((s) => s.id) ?? [];
+  const initialBrandId = (product as any).brand?.id ?? "";
 
   const form = useForm({
     defaultValues: {
       type_id: product.type_id ?? "",
       collection_id: product.collection_id ?? "",
       category_id: product.categories?.[0]?.id ?? "",
+      brand_id: initialBrandId,
       tag_ids: product.tags?.map((t) => t.id) || [],
       globally_available: initialSellerIds.length === 0,
       seller_ids: initialSellerIds,
@@ -120,6 +134,8 @@ export const ProductOrganizationForm = ({
   const { mutateAsync, isPending } = useUpdateProduct(product.id);
   const { mutateAsync: linkSellers, isPending: isLinkingSellers } =
     useLinkProductSellers(product.id);
+  const { mutateAsync: linkBrand, isPending: isLinkingBrand } =
+    useLinkProductBrand(product.id);
 
   const handleSubmit = form.handleSubmit(async (data) => {
     const desiredSellerIds = data.globally_available ? [] : data.seller_ids;
@@ -143,6 +159,13 @@ export const ProductOrganizationForm = ({
             await linkSellers({ add, remove });
           }
 
+          if ((data.brand_id ?? "") !== initialBrandId) {
+            await linkBrand({
+              add: data.brand_id ? [data.brand_id] : [],
+              remove: initialBrandId ? [initialBrandId] : [],
+            });
+          }
+
           toast.success(
             t("products.organization.edit.toasts.success", {
               title: product.title,
@@ -161,12 +184,15 @@ export const ProductOrganizationForm = ({
     <RouteDrawer.Form form={form} data-testid="product-organization-form">
       <KeyboundForm
         onSubmit={handleSubmit}
-        className="flex h-full flex-col"
+        className="flex h-full flex-col overflow-hidden"
         data-testid="product-organization-keybound-form"
       >
-        <RouteDrawer.Body data-testid="product-organization-form-body">
+        <RouteDrawer.Body
+          className="flex flex-1 flex-col gap-y-4 overflow-y-auto"
+          data-testid="product-organization-form-body"
+        >
           <div
-            className="flex h-full flex-col gap-y-4"
+            className="flex flex-col gap-y-4"
             data-testid="product-organization-form-fields"
           >
             <Form.Field
@@ -263,6 +289,35 @@ export const ProductOrganizationForm = ({
             />
             <Form.Field
               control={form.control}
+              name="brand_id"
+              render={({ field }) => {
+                return (
+                  <Form.Item data-testid="product-organization-form-brand-item">
+                    <Form.Label
+                      optional
+                      data-testid="product-organization-form-brand-label"
+                    >
+                      Brand
+                    </Form.Label>
+                    <Form.Control data-testid="product-organization-form-brand-control">
+                      <Combobox
+                        {...field}
+                        multiple={false}
+                        options={brands.options}
+                        onSearchValueChange={brands.onSearchValueChange}
+                        searchValue={brands.searchValue}
+                        fetchNextPage={brands.fetchNextPage}
+                        placeholder="Select brand"
+                        data-testid="product-organization-form-brand-combobox"
+                      />
+                    </Form.Control>
+                    <Form.ErrorMessage data-testid="product-organization-form-brand-error" />
+                  </Form.Item>
+                );
+              }}
+            />
+            <Form.Field
+              control={form.control}
               name="tag_ids"
               render={({ field }) => {
                 return (
@@ -341,7 +396,10 @@ export const ProductOrganizationForm = ({
             )}
           </div>
         </RouteDrawer.Body>
-        <RouteDrawer.Footer data-testid="product-organization-form-footer">
+        <RouteDrawer.Footer
+          className="shrink-0"
+          data-testid="product-organization-form-footer"
+        >
           <div
             className="flex items-center justify-end gap-x-2"
             data-testid="product-organization-form-footer-actions"
@@ -361,7 +419,7 @@ export const ProductOrganizationForm = ({
             <Button
               size="small"
               type="submit"
-              isLoading={isPending || isLinkingSellers}
+              isLoading={isPending || isLinkingSellers || isLinkingBrand}
               data-testid="product-organization-form-save-button"
             >
               {t("actions.save")}

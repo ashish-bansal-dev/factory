@@ -10,6 +10,7 @@ import {
   validateAndTransformQuery,
 } from "@medusajs/framework"
 import { ProductStatus } from "@mercurjs/types"
+import { createLinkBody } from "@medusajs/medusa/api/utils/validators"
 
 import { applyOfferedProductsFilter } from "../../utils"
 import {
@@ -275,5 +276,10 @@ export const vendorProductsMiddlewares: MiddlewareRoute[] = [
         vendorProductQueryConfig.retrieve
       ),
     ],
+  },
+  {
+    method: ["POST"],
+    matcher: "/vendor/products/:id/brand",
+    middlewares: [validateAndTransformBody(createLinkBody())],
   },
 ]

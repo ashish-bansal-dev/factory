@@ -210,6 +210,11 @@ const overrides: MiddlewareRoute[] = [
       requirePermission("products", "edit"),
       validateAndTransformBody(createLinkBody())],
   },
+  {
+    method: ["POST"],
+    matcher: "/admin/products/:id/brand",
+    middlewares: [validateAndTransformBody(createLinkBody())],
+  },
 ]
 
 export const adminProductsMiddlewares = withOriginalMiddlewares(
