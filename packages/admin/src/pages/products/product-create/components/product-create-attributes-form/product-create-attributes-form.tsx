@@ -476,7 +476,6 @@ const RequiredAttributes = () => {
     },
     { enabled: categoryIds.length > 0 && canViewAttributes }
   )
-  )
 
   const attributes = form.watch("attributes") || []
 

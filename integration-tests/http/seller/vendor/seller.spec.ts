@@ -7,7 +7,7 @@ import {
 import { createSellerUser } from "../../../helpers/create-seller-user"
 import { SellerRole, SellerType } from "@mercurjs/types"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
-import { createProductsWorkflow, createSellerDefaultsWorkflow } from "@mercurjs/core/workflows"
+import { createProductsWorkflow } from "@mercurjs/core/workflows"
 
 jest.setTimeout(50000)
 

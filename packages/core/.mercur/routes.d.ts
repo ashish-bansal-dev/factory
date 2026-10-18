@@ -519,9 +519,6 @@ export type Routes = {
                 subscribe: typeof import("@medusajs/medusa/api/admin/workflows-executions/[workflow_id]/subscribe/route");
             };
         };
-        offerConditions: typeof import("../src/api/admin/offer-conditions/route") & {
-            $id: typeof import("../src/api/admin/offer-conditions/[id]/route");
-        };
         brands: typeof import("../src/api/admin/brands/route") & {
             $id: typeof import("../src/api/admin/brands/[id]/route") & {
                 approve: typeof import("../src/api/admin/brands/[id]/approve/route");
@@ -530,6 +527,9 @@ export type Routes = {
             };
         };
         inquiries: typeof import("../src/api/admin/inquiries/route");
+        offerConditions: typeof import("../src/api/admin/offer-conditions/route") & {
+            $id: typeof import("../src/api/admin/offer-conditions/[id]/route");
+        };
         reviews: typeof import("../src/api/admin/reviews/route") & {
             $id: typeof import("../src/api/admin/reviews/[id]/route") & {
                 respond: typeof import("../src/api/admin/reviews/[id]/respond/route");
@@ -963,9 +963,6 @@ export type Routes = {
         uploads: typeof import("../src/api/vendor/uploads/route") & {
             presignedUrls: typeof import("../src/api/vendor/uploads/presigned-urls/route");
         };
-        offerConditions: typeof import("../src/api/vendor/offer-conditions/route") & {
-            $id: typeof import("../src/api/vendor/offer-conditions/[id]/route");
-        };
         brands: typeof import("../src/api/vendor/brands/route") & {
             $id: typeof import("../src/api/vendor/brands/[id]/route");
         };
@@ -975,6 +972,9 @@ export type Routes = {
             };
         };
         inquiries: typeof import("../src/api/vendor/inquiries/route");
+        offerConditions: typeof import("../src/api/vendor/offer-conditions/route") & {
+            $id: typeof import("../src/api/vendor/offer-conditions/[id]/route");
+        };
         reviews: typeof import("../src/api/vendor/reviews/route") & {
             $id: typeof import("../src/api/vendor/reviews/[id]/route");
         };
