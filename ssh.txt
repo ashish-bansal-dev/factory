@@ -1,0 +1,74 @@
+# SSH Local Machine (Direct LAN IP)
+ssh dev@10.76.38.185
+# Or via alias:
+ssh local-server
+
+# SSH via Cloudflare Tunnel
+# Full command:
+ssh -o ProxyCommand="cloudflared access ssh --hostname %h" dev@ssh.factorytribe.com
+# Or via ~/.ssh/config alias:
+ssh factorytribe-ssh
+# Or:
+ssh dev@ssh.factorytribe.com
+
+# SSH oracle server (direct IP)
+ssh -i ~/.ssh/factorytribe-oracle.key ubuntu@130.210.44.243
+# Or via ~/.ssh/config:
+ssh factorytribe-server
+
+# Copying the localy build packages to the remote-server
+rsync -avz \
+  -e "ssh -i ~/.ssh/factorytribe-oracle.key" \
+  --exclude 'node_modules' \
+  --exclude '.git' \
+  ./packages/ ubuntu@130.210.44.243:/home/ubuntu/factorytribe/packages/
+
+# Sync the entire workspace
+rsync -avz \
+  -e "ssh -i ~/.ssh/factorytribe-oracle.key" \
+  --exclude 'node_modules' \
+  --exclude '.git' \
+  --exclude '.turbo'\
+  ./ ubuntu@130.210.44.243:/home/ubuntu/factorytribe/
+
+# On the remote machine: You only need dependencies and to run:
+cd /home/ubuntu/factorytribe
+bun install --frozen-lockfile
+# Launch using PM2, systemd, or bun run start
+
+Step 2: Transfer the Built .next Directory to Remote
+
+From your local machine, use rsync to sync only the .next build folder and public assets:
+
+bash
+# Run from repository root:
+rsync -avz --delete \
+  -e "ssh -i ~/.ssh/factorytribe-oracle.key" \
+  --exclude 'cache' \
+  apps/storefront-wholesale/.next/ \
+  ubuntu@130.210.44.243:/home/ubuntu/factorytribe/apps/storefront-wholesale/.next/
+
+Why --exclude 'cache'? The .next/cache directory contains massive internal webpack cache files (~300MB+) that are only needed for subsequent local rebuilds. Excluding it makes the transfer fast (usually under 20–30 MB) and takes only a few seconds.
+
+If you have static assets in public/, sync those as well:
+
+bash
+rsync -avz \
+  -e "ssh -i ~/.ssh/factorytribe-oracle.key" \
+  apps/storefront-wholesale/public/ \
+  ubuntu@130.210.44.243:/home/ubuntu/factorytribe/apps/storefront-wholesale/public/
+
+
+  # View app status
+pm2 status
+
+# View app logs (e.g. api or storefront)
+pm2 logs api
+pm2 logs storefront-wholesale
+
+# Restart an app
+pm2 restart api
+
+# Check Cloudflare tunnel status
+systemctl --user status cloudflared-factorytribe.service
+systemctl --user status cloudflared-ssh.service
