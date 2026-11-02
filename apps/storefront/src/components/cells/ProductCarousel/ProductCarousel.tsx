@@ -80,7 +80,7 @@ export const ProductCarousel = ({
                 alt="Product image"
                 width={700}
                 height={700}
-                quality={idx === 0 ? 85 : 70}
+                quality={75}
                 sizes="(min-width: 1024px) 50vw, 100vw"
                 className="max-h-[700px] w-full h-auto aspect-square object-contain object-center"
                 data-testid={`product-carousel-image-${idx}`}

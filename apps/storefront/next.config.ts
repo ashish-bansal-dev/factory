@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     }
   },
   images: {
+    unoptimized: true,
+    qualities: [50, 70, 75, 85],
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
