@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:worker": "opennextjs-cloudflare build",
+    "preview:worker": "wrangler dev",
+    "deploy:cf": "opennextjs-cloudflare build && wrangler deploy",
     "start": "next start",
     "lint": "next lint"
   },
@@ -17,6 +20,7 @@
     "@medusajs/ui": "^4.0.33",
     "@mercurjs/client": "2.3.8-canary.1",
     "@mercurjs/types": "2.3.8-canary.1",
+    "@opennextjs/cloudflare": "^1.20.15",
     "@stripe/react-stripe-js": "^3.7.0",
     "@stripe/stripe-js": "^7.1.0",
     "@talkjs/react": "^0.1.11",
@@ -65,7 +69,8 @@
     "prettier-plugin-tailwindcss": "^0.6.13",
     "storybook": "^8.4.7",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.156.0"
   },
   "eslintConfig": {
     "extends": [

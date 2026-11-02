@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "rm -rf node_modules/.vite && vite --port 7002",
     "build": "vite build",
+    "deploy:cf": "vite build && wrangler pages deploy dist",
     "lint": "oxlint",
     "preview": "vite preview --port 7002"
   },
@@ -47,6 +48,7 @@
     "turbo": "^2.7.4",
     "typescript": "5.9.3",
     "@types/node": "^26.1.0",
-    "@mercurjs/types": "workspace:*"
+    "@mercurjs/types": "workspace:*",
+    "wrangler": "^4.156.0"
   }
 }
