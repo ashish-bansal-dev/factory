@@ -85,7 +85,7 @@ export default function WholesaleDiscovery({
             brands.map((brand) => (
               <LocalizedClientLink
                 key={brand.id}
-                href={`/brands/${brand.slug}`}
+                href={`/brands/${brand.handle}`}
                 className="group flex flex-col justify-between p-6 rounded-2xl bg-white border border-stone-200/90 hover:border-charcoal-900/40 hover:shadow-md transition duration-200"
               >
                 <div>
@@ -110,24 +110,15 @@ export default function WholesaleDiscovery({
                     {brand.name}
                   </h3>
 
-                  {brand.story ? (
+                  {brand.description ? (
                     <p className="text-xs text-stone-600 line-clamp-2 leading-relaxed mb-4">
-                      {brand.story}
+                      {brand.description}
                     </p>
                   ) : (
                     <p className="text-xs text-stone-500 italic mb-4">
                       Independent wholesale fashion label.
                     </p>
                   )}
-                </div>
-
-                <div className="pt-4 border-t border-stone-100 flex items-center justify-between text-xs">
-                  <span className="font-semibold text-charcoal-900">
-                    Min. Order: $150
-                  </span>
-                  <span className="text-stone-500 group-hover:text-terracotta-600 font-medium inline-flex items-center gap-1 transition">
-                    View Line Sheet &rarr;
-                  </span>
                 </div>
               </LocalizedClientLink>
             ))

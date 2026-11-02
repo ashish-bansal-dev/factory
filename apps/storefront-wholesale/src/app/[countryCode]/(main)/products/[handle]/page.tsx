@@ -10,47 +10,7 @@ type Props = {
   searchParams: Promise<{ v_id?: string }>
 }
 
-export async function generateStaticParams() {
-  try {
-    const countryCodes = await listRegions().then((regions) =>
-      regions?.map((r) => r.countries?.map((c) => c.iso_2)).flat()
-    )
-
-    if (!countryCodes) {
-      return []
-    }
-
-    const promises = countryCodes.map(async (country) => {
-      const { response } = await listProducts({
-        countryCode: country,
-        queryParams: { limit: 100, fields: "handle" },
-      })
-
-      return {
-        country,
-        products: response.products,
-      }
-    })
-
-    const countryProducts = await Promise.all(promises)
-
-    return countryProducts
-      .flatMap((countryData) =>
-        countryData.products.map((product) => ({
-          countryCode: countryData.country,
-          handle: product.handle,
-        }))
-      )
-      .filter((param) => param.handle)
-  } catch (error) {
-    console.error(
-      `Failed to generate static paths for product pages: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }.`
-    )
-    return []
-  }
-}
+export const dynamic = "force-dynamic"
 
 function getImagesForVariant(
   product: HttpTypes.StoreProduct,
@@ -73,19 +33,25 @@ function getImagesForVariant(
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params
   const { handle } = params
-  const region = await getRegion(params.countryCode)
+  const region = await getRegion(params.countryCode).catch(() => null)
 
   if (!region) {
-    notFound()
+    return {
+      title: "Product Not Found | FactoryTribe Wholesale",
+    }
   }
 
   const product = await listProducts({
     countryCode: params.countryCode,
     queryParams: { handle },
-  }).then(({ response }) => response.products[0])
+  })
+    .then(({ response }) => response.products[0])
+    .catch(() => null)
 
   if (!product) {
-    notFound()
+    return {
+      title: "Product Not Found | FactoryTribe Wholesale",
+    }
   }
 
   return {
@@ -101,7 +67,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
 
 export default async function ProductPage(props: Props) {
   const params = await props.params
-  const region = await getRegion(params.countryCode)
+  const region = await getRegion(params.countryCode).catch(() => null)
   const searchParams = await props.searchParams
 
   const selectedVariantId = searchParams.v_id
@@ -113,7 +79,9 @@ export default async function ProductPage(props: Props) {
   const pricedProduct = await listProducts({
     countryCode: params.countryCode,
     queryParams: { handle: params.handle },
-  }).then(({ response }) => response.products[0])
+  })
+    .then(({ response }) => response.products[0])
+    .catch(() => null)
 
   if (!pricedProduct) {
     notFound()

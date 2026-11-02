@@ -177,19 +177,28 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  requestHeaders.set("x-channel", "wholesale")
-  requestHeaders.set("x-is-tenant", String(tenant.isTenant))
-  requestHeaders.set("x-tenant-type", tenant.tenantType)
+  let isTenant = tenant.isTenant
+  let tenantType = tenant.tenantType
+  let tenantHandle = tenant.handle
 
-  if (tenant.handle) {
-    requestHeaders.set("x-tenant-handle", tenant.handle)
-  }
   if (tenant.customDomain) {
     requestHeaders.set("x-custom-domain", tenant.customDomain)
     const customHandle = await resolveCustomDomainHandle(tenant.customDomain)
     if (customHandle) {
-      requestHeaders.set("x-tenant-handle", customHandle)
+      tenantHandle = customHandle
+    } else {
+      // Unmapped custom host: fall back to root marketplace hub
+      isTenant = false
+      tenantType = "marketplace"
     }
+  }
+
+  requestHeaders.set("x-channel", "wholesale")
+  requestHeaders.set("x-is-tenant", String(isTenant))
+  requestHeaders.set("x-tenant-type", tenantType)
+
+  if (tenantHandle) {
+    requestHeaders.set("x-tenant-handle", tenantHandle)
   }
 
   let redirectUrl = request.nextUrl.href
@@ -198,8 +207,13 @@ export async function middleware(request: NextRequest) {
   let cacheIdCookie = request.cookies.get("_medusa_cache_id")
   let cacheId = cacheIdCookie?.value || crypto.randomUUID()
 
-  const regionMap = await getRegionMap(cacheId)
-  const countryCode = regionMap && (await getCountryCode(request, regionMap))
+  let regionMap: Map<string, HttpTypes.StoreRegion> | null = null
+  try {
+    regionMap = await getRegionMap(cacheId)
+  } catch (error) {
+    console.error("Middleware error loading regions:", error)
+  }
+  const countryCode = (regionMap && (await getCountryCode(request, regionMap))) || DEFAULT_REGION || "in"
 
   const urlHasCountryCode =
     countryCode && request.nextUrl.pathname.split("/")[1].includes(countryCode)
@@ -236,11 +250,8 @@ export async function middleware(request: NextRequest) {
     redirectUrl = `${request.nextUrl.origin}/${countryCode}${redirectPath}${queryString}`
     response = NextResponse.redirect(`${redirectUrl}`, 307)
   } else if (!urlHasCountryCode && !countryCode) {
-    // Handle case where no valid country code exists (empty regions)
-    return new NextResponse(
-      "No valid regions configured. Please set up regions with countries in your Medusa Admin.",
-      { status: 500 }
-    )
+    redirectUrl = `${request.nextUrl.origin}/${DEFAULT_REGION || "in"}${redirectPath}${queryString}`
+    response = NextResponse.redirect(`${redirectUrl}`, 307)
   }
 
   return response

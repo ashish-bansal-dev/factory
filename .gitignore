@@ -55,3 +55,6 @@ apps/api/static
 .tunnels/
 public-endpoints.json
 public-endpoints.txt
+
+.open-next/
+.wrangler/
