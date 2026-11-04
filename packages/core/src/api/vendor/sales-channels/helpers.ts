@@ -42,8 +42,8 @@ export const ensureSellerOwnsProducts = async (
   })
 
   const [ownedIds, restrictedIds] = await Promise.all([
-    getSellerOwnedProductIds(scope, sellerId),
-    getProductIdsRestrictedFromSeller(scope, sellerId),
+    getSellerOwnedProductIds(scope, sellerId, productIds),
+    getProductIdsRestrictedFromSeller(scope, sellerId, productIds),
   ])
 
   const restrictedSet = new Set(restrictedIds)

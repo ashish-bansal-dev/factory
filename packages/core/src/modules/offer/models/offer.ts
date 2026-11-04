@@ -73,6 +73,16 @@ const Offer = model
       on: ["offer_type"],
       where: "deleted_at IS NULL",
     },
+    {
+      name: "IDX_offer_seller_id_created_at",
+      on: ["seller_id", "created_at"],
+      where: "deleted_at IS NULL",
+    },
+    {
+      name: "IDX_offer_product_id_seller_id_created_at",
+      on: ["product_id", "seller_id", "created_at"],
+      where: "deleted_at IS NULL",
+    },
   ])
 
 export default Offer

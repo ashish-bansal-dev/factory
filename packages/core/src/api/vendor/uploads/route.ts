@@ -25,7 +25,7 @@ export const POST = async (
 
   const { result: files } = await uploadFilesWorkflow(req.scope).run({
     input: {
-      files: input?.map((f: any) => {
+      files: input.map((f) => {
         const rawName = f.originalname || "upload"
         const safeBaseName = path.basename(rawName).replace(/[^a-zA-Z0-9._-]/g, "_")
         const filename = sellerId ? `sellers/${sellerId}/${safeBaseName}` : safeBaseName

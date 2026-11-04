@@ -1,5 +1,10 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils"
-import { MedusaContainer } from "@medusajs/framework/types"
+import {
+  IEventBusModuleService,
+  MedusaContainer,
+} from "@medusajs/framework/types"
+import { Modules } from "@medusajs/framework/utils"
+import { eventually } from "../../../helpers/eventually"
 import {
   adminHeaders,
   createAdminUser,
@@ -48,6 +53,58 @@ medusaIntegrationTestRunner({
         memberC = resultC.member
       })
 
+      describe("seller entity events", () => {
+        it("emits seller.seller.created / updated and lands the seller in the index", async () => {
+          const eventBus = appContainer.resolve<IEventBusModuleService>(
+            Modules.EVENT_BUS
+          )
+          const events: { name: string; id?: string }[] = []
+          eventBus.subscribe("*", async (event) => {
+            if (event.name.startsWith("seller.seller.")) {
+              events.push({
+                name: event.name,
+                id: (event.data as { id?: string } | undefined)?.id,
+              })
+            }
+          })
+
+          const created = await api.post(
+            `/admin/sellers`,
+            {
+              name: "Evented Seller",
+              email: "evented@test.com",
+              currency_code: "usd",
+              member: { email: "evented@test.com" },
+            },
+            adminHeaders
+          )
+          const sellerId = created.data.seller.id
+
+          await api.post(
+            `/admin/sellers/${sellerId}`,
+            { name: "Evented Seller Renamed" },
+            adminHeaders
+          )
+
+          await eventually(
+            async () => {
+              expect(events).toEqual(
+                expect.arrayContaining([
+                  { name: "seller.seller.created", id: sellerId },
+                  { name: "seller.seller.updated", id: sellerId },
+                ])
+              )
+              const { rows } = await dbConnection.raw(
+                `select id from index_data where name = 'Seller' and id = ?`,
+                [sellerId]
+              )
+              expect(rows).toHaveLength(1)
+            },
+            { timeout: 15000 }
+          )
+        })
+      })
+
       describe("POST /admin/sellers", () => {
         it("should create a seller with required fields", async () => {
           const response = await api.post(
@@ -67,7 +124,7 @@ medusaIntegrationTestRunner({
               name: "New Seller",
               email: "newseller@test.com",
               currency_code: "usd",
-              default_leadtime_to_ship: 2,
+              default_leadtime_to_ship: null,
             })
           )
         })
@@ -616,6 +673,18 @@ medusaIntegrationTestRunner({
       })
 
       describe("POST /admin/sellers/:id", () => {
+        it.each([
+          ["logo", "javascript:alert(1)"],
+          ["banner", "data:image/svg+xml;base64,PHN2Zz4="],
+          ["website_url", "javascript:alert(1)"],
+        ])("rejects a non-http %s", async (field, value) => {
+          const response = await api
+            .post(`/admin/sellers/${sellerA.id}`, { [field]: value }, adminHeaders)
+            .catch((e: any) => e.response)
+
+          expect(response.status).toEqual(400)
+        })
+
         it("should update seller name", async () => {
           const response = await api.post(
             `/admin/sellers/${sellerA.id}`,
@@ -638,6 +707,22 @@ medusaIntegrationTestRunner({
           expect(response.data.seller.description).toEqual(
             "Updated description"
           )
+        })
+
+        it("should not change status through the generic update", async () => {
+          const response = await api
+            .post(
+              `/admin/sellers/${sellerA.id}`,
+              { status: "suspended", status_reason: "bypass" },
+              adminHeaders
+            )
+            .catch((error) => error.response)
+
+          expect(response.status).toEqual(400)
+
+          const seller = await api.get(`/admin/sellers/${sellerA.id}`, adminHeaders)
+          expect(seller.data.seller.status).toEqual("pending_approval")
+          expect(seller.data.seller.status_reason).toBeFalsy()
         })
 
         it("should update is_premium flag", async () => {

@@ -26,6 +26,7 @@ import {
   createOffersStep,
   ensureVariantPriceSetsStep,
   validateOfferConditionsStep,
+  validateOfferProductsStep,
 } from "../steps"
 import { validateOfferSellerTypeStep } from "../steps/validate-offer-seller-type"
 import { linkSellerInventoryItemStep } from "../../inventory-item/steps"
@@ -34,6 +35,8 @@ import { OFFER_PRICE_FIELDS, pickOfferPrices } from "./upsert-offer-prices"
 
 export type CreateOffersWorkflowInput = {
   offers: CreateOfferDTO[]
+  /** Per-offer custom data, aligned by index with `offers`. */
+  offers_additional_data?: (Record<string, unknown> | undefined)[]
 } & AdditionalData
 
 export type CreateOffersWorkflowHooks = [
@@ -43,6 +46,7 @@ export type CreateOffersWorkflowHooks = [
     {
       offers: OfferDTO[]
       additional_data: Record<string, unknown> | undefined
+      offers_additional_data: Record<string, Record<string, unknown>>
     },
     unknown
   >,
@@ -93,10 +97,18 @@ export const createOffersWorkflow: ReturnWorkflow<
         "upc",
         "price_set.id",
         "product.id",
+        "product.status",
         ...VARIANT_INVENTORY_ATTRIBUTES,
       ],
       filters: { id: variantIds },
     }).config({ name: "get-variants" })
+
+    validateOfferProductsStep({
+      offers: transform({ input }, ({ input }) =>
+        input.offers.map((o) => ({ seller_id: o.seller_id, variant_id: o.variant_id })),
+      ),
+      variants,
+    })
 
     const inventoryItemsToCreate = transform(
       { input, variants },
@@ -212,6 +224,27 @@ export const createOffersWorkflow: ReturnWorkflow<
     })
 
     const offers = createOffersStep(stripped)
+
+    const offerOwnershipLinks = transform({ offers }, ({ offers }) => {
+      const links: LinkDefinition[] = []
+      for (const offer of offers) {
+        links.push({
+          [MercurModules.OFFER]: { offer_id: offer.id },
+          [MercurModules.SELLER]: { seller_id: offer.seller_id },
+        })
+        if (offer.product_id) {
+          links.push({
+            [MercurModules.OFFER]: { offer_id: offer.id },
+            [Modules.PRODUCT]: { product_id: offer.product_id },
+          })
+        }
+      }
+      return links
+    })
+
+    createRemoteLinkStep(offerOwnershipLinks).config({
+      name: "create-offer-ownership-links",
+    })
 
     // Link each offer's product to the offer's shipping profile. Medusa's
     // cart-refresh keeps a shipping method only when its option's profile
@@ -393,9 +426,22 @@ export const createOffersWorkflow: ReturnWorkflow<
       },
     )
 
+    const offersAdditionalData = transform(
+      { offers, input },
+      ({ offers, input }) => {
+        const byOfferId: Record<string, Record<string, unknown>> = {}
+        offers.forEach((offer, index) => {
+          const data = input.offers_additional_data?.[index]
+          if (data) byOfferId[offer.id] = data
+        })
+        return byOfferId
+      },
+    )
+
     const offersCreated = createHook("offersCreated", {
       offers: createdOffers,
       additional_data: input.additional_data,
+      offers_additional_data: offersAdditionalData,
     })
 
     return new WorkflowResponse(offers, {

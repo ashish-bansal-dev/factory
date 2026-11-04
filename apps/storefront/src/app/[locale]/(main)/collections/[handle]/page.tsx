@@ -1,17 +1,18 @@
-import NotFound from "@/app/not-found"
-import { Breadcrumbs } from "@/components/atoms"
+import { Breadcrumbs } from '@/components/atoms/Breadcrumbs/Breadcrumbs';
 import { ProductListingSkeleton } from "@/components/organisms/ProductListingSkeleton/ProductListingSkeleton"
-import { SearchProductsListing, ProductListing } from "@/components/sections"
+import { SearchProductsListing } from '@/components/sections/ProductListing/SearchProductsListing';
 import { getCollectionByHandle } from "@/lib/data/collections"
 import { listRegions } from "@/lib/data/regions"
 import {
   buildHreflangAlternates,
   getStorefrontLocales,
 } from "@/lib/helpers/hreflang"
-import isBot from "@/lib/helpers/isBot"
 import type { Metadata } from "next"
-import { headers } from "next/headers"
+import { getBaseUrl } from "@/lib/helpers/base-url"
+import { notFound } from "next/navigation"
 import { Suspense } from "react"
+import { getSellerByHandle } from "@/lib/data/seller"
+import { headers } from "next/headers"
 
 export async function generateMetadata({
   params,
@@ -25,10 +26,7 @@ export async function generateMetadata({
     return {}
   }
 
-  const headersList = await headers()
-  const host = headersList.get("host")
-  const protocol = headersList.get("x-forwarded-proto") || "https"
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`
+  const baseUrl = getBaseUrl()
 
   let locales: string[] = []
   try {
@@ -67,21 +65,35 @@ export async function generateMetadata({
   }
 }
 
-import { getSellerByHandle } from "@/lib/data/seller"
-
-const SingleCollectionsPage = async ({
+export default function SingleCollectionsPage({
   params,
-}: {
-  params: Promise<{ handle: string; locale: string }>
-}) => {
+  searchParams,
+}: PageProps<"/[locale]/collections/[handle]">) {
+  return (
+    <main className="container">
+      <Suspense
+        fallback={
+          <div aria-busy="true" data-testid="collection-page-loading">
+            <ProductListingSkeleton />
+          </div>
+        }
+      >
+        <Collection params={params} searchParams={searchParams} />
+      </Suspense>
+    </main>
+  )
+}
+
+async function Collection({
+  params,
+  searchParams,
+}: Pick<PageProps<"/[locale]/collections/[handle]">, "params" | "searchParams">) {
   const { handle, locale } = await params
 
   const headersList = await headers()
-  const ua = headersList.get("user-agent") || ""
-  const bot = isBot(ua)
   const collection = await getCollectionByHandle(handle)
 
-  if (!collection) return <NotFound />
+  if (!collection) notFound()
 
   const isTenant = headersList.get("x-is-tenant") === "true"
   const tenantHandle = headersList.get("x-tenant-handle")
@@ -101,22 +113,19 @@ const SingleCollectionsPage = async ({
   ]
 
   return (
-    <main className="container">
+    <>
       <div className="hidden md:block mb-2">
         <Breadcrumbs items={breadcrumbsItems} />
       </div>
 
       <h1 className="heading-xl uppercase">{collection.title}</h1>
 
-      <Suspense fallback={<div data-testid="collection-page-loading"><ProductListingSkeleton /></div>}>
-        {bot ? (
-          <ProductListing collection_id={collection.id} seller_id={sellerId} showSidebar locale={locale} />
-        ) : (
-          <SearchProductsListing collection_id={collection.id} seller_id={sellerId} locale={locale} />
-        )}
-      </Suspense>
-    </main>
+      <SearchProductsListing
+        collection_id={collection.id}
+        seller_id={sellerId}
+        locale={locale}
+        searchParams={searchParams}
+      />
+    </>
   )
 }
-
-export default SingleCollectionsPage

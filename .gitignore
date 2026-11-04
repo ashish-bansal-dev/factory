@@ -50,6 +50,10 @@ apps/api/static
 .agents/*
 !.agents/rules/
 !.agents/skills/
+!.agents/workflows/
+
+# Graphify output
+graphify-out/
 
 # Public tunnel artifacts
 .tunnels/
@@ -58,3 +62,9 @@ public-endpoints.txt
 
 .open-next/
 .wrangler/
+
+# scripts/stripe-listen.sh logs and .env backup
+.stripe/
+.env.bak
+
+.playwright-mcp/

@@ -1,10 +1,17 @@
 import { requirePermission } from "../../utils"
-import { MiddlewareRoute } from "@medusajs/framework/http"
+import {
+  AuthenticatedMedusaRequest,
+  MedusaNextFunction,
+  MedusaResponse,
+  MiddlewareRoute,
+} from "@medusajs/framework/http"
 import {
   validateAndTransformBody,
   validateAndTransformQuery,
 } from "@medusajs/framework"
 import { z } from "zod"
+import { createLinkBody } from "@medusajs/medusa/api/utils/validators"
+import { maybeApplyLinkFilter } from "@medusajs/framework"
 
 import {
   adminSellerQueryConfig,
@@ -30,6 +37,18 @@ import {
   AdminUpsertSellerProfessionalDetails,
 } from "./validators"
 
+const requirePremiumPermissionForPremiumChanges = (
+  req: AuthenticatedMedusaRequest<{ is_premium?: boolean }>,
+  res: MedusaResponse,
+  next: MedusaNextFunction
+) => {
+  if (req.validatedBody?.is_premium === undefined) {
+    return next()
+  }
+
+  return requirePermission("sellers.premium", "edit")(req, res, next)
+}
+
 export const adminSellersMiddlewares: MiddlewareRoute[] = [
   {
     method: ["POST"],
@@ -50,6 +69,19 @@ export const adminSellersMiddlewares: MiddlewareRoute[] = [
         AdminGetSellersParams,
         adminSellerQueryConfig.list
       ),
+      maybeApplyLinkFilter({
+        entryPoint: "region_seller",
+        resourceId: "seller_id",
+        filterableField: "region_id",
+      }),
+    ],
+  },
+  {
+    method: ["POST"],
+    matcher: "/admin/sellers/:id/regions",
+    middlewares: [
+      requirePermission("sellers", "edit"),
+      validateAndTransformBody(createLinkBody()),
     ],
   },
   {
@@ -58,6 +90,7 @@ export const adminSellersMiddlewares: MiddlewareRoute[] = [
     middlewares: [
       requirePermission("sellers", "edit"),
       validateAndTransformBody(AdminCreateSeller),
+      requirePremiumPermissionForPremiumChanges,
       validateAndTransformQuery(
         AdminGetSellerParams,
         adminSellerQueryConfig.retrieve
@@ -89,6 +122,7 @@ export const adminSellersMiddlewares: MiddlewareRoute[] = [
     middlewares: [
       requirePermission("sellers", "edit"),
       validateAndTransformBody(AdminUpdateSeller),
+      requirePremiumPermissionForPremiumChanges,
       validateAndTransformQuery(
         AdminGetSellerParams,
         adminSellerQueryConfig.retrieve
@@ -261,90 +295,42 @@ export const adminSellersMiddlewares: MiddlewareRoute[] = [
   {
     method: ["POST"],
     matcher: "/admin/sellers/:id/domain-approval",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.update,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "edit")],
   },
   {
     method: ["GET"],
     matcher: "/admin/sellers/:id/domains",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.read,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "view")],
   },
   {
     method: ["POST"],
     matcher: "/admin/sellers/:id/domains",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.update,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "edit")],
   },
   {
     method: ["GET"],
     matcher: "/admin/sellers/:id/domains/:domain_id",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.read,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "view")],
   },
   {
     method: ["POST", "PUT"],
     matcher: "/admin/sellers/:id/domains/:domain_id",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.update,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "edit")],
   },
   {
     method: ["DELETE"],
     matcher: "/admin/sellers/:id/domains/:domain_id",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.delete,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "manage")],
   },
   {
     method: ["POST"],
     matcher: "/admin/sellers/:id/domains/:domain_id/verify",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.update,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "edit")],
   },
   {
     method: ["POST"],
     matcher: "/admin/sellers/:id/domains/:domain_id/check-dns",
-    middlewares: [],
-    policies: [
-      {
-        resource: PolicyResource.seller,
-        operation: PolicyOperation.update,
-      },
-    ],
+    middlewares: [requirePermission("sellers", "edit")],
   },
 ]
 

@@ -27,7 +27,13 @@ import {
 import { MediaSchema } from "@pages/products/product-create/constants";
 import { InferClientOutput } from "@mercurjs/client";
 import { sdk } from "@lib/client";
-import { useUpdateSeller } from "@hooks/api/sellers";
+import {
+  SELLER_STATUS_LABELS,
+  sellerStatusOptions,
+  transitionSellerStatus,
+  useUpdateSeller,
+} from "@hooks/api/sellers";
+import { useCan } from "@mercurjs/dashboard-shared";
 import { currencies } from "@/lib/data/currencies";
 import { SellerStatus, SellerType } from "@mercurjs/types";
 
@@ -52,6 +58,10 @@ const EditStoreSchema = zod.object({
   phone: zod.string().optional().or(zod.literal("")),
   website_url: zod.string().optional().or(zod.literal("")),
   is_premium: zod.boolean(),
+  default_leadtime_to_ship: zod
+    .string()
+    .regex(/^\d*$/, { message: i18n.t("marketplace.leadtimeInvalid") })
+    .optional(),
   media: zod.array(MediaSchema).optional(),
   bannerMedia: zod.array(MediaSchema).optional(),
 });
@@ -101,6 +111,8 @@ const ensureWebsiteProtocol = (url: string): string | null => {
 export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
   const { t } = useTranslation();
   const { handleSuccess } = useRouteModal();
+  const canEditStatus = useCan("sellers.approval", "edit");
+  const canEditPremium = useCan("sellers.premium", "edit");
 
   const form = useExtendableForm({
     schema: EditStoreSchema,
@@ -117,6 +129,8 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
       phone: seller.phone ?? "",
       website_url: stripWebsiteProtocol(seller.website_url),
       is_premium: seller.is_premium ?? false,
+      default_leadtime_to_ship:
+        seller.default_leadtime_to_ship?.toString() ?? "",
       media: seller.logo
         ? [
             {
@@ -186,9 +200,23 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
       return;
     }
 
+    if (values.status !== seller.status) {
+      try {
+        await transitionSellerStatus(
+          seller.id,
+          seller.status as SellerStatus,
+          values.status,
+        );
+      } catch (error) {
+        if (error instanceof Error) {
+          toast.error(error.message);
+        }
+        return;
+      }
+    }
+
     await mutateAsync(
       {
-        status: values.status,
         type: values.type || null,
         name: values.name,
         handle: values.handle || undefined,
@@ -196,7 +224,12 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
         phone: values.phone || null,
         description: values.description || null,
         website_url: ensureWebsiteProtocol(values.website_url ?? ""),
-        is_premium: values.is_premium,
+        ...(values.is_premium !== (seller.is_premium ?? false)
+          ? { is_premium: values.is_premium }
+          : {}),
+        default_leadtime_to_ship: values.default_leadtime_to_ship
+          ? Number(values.default_leadtime_to_ship)
+          : null,
         logo: logoUrl,
         banner: bannerUrl,
         additional_data: values.additional_data,
@@ -269,34 +302,34 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
       >
         <RouteDrawer.Body className="flex flex-col gap-y-8 overflow-y-auto">
           <div className="flex flex-col gap-y-4">
-            <Form.Field
-              control={form.control}
-              name="status"
-              render={({ field: { onChange, value, ref: _ref, ...field } }) => (
-                <Form.Item>
-                  <Form.Label>{t("fields.status")}</Form.Label>
-                  <Form.Control>
-                    <Select {...field} value={value} onValueChange={onChange}>
-                      <Select.Trigger>
-                        <Select.Value />
-                      </Select.Trigger>
-                      <Select.Content>
-                        <Select.Item value={SellerStatus.OPEN}>
-                          {t("stores.status.open")}
-                        </Select.Item>
-                        <Select.Item value={SellerStatus.PENDING_APPROVAL}>
-                          {t("stores.status.pendingApproval")}
-                        </Select.Item>
-                        <Select.Item value={SellerStatus.SUSPENDED}>
-                          {t("stores.status.suspended")}
-                        </Select.Item>
-                      </Select.Content>
-                    </Select>
-                  </Form.Control>
-                  <Form.ErrorMessage />
-                </Form.Item>
-              )}
-            />
+            {canEditStatus && (
+              <Form.Field
+                control={form.control}
+                name="status"
+                render={({ field: { onChange, value, ref: _ref, ...field } }) => (
+                  <Form.Item>
+                    <Form.Label>{t("fields.status")}</Form.Label>
+                    <Form.Control>
+                      <Select {...field} value={value} onValueChange={onChange}>
+                        <Select.Trigger>
+                          <Select.Value />
+                        </Select.Trigger>
+                        <Select.Content>
+                          {sellerStatusOptions(
+                            seller.status as SellerStatus,
+                          ).map((status) => (
+                            <Select.Item key={status} value={status}>
+                              {t(SELLER_STATUS_LABELS[status])}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select>
+                    </Form.Control>
+                    <Form.ErrorMessage />
+                  </Form.Item>
+                )}
+              />
+            )}
             <Form.Field
               control={form.control}
               name="type"
@@ -422,12 +455,35 @@ export const StoreEditForm = ({ seller }: StoreEditFormProps) => {
               </Select>
             </Form.Item>
           </div>
-          <SwitchBox
+          <Form.Field
             control={form.control}
-            name="is_premium"
-            label={t("fields.premium")}
-            description={t("stores.premium.description")}
+            name="default_leadtime_to_ship"
+            render={({ field }) => (
+              <Form.Item>
+                <Form.Label optional>{t("stores.fields.defaultLeadtime")}</Form.Label>
+                <Form.Control>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    {...field}
+                    data-testid="store-edit-form-leadtime-input"
+                  />
+                </Form.Control>
+                <Form.Hint>{t("stores.fields.defaultLeadtimeHint")}</Form.Hint>
+                <Form.ErrorMessage />
+              </Form.Item>
+            )}
           />
+          {canEditPremium && (
+            <SwitchBox
+              control={form.control}
+              name="is_premium"
+              label={t("fields.premium")}
+              description={t("stores.premium.description")}
+            />
+          )}
           <div className="border-ui-border-base border-t" />
           <div className="flex flex-col gap-y-4">
             <Heading level="h2">{t("stores.edit.mediaHeading")}</Heading>

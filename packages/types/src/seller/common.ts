@@ -171,7 +171,12 @@ export interface SellerMemberDTO {
 export interface MemberInviteDTO {
   id: string
   email: string
-  token: string
+  token_hash: string
+  /**
+   * The raw invite token. Only present on the result of creating or
+   * resending an invite; it is never persisted or returned by reads.
+   */
+  token?: string
   accepted: boolean
   expires_at: Date
   role_id: string
@@ -186,6 +191,12 @@ export interface CreateMemberInviteDTO {
   role_id: string
   seller_id: string
   metadata?: Record<string, unknown> | null
+}
+
+export interface SellerRegionDTO {
+  id: string
+  name: string
+  currency_code: string
 }
 
 export interface SellerDTO {
@@ -206,7 +217,7 @@ export interface SellerDTO {
   approved_at: Date | null
   rejected_at: Date | null
   is_premium: boolean
-  default_leadtime_to_ship: number
+  default_leadtime_to_ship: number | null
   closed_from: Date | null
   closed_to: Date | null
   closure_note: string | null
@@ -214,6 +225,7 @@ export interface SellerDTO {
   address: SellerAddressDTO | null
   payment_details: PaymentDetailsDTO | null
   members: MemberDTO[]
+  regions?: SellerRegionDTO[]
   metadata: Record<string, unknown> | null
   created_at: Date
   updated_at: Date

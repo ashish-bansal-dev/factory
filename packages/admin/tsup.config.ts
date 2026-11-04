@@ -16,5 +16,7 @@ export default defineConfig((options) => ({
     "virtual:mercur/widgets",
     "virtual:mercur/navigation",
     "virtual:mercur/custom-fields",
+    "virtual:mercur/layouts",
+    "virtual:mercur/preferences",
   ],
 }));

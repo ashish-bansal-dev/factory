@@ -3,7 +3,7 @@ import Image from "next/image"
 import { HttpTypes } from "@medusajs/types"
 import { useCallback, useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
-import { Indicator } from "@/components/atoms"
+import { Indicator } from '@/components/atoms/Indicator/Indicator';
 import useEmblaCarousel from "embla-carousel-react"
 type EmblaCarouselType = NonNullable<ReturnType<typeof useEmblaCarousel>[1]>
 

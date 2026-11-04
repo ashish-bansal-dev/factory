@@ -40,7 +40,10 @@ export const OfferListDataTable = () => {
     { placeholderData: keepPreviousData },
   )
 
-  const rows = (products ?? []) as unknown as OfferProduct[]
+  const rows = useMemo(
+    () => (products ?? []) as unknown as OfferProduct[],
+    [products]
+  )
 
   const filteredRows = useMemo(() => {
     if (channelTab === "all") return rows

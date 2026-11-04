@@ -16,12 +16,14 @@ import validateProjectName from "validate-npm-package-name";
 import waitOn from "wait-on";
 
 import packageJson from "../../package.json";
+import { ErrorCategory, sendTelemetryEvent, showTelemetryNoticeIfNeeded } from "../telemetry";
+import { finishCommand } from "../telemetry/command-tracking";
 import {
-  sendTelemetryEvent,
-  setTelemetryEmail,
-  showTelemetryNoticeIfNeeded,
-} from "../telemetry";
-import { setupDatabase, type SetupDatabaseResult } from "../utils/create-db";
+  initializeDatabase,
+  prepareDatabase,
+  type PreparedDatabase,
+  type SetupDatabaseResult,
+} from "../utils/create-db";
 import {
   resolveProjectPackageManager,
   type PackageManager,
@@ -73,7 +75,7 @@ export const create = new Command()
   .option("--no-deps", "skip installing dependencies.")
   .option("--skip-storefront", "skip adding the Next.js storefront.", false)
   .option("--skip-db", "skip database configuration.", false)
-  .option("--skip-email", "skip email prompt.", false)
+  .option("--skip-email", "deprecated: the email prompt was removed, this flag has no effect.", false)
   .option(
     "--tag <tag>",
     "the release channel to pin @mercurjs/* packages to: latest, rc, or canary. defaults to the channel of this CLI."
@@ -150,26 +152,24 @@ export const create = new Command()
         addStorefront = Boolean(wantsStorefront);
       }
 
-      if (!opts.skipEmail) {
-        const { wantsEmail } = await prompts({
-          type: "confirm",
-          name: "wantsEmail",
-          message: "Mind sharing your email? We reach out for priority support, community events, and invite-only meetups. We never spam.",
-          initial: false,
+      let preparedDb: PreparedDatabase | null = null;
+      if (!opts.skipDb) {
+        const prepareSpinner = spinner("Preparing database...").start();
+        preparedDb = await prepareDatabase({
+          projectName,
+          dbConnectionString: opts.dbConnectionString,
+          dbHost: opts.dbHost,
+          dbPort: parseInt(opts.dbPort, 10),
+          spinner: prepareSpinner,
         });
 
-        if (wantsEmail) {
-          const { email } = await prompts({
-            type: "text",
-            name: "email",
-            message: "Enter your email:",
-            format: (value: string) => value.trim(),
-          });
-
-          if (email) {
-            setTelemetryEmail(email);
-          }
+        if (!preparedDb) {
+          prepareSpinner.fail("Failed to prepare database.");
+          logger.log(feedbackOutro());
+          await finishCommand(1, { name: ErrorCategory.DATABASE });
+          process.exit(1);
         }
+        prepareSpinner.succeed(`Database ${highlighter.info(preparedDb.dbName)} is ready.`);
       }
 
       const projectDir = path.resolve(opts.cwd, projectName);
@@ -232,15 +232,7 @@ export const create = new Command()
           initialInstallSpinner.succeed(`Dependencies installed successfully in ${installDuration}s.`);
         } else {
           initialInstallSpinner.fail(`Failed to install dependencies`);
-          await sendTelemetryEvent({
-            type: 'create',
-            payload: {
-              outcome: 'dependency_installation_failed',
-              packageManager,
-            }
-          }, {
-            cwd: projectDir,
-          })
+          await finishCommand(1, { name: ErrorCategory.INSTALL });
           process.exit(1);
         }
       }
@@ -248,37 +240,23 @@ export const create = new Command()
       let dbConnectionString: string | undefined = opts.dbConnectionString;
       let dbResult: SetupDatabaseResult | undefined;
 
-      if (!opts.skipDb) {
+      if (preparedDb) {
         const dbSpinner = spinner("Setting up database...").start();
-        dbResult = await setupDatabase({
+        dbResult = await initializeDatabase({
           projectDir,
-          projectName,
-          dbConnectionString,
-          dbHost: opts.dbHost,
-          dbPort: parseInt(opts.dbPort, 10),
           spinner: dbSpinner,
+          ...preparedDb,
         });
 
         if (dbResult.success) {
-          if (dbResult.alreadyExists) {
-            dbSpinner.warn(
-              `Database ${highlighter.info(dbResult.dbName)} already exists. Skipping database creation.`
-            );
-          } else {
-            dbSpinner.succeed(
-              `Database ${highlighter.info(dbResult.dbName)} setup successfully.`
-            );
-          }
+          dbSpinner.succeed(
+            `Database ${highlighter.info(dbResult.dbName)} setup successfully.`
+          );
           dbConnectionString = dbResult.connectionString!;
         } else {
           dbSpinner.fail("Failed to setup database.");
           logger.log(feedbackOutro());
-          await sendTelemetryEvent({
-            type: 'create',
-            payload: {
-              outcome: 'database_setup_failed',
-            }
-          }, { cwd: projectDir });
+          await finishCommand(1, { name: ErrorCategory.DATABASE });
           process.exit(1);
         }
       } else {
@@ -292,14 +270,18 @@ export const create = new Command()
 
       await initGit(projectDir);
 
-      await sendTelemetryEvent({
-        type: 'create',
-        payload: {
-          outcome: 'created'
-        }
-      }, {
-        cwd: projectDir,
-      });
+      await sendTelemetryEvent(
+        {
+          event: "project_created",
+          properties: {
+            template,
+            package_manager: packageManager,
+            with_storefront: addStorefront,
+            skip_db: Boolean(opts.skipDb),
+          },
+        },
+        { cwd: projectDir }
+      );
 
       const totalDuration = ((Date.now() - createStart) / 1000).toFixed(1);
       spinner(`Mercur project successfully created! (${totalDuration}s)`).succeed();

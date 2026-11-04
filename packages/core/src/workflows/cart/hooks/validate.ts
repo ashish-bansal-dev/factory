@@ -1,3 +1,4 @@
+import { BigNumberInput, MedusaContainer } from "@medusajs/framework/types"
 import {
   ContainerRegistrationKeys,
   MathBN,
@@ -10,31 +11,61 @@ import {
   updateLineItemInCartWorkflow,
 } from "@medusajs/medusa/core-flows"
 import {
+  OfferInventoryShape,
   prepareOfferInventoryInput,
   requiredOfferFieldsForInventoryConfirmation,
 } from "../../offer/utils"
+import { resolveOrderableSellerIds } from "../../seller/utils"
 
-addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
-  const items = input.items ?? []
-  if (!items.length) {
-    return
-  }
+type OfferDemandLine = {
+  id: string
+  quantity: BigNumberInput
+  offer_id: string
+}
 
+const resolveCartOfferLines = async (
+  container: MedusaContainer,
+  cartId: string,
+): Promise<OfferDemandLine[]> => {
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const { data } = await query.graph({
+    entity: "cart",
+    fields: ["items.id", "items.quantity", "items.offer.id"],
+    filters: { id: cartId },
+  })
+
+  const items = (data[0]?.items ?? []) as Array<{
+    id: string
+    quantity: BigNumberInput
+    offer?: { id?: string } | null
+  } | null>
+
+  return items.flatMap((item) =>
+    item?.offer?.id
+      ? [{ id: item.id, quantity: item.quantity, offer_id: item.offer.id }]
+      : [],
+  )
+}
+
+// Several lines can draw on one inventory item: the same offer added again
+// before Medusa merges it, or different offers sharing an item through
+// inventory kits. Stock is confirmed against the cart's total demand per item,
+// not line by line.
+const hasCartOfferInventoryCoverage = async ({
+  container,
+  salesChannelId,
+  lines,
+  checkedLineIds,
+}: {
+  container: MedusaContainer
+  salesChannelId?: string
+  lines: OfferDemandLine[]
+  checkedLineIds: Set<string>
+}): Promise<boolean> => {
   const query = container.resolve(ContainerRegistrationKeys.QUERY)
   const inventoryService = container.resolve(Modules.INVENTORY)
 
-  const offerIds = Array.from(
-    new Set(
-      items
-        .map((i) => i.offer_id)
-        .filter((v): v is string => typeof v === "string" && v.length > 0),
-    ),
-  )
-
-  if (!offerIds.length) {
-    return
-  }
-
+  const offerIds = Array.from(new Set(lines.map((l) => l.offer_id)))
   const { data: offers } = await query.graph({
     entity: "offer",
     fields: [
@@ -46,14 +77,171 @@ addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
   })
 
   const foundIds = new Set(offers.map((o: { id: string }) => o.id))
-  const missing = offerIds.find((id) => !foundIds.has(id))
+  const missing = lines.find(
+    (l) => checkedLineIds.has(l.id) && !foundIds.has(l.offer_id),
+  )
   if (missing) {
     throw new MedusaError(
       MedusaError.Types.NOT_FOUND,
-      `Offer ${missing} not found`,
+      `Offer ${missing.offer_id} not found`,
     )
   }
 
+  const { items: entries } = prepareOfferInventoryInput({
+    input: {
+      sales_channel_id: salesChannelId,
+      items: lines
+        .filter((l) => foundIds.has(l.offer_id))
+        .map((l) => ({
+          id: l.id,
+          quantity: l.quantity,
+          offer: { id: l.offer_id },
+        })),
+      offers: offers as OfferInventoryShape[],
+    },
+  })
+
+  const demandByItem = new Map<
+    string,
+    { units: BigNumberInput; locationIds: Set<string>; checked: boolean }
+  >()
+
+  for (const entry of entries) {
+    if (!entry.manage_inventory) {
+      continue
+    }
+
+    const demand = demandByItem.get(entry.inventory_item_id) ?? {
+      units: 0,
+      locationIds: new Set<string>(),
+      checked: false,
+    }
+    demand.units = MathBN.add(
+      demand.units,
+      MathBN.mult(entry.required_quantity, entry.quantity),
+    )
+    if (
+      entry.id &&
+      checkedLineIds.has(entry.id) &&
+      !entry.allow_backorder
+    ) {
+      demand.checked = true
+      entry.location_ids.forEach((id) => demand.locationIds.add(id))
+    }
+    demandByItem.set(entry.inventory_item_id, demand)
+  }
+
+  const coverage = await promiseAll(
+    Array.from(demandByItem.entries())
+      .filter(([, demand]) => demand.checked)
+      .map(([inventoryItemId, demand]) =>
+        inventoryService.confirmInventory(
+          inventoryItemId,
+          Array.from(demand.locationIds),
+          demand.units,
+        ),
+      ),
+  )
+
+  return coverage.every(Boolean)
+}
+
+// Medusa calculates prices per variant, so two offers on one variant would
+// both resolve to the cheaper offer's price. A variant is sold by one offer
+// per cart; switching offers means removing the line first.
+const validateOneOfferPerVariant = async (
+  container: MedusaContainer,
+  cartId: string,
+  incoming: Array<{ variant_id?: string; offer_id: string }>,
+): Promise<void> => {
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const { data } = await query.graph({
+    entity: "cart",
+    fields: ["items.variant_id", "items.offer.id"],
+    filters: { id: cartId },
+  })
+
+  const offerByVariant = new Map<string, string>()
+  for (const item of (data[0]?.items ?? []) as Array<{
+    variant_id?: string | null
+    offer?: { id?: string } | null
+  } | null>) {
+    if (item?.variant_id && item.offer?.id) {
+      offerByVariant.set(item.variant_id, item.offer.id)
+    }
+  }
+
+  for (const item of incoming) {
+    if (!item.variant_id) {
+      continue
+    }
+    const existingOfferId = offerByVariant.get(item.variant_id)
+    if (existingOfferId && existingOfferId !== item.offer_id) {
+      throw new MedusaError(
+        MedusaError.Types.INVALID_DATA,
+        `Variant ${item.variant_id} is already in the cart through offer ${existingOfferId}. Remove that line before adding offer ${item.offer_id}.`,
+      )
+    }
+    offerByVariant.set(item.variant_id, item.offer_id)
+  }
+}
+
+const validateOrderableSellers = async (
+  container: MedusaContainer,
+  offerIds: string[],
+): Promise<void> => {
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const { data: offers } = await query.graph({
+    entity: "offer",
+    fields: ["id", "seller_id"],
+    filters: { id: offerIds },
+  })
+  if (offers.length !== offerIds.length) {
+    throw new MedusaError(
+      MedusaError.Types.NOT_FOUND,
+      `Offer ${offerIds.find((id) => !offers.some((offer) => offer.id === id))} was not found`,
+    )
+  }
+  const sellerIds = [
+    ...new Set(
+      (offers as { seller_id?: string | null }[])
+        .map((offer) => offer.seller_id)
+        .filter((id): id is string => !!id),
+    ),
+  ]
+  const orderable = new Set(
+    sellerIds.length ? await resolveOrderableSellerIds(container, sellerIds) : [],
+  )
+  const unavailable = (offers as { id: string; seller_id?: string | null }[]).find(
+    (offer) => !offer.seller_id || !orderable.has(offer.seller_id),
+  )
+  if (unavailable) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      `Offer ${unavailable.id} is not available: its seller is not accepting orders`,
+    )
+  }
+}
+
+addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
+  const incoming = (input.items ?? []).filter(
+    (i): i is typeof i & { offer_id: string } =>
+      typeof i.offer_id === "string" && i.offer_id.length > 0,
+  )
+  if (!incoming.length) {
+    return
+  }
+
+  const incomingOfferIds = [...new Set(incoming.map((i) => i.offer_id))]
+  await validateOneOfferPerVariant(container, cart.id, incoming)
+  await validateOrderableSellers(container, incomingOfferIds)
+
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const { data: offers } = await query.graph({
+    entity: "offer",
+    fields: ["id", "offer_type", "bundle_size"],
+    filters: { id: incomingOfferIds },
+  })
   const offerMap = new Map(
     (
       offers as Array<{
@@ -63,7 +251,7 @@ addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
       }>
     ).map((o) => [o.id, o])
   )
-  for (const item of items) {
+  for (const item of incoming) {
     const offer = item.offer_id ? offerMap.get(item.offer_id) : undefined
     if (
       offer?.offer_type === "wholesale" &&
@@ -79,31 +267,21 @@ addToCartWorkflow.hooks.validate(async ({ input, cart }, { container }) => {
     }
   }
 
-  const { items: confirmInputs } = prepareOfferInventoryInput({
-    input: {
-      sales_channel_id: cart.sales_channel_id ?? undefined,
-      items: items.map((i) => ({
-        id: undefined,
-        quantity: i.quantity,
-        offer: { id: i.offer_id },
-      })),
-      offers: offers as never,
-    },
+  const incomingLines = incoming.map((i, index) => ({
+    id: `incoming_${index}`,
+    quantity: i.quantity,
+    offer_id: i.offer_id,
+  }))
+  const existingLines = await resolveCartOfferLines(container, cart.id)
+
+  const covered = await hasCartOfferInventoryCoverage({
+    container,
+    salesChannelId: cart.sales_channel_id ?? undefined,
+    lines: [...existingLines, ...incomingLines],
+    checkedLineIds: new Set(incomingLines.map((l) => l.id)),
   })
 
-  const coverage = await promiseAll(
-    confirmInputs
-      .filter((entry) => entry.manage_inventory && !entry.allow_backorder)
-      .map((entry) =>
-        inventoryService.confirmInventory(
-          entry.inventory_item_id,
-          entry.location_ids,
-          MathBN.mult(entry.required_quantity, entry.quantity),
-        ),
-      ),
-  )
-
-  if (coverage.some((hasCoverage) => !hasCoverage)) {
+  if (!covered) {
     throw new MedusaError(
       MedusaError.Types.NOT_ALLOWED,
       "Some inventory item linked to an offer does not have sufficient stock",
@@ -122,16 +300,16 @@ updateLineItemInCartWorkflow.hooks.validate(
       return
     }
 
-    const line = (cart.items ?? []).find(
-      (i: { id: string }) => i.id === input.item_id,
+    const lines = (
+      await resolveCartOfferLines(container, cart.id)
+    ).map((l) =>
+      l.id === input.item_id ? { ...l, quantity: newQuantity } : l,
     )
-    if (!line) {
+    if (!lines.some((l) => l.id === input.item_id)) {
       return
     }
 
     const query = container.resolve(ContainerRegistrationKeys.QUERY)
-    const inventoryService = container.resolve(Modules.INVENTORY)
-
     const { data: cartLines } = await query.graph({
       entity: "line_item",
       fields: ["id", "offer.id", "offer.offer_type", "offer.bundle_size"],
@@ -147,70 +325,27 @@ updateLineItemInCartWorkflow.hooks.validate(
           }
         }
       | undefined
-    const offerId = cartLine?.offer?.id
-    if (!offerId) {
-      return
-    }
-
-    const { data: offers } = await query.graph({
-      entity: "offer",
-      fields: [
-        ...requiredOfferFieldsForInventoryConfirmation,
-        "offer_type",
-        "bundle_size",
-      ],
-      filters: { id: [offerId] },
-    })
-
-    const offer = offers[0] as
-      | {
-          id: string
-          offer_type?: string
-          bundle_size?: number
-        }
-      | undefined
-
-    const effectiveOffer = offer || cartLine?.offer
     if (
-      effectiveOffer?.offer_type === "wholesale" &&
-      effectiveOffer.bundle_size &&
-      effectiveOffer.bundle_size > 1
+      cartLine?.offer?.offer_type === "wholesale" &&
+      cartLine.offer.bundle_size &&
+      cartLine.offer.bundle_size > 1
     ) {
-      if (Number(newQuantity) % effectiveOffer.bundle_size !== 0) {
+      if (Number(newQuantity) % cartLine.offer.bundle_size !== 0) {
         throw new MedusaError(
           MedusaError.Types.INVALID_DATA,
-          `Quantity must be a multiple of pack size (${effectiveOffer.bundle_size})`
+          `Quantity must be a multiple of pack size (${cartLine.offer.bundle_size})`
         )
       }
     }
 
-    const { items: confirmInputs } = prepareOfferInventoryInput({
-      input: {
-        sales_channel_id: cart.sales_channel_id ?? undefined,
-        items: [
-          {
-            id: input.item_id,
-            quantity: newQuantity,
-            offer: { id: offerId },
-          },
-        ],
-        offers: offers as never,
-      },
+    const covered = await hasCartOfferInventoryCoverage({
+      container,
+      salesChannelId: cart.sales_channel_id ?? undefined,
+      lines,
+      checkedLineIds: new Set([input.item_id]),
     })
 
-    const coverage = await promiseAll(
-      confirmInputs
-        .filter((entry) => entry.manage_inventory && !entry.allow_backorder)
-        .map((entry) =>
-          inventoryService.confirmInventory(
-            entry.inventory_item_id,
-            entry.location_ids,
-            MathBN.mult(entry.required_quantity, entry.quantity),
-          ),
-        ),
-    )
-
-    if (coverage.some((hasCoverage) => !hasCoverage)) {
+    if (!covered) {
       throw new MedusaError(
         MedusaError.Types.NOT_ALLOWED,
         "Cannot increase quantity: an inventory item linked to the offer is out of stock",

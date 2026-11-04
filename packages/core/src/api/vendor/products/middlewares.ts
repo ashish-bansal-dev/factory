@@ -1,5 +1,9 @@
 import { requirePermission } from "../../utils"
 import {
+  restrictVendorFields,
+  VENDOR_CATALOG_FIELD_SEGMENTS,
+} from "../../utils/restrict-vendor-fields"
+import {
   AuthenticatedMedusaRequest,
   MedusaNextFunction,
   MedusaResponse,
@@ -9,15 +13,8 @@ import {
   validateAndTransformBody,
   validateAndTransformQuery,
 } from "@medusajs/framework"
-import { ProductStatus } from "@mercurjs/types"
-import { createLinkBody } from "@medusajs/medusa/api/utils/validators"
-
 import { applyOfferedProductsFilter } from "../../utils"
-import {
-  getProductIdsRestrictedFromSeller,
-  getProductStatus,
-  getSellerOwnedProductIds,
-} from "./helpers"
+import { isProductVisibleToSeller } from "./helpers"
 import {
   vendorProductQueryConfig,
   vendorProductVariantQueryConfig,
@@ -37,56 +34,19 @@ import {
 import {
   ContainerRegistrationKeys,
   MedusaError,
-  promiseAll,
 } from "@medusajs/framework/utils"
-
-const applySellerProductLinkFilter = async (
-  req: AuthenticatedMedusaRequest,
-  _res: MedusaResponse,
-  next: MedusaNextFunction
-) => {
-  const sellerId = req.seller_context!.seller_id
-
-  const [ownProductIds, restrictedFromSellerIds] = await promiseAll([
-    getSellerOwnedProductIds(req.scope, sellerId),
-    getProductIdsRestrictedFromSeller(req.scope, sellerId),
-  ])
-
-  req.filterableFields ??= {}
-  const existingAnd = (req.filterableFields.$and as object[] | undefined) ?? []
-  req.filterableFields.$and = [
-    ...existingAnd,
-    {
-      id: { $nin: restrictedFromSellerIds },
-      $or: [
-        { id: ownProductIds },
-        { status: ProductStatus.PUBLISHED },
-      ],
-    },
-  ]
-
-  return next()
-}
 
 const ensureProductVisibleToSeller = async (
   req: AuthenticatedMedusaRequest,
   _res: MedusaResponse,
   next: MedusaNextFunction
 ) => {
-  const sellerId = req.seller_context!.seller_id
   const productId = req.params.id
-
-  const [ownProductIds, restrictedFromSellerIds, product] = await promiseAll([
-    getSellerOwnedProductIds(req.scope, sellerId),
-    getProductIdsRestrictedFromSeller(req.scope, sellerId),
-    getProductStatus(req.scope, productId),
-  ])
-
-  const visible =
-    !!product &&
-    (ownProductIds.includes(productId) ||
-      (product.status === ProductStatus.PUBLISHED &&
-        !restrictedFromSellerIds.includes(productId)))
+  const visible = await isProductVisibleToSeller(
+    req.scope,
+    req.seller_context!.seller_id,
+    productId
+  )
 
   if (!visible) {
     return next(
@@ -139,11 +99,11 @@ export const vendorProductsMiddlewares: MiddlewareRoute[] = [
     matcher: "/vendor/products",
     middlewares: [
       requirePermission("products", "view"),
+      restrictVendorFields(VENDOR_CATALOG_FIELD_SEGMENTS),
       validateAndTransformQuery(
         VendorGetProductsParams,
         vendorProductQueryConfig.list
       ),
-      applySellerProductLinkFilter,
       applyOfferedProductsFilter,
     ],
   },
@@ -166,6 +126,7 @@ export const vendorProductsMiddlewares: MiddlewareRoute[] = [
     middlewares: [
       requirePermission("products", "view"),
       ensureProductVisibleToSeller,
+      restrictVendorFields(VENDOR_CATALOG_FIELD_SEGMENTS),
       validateAndTransformQuery(
         VendorGetProductParams,
         vendorProductQueryConfig.retrieve
@@ -209,6 +170,7 @@ export const vendorProductsMiddlewares: MiddlewareRoute[] = [
     middlewares: [
       requirePermission("products", "view"),
       ensureProductVisibleToSeller,
+      restrictVendorFields(VENDOR_CATALOG_FIELD_SEGMENTS),
       validateAndTransformQuery(
         VendorGetProductVariantsParams,
         vendorProductVariantQueryConfig.list
@@ -235,6 +197,7 @@ export const vendorProductsMiddlewares: MiddlewareRoute[] = [
     middlewares: [
       requirePermission("products", "view"),
       ensureProductVisibleToSeller,
+      restrictVendorFields(VENDOR_CATALOG_FIELD_SEGMENTS),
       validateAndTransformQuery(
         VendorGetProductVariantParams,
         vendorProductVariantQueryConfig.retrieve
@@ -276,10 +239,5 @@ export const vendorProductsMiddlewares: MiddlewareRoute[] = [
         vendorProductQueryConfig.retrieve
       ),
     ],
-  },
-  {
-    method: ["POST"],
-    matcher: "/vendor/products/:id/brand",
-    middlewares: [validateAndTransformBody(createLinkBody())],
   },
 ]

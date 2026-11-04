@@ -6,6 +6,7 @@ export const EditOfferSchema = z.object({
   shipping_profile_id: z.string().min(1),
   mrp: optionalFloat,
   bundle_size: z.union([z.coerce.number().int().min(1), z.literal("")]).optional(),
+  leadtime_to_ship: z.string().regex(/^\d*$/).optional(),
   metadata: z.record(z.string(), z.unknown()).nullish(),
 })
 

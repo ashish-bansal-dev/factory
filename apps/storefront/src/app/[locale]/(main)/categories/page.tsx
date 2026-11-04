@@ -1,21 +1,19 @@
-import { ProductListingSkeleton } from "@/components/organisms/ProductListingSkeleton/ProductListingSkeleton"
-import { Suspense } from "react"
-
-import { Breadcrumbs } from "@/components/atoms"
-import { SearchProductsListing, ProductListing } from "@/components/sections"
-import isBot from "@/lib/helpers/isBot"
-import { headers } from "next/headers"
+import { Suspense } from 'react';
+import { Breadcrumbs } from '@/components/atoms/Breadcrumbs/Breadcrumbs';
+import { ProductListingSkeleton } from '@/components/organisms/ProductListingSkeleton/ProductListingSkeleton';
+import { SearchProductsListing } from '@/components/sections/ProductListing/SearchProductsListing';
 import type { Metadata } from "next"
-import Script from "next/script"
+import { getBaseUrl } from "@/lib/helpers/base-url"
 import { listRegions } from "@/lib/data/regions"
-import { listProducts } from "@/lib/data/products"
+import { searchProducts } from "@/lib/data/products"
 import { getSellerByHandle } from "@/lib/data/seller"
+import { PRODUCT_LIMIT } from "@/const"
+import { headers } from "next/headers"
 import {
   buildHreflangAlternates,
   getStorefrontLocales,
 } from "@/lib/helpers/hreflang"
 
-export const revalidate = 60
 
 export async function generateMetadata({
   params,
@@ -23,10 +21,7 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>
 }): Promise<Metadata> {
   const { locale } = await params
-  const headersList = await headers()
-  const host = headersList.get("host")
-  const protocol = headersList.get("x-forwarded-proto") || "https"
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`
+  const baseUrl = getBaseUrl()
 
   let locales: string[] = []
   try {
@@ -65,15 +60,30 @@ export async function generateMetadata({
   }
 }
 
-async function AllCategories({
+export default function AllCategories({
   params,
-}: {
-  params: Promise<{ locale: string }>
-}) {
-  const { locale } = await params
+  searchParams,
+}: PageProps<"/[locale]/categories">) {
+  return (
+    <main className="container">
+      <Suspense
+        fallback={
+          <div aria-busy="true" data-testid="all-categories-loading">
+            <ProductListingSkeleton />
+          </div>
+        }
+      >
+        <CategoriesContent params={params} searchParams={searchParams} />
+      </Suspense>
+    </main>
+  )
+}
 
-  const ua = (await headers()).get("user-agent") || ""
-  const bot = isBot(ua)
+async function CategoriesContent({
+  params,
+  searchParams,
+}: PageProps<"/[locale]/categories">) {
+  const { locale } = await params
 
   const breadcrumbsItems = [
     {
@@ -82,11 +92,9 @@ async function AllCategories({
     },
   ]
 
-  const headersList = await headers()
-  const host = headersList.get("host")
-  const protocol = headersList.get("x-forwarded-proto") || "https"
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`
+  const baseUrl = getBaseUrl()
 
+  const headersList = await headers()
   const isTenant = headersList.get("x-is-tenant") === "true"
   const tenantHandle = headersList.get("x-tenant-handle")
   let sellerId: string | undefined
@@ -97,16 +105,10 @@ async function AllCategories({
     }
   }
 
-  const {
-    response: { products: jsonLdProducts },
-  } = await listProducts({
+  const { products: jsonLdProducts } = await searchProducts({
     countryCode: locale,
-    queryParams: {
-      limit: 8,
-      order: "created_at",
-      fields: "id,title,handle",
-      seller_id: sellerId,
-    },
+    seller_id: sellerId,
+    limit: PRODUCT_LIMIT,
   })
 
   const itemList = jsonLdProducts.slice(0, 8).map((p, idx) => ({
@@ -117,8 +119,8 @@ async function AllCategories({
   }))
 
   return (
-    <main className="container">
-      <Script
+    <>
+      <script
         id="ld-breadcrumbs-categories"
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -136,7 +138,7 @@ async function AllCategories({
           }),
         }}
       />
-      <Script
+      <script
         id="ld-itemlist-categories"
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -153,15 +155,11 @@ async function AllCategories({
 
       <h1 className="heading-xl uppercase">All Products</h1>
 
-      <Suspense fallback={<div data-testid="all-categories-page-loading"><ProductListingSkeleton /></div>}>
-        {bot ? (
-          <ProductListing seller_id={sellerId} showSidebar locale={locale} />
-        ) : (
-          <SearchProductsListing seller_id={sellerId} locale={locale} />
-        )}
-      </Suspense>
-    </main>
+      <SearchProductsListing
+        seller_id={sellerId}
+        locale={locale}
+        searchParams={searchParams}
+      />
+    </>
   )
 }
-
-export default AllCategories

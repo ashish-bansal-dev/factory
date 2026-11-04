@@ -14,7 +14,7 @@ export interface CreateSellerDTO {
   type?: SellerType | string | null
   status_reason?: string | null
   is_premium?: boolean
-  default_leadtime_to_ship?: number
+  default_leadtime_to_ship?: number | null
   closed_from?: Date | null
   closed_to?: Date | null
   metadata?: Record<string, unknown> | null
@@ -33,7 +33,7 @@ export interface UpdateSellerDTO {
   type?: SellerType | string | null
   status_reason?: string | null
   is_premium?: boolean
-  default_leadtime_to_ship?: number
+  default_leadtime_to_ship?: number | null
   closed_from?: Date | null
   closed_to?: Date | null
   metadata?: Record<string, unknown> | null

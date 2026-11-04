@@ -3,16 +3,15 @@ import {
   MedusaStoreRequest,
 } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
-
 import {
   enrichProductAttributes,
+  listProducts,
   wrapProductVariantsWithOfferPrice,
 } from "../../utils"
 import { splitComputedVariantFields } from "./helpers"
 
 export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
-
   // `variants.calculated_price` / `variants.offer_id` are computed from the
   // cheapest offer post-query, not graph columns — strip them before the read.
   const { fields, withCalculatedPrice } = splitComputedVariantFields(
@@ -20,13 +19,15 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
   )
   req.queryConfig.fields = fields
 
-  // region_id / currency_code are consumed by setPricingContext only.
-  // The Product entity has neither column, so passing them through to
-  // query.graph raises `Trying to query by not existing property
-  // Product.region_id`.
+  // Pricing-context keys feed setPricingContext / the offer-price wrap, not
+  // product columns: query.graph errors on region_id, and the index rejects
+  // every non-indexed key (`Field country_code is not indexed`).
   const {
     region_id: _r,
     currency_code: _c,
+    country_code: _cc,
+    province: _p,
+    cart_id: _cart,
     channel: _ch,
     offer_type: _ot,
     seller_id,
@@ -149,12 +150,16 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
     }
   }
 
-  const { data: products, metadata } = await query.graph({
-    entity: "product",
-    fields: req.queryConfig.fields,
-    filters: productFilters,
-    pagination: req.queryConfig.pagination,
-  })
+  const { products, count, estimate_count, offset, limit } = await listProducts(
+    req.scope,
+    {
+      fields: req.queryConfig.fields,
+      filters: productFilters,
+      pagination: req.queryConfig.pagination,
+      locale: req.locale,
+      cache: { ttl: 300 },
+    }
+  )
 
   await enrichProductAttributes(
     req.scope,
@@ -176,8 +181,9 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
 
   res.json({
     products: finalProducts,
-    count: finalProducts.length !== products.length ? finalProducts.length : (metadata?.count ?? 0),
-    offset: metadata?.skip ?? 0,
-    limit: metadata?.take ?? 0,
+    count: finalProducts.length !== products.length ? finalProducts.length : count,
+    estimate_count,
+    offset,
+    limit,
   })
 }

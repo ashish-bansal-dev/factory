@@ -14,6 +14,10 @@ import {
 } from "@medusajs/framework/types"
 import { calculateAmountsWithTax, promiseAll } from "@medusajs/framework/utils"
 import { transformAndValidateSalesChannelIds } from "@medusajs/medusa/api/utils/middlewares/index"
+import {
+  getMarketplaceDefaultLeadtime,
+  resolveLeadtimeToShip,
+} from "@mercurjs/types"
 
 type OfferLocationLevel = {
   location_id: string
@@ -241,11 +245,21 @@ export const wrapOffersWithInventoryQuantityForSalesChannel = async (
   }
 
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
-  const { data: channels } = await query.graph({
-    entity: "sales_channel",
-    fields: ["stock_locations.id"],
-    filters: { id: channelToUse },
-  })
+  const { data: channels } = await query.graph(
+    {
+      entity: "sales_channel",
+      fields: ["stock_locations.id"],
+      filters: { id: channelToUse },
+    },
+    {
+      cache: {
+        enable: true,
+        // Linking a location to the channel only clears this link tag.
+        tags: ["LinkSalesChannelStockLocation:list:*"],
+        computeAutomaticTags: true,
+      },
+    }
+  )
 
   const channelLocationIds = new Set<string>(
     (channels[0]?.stock_locations ?? [])
@@ -312,24 +326,102 @@ export const wrapOffersWithInventoryQuantityForSalesChannel = async (
   }
 }
 
+const inventoryQuantityFields = [
+  "inventory_item_link.required_quantity",
+  "inventory_item_link.inventory_item.location_levels.location_id",
+  "inventory_item_link.inventory_item.location_levels.stocked_quantity",
+  "inventory_item_link.inventory_item.location_levels.reserved_quantity",
+]
+
 export const splitComputedOfferFields = (fields: string[]) => {
   const withCalculatedPrice = fields.some(
     (f) => f === "calculated_price" || f.startsWith("calculated_price.")
   )
   const withInventoryQuantity = fields.includes("inventory_quantity")
   const withInStock = fields.includes("in_stock")
+  const withEffectiveLeadtime = fields.includes(EFFECTIVE_LEADTIME_FIELD)
 
   const filteredFields = fields.filter(
     (f) =>
       f !== "calculated_price" &&
       !f.startsWith("calculated_price.") &&
       f !== "inventory_quantity" &&
-      f !== "in_stock"
+      f !== "in_stock" &&
+      f !== EFFECTIVE_LEADTIME_FIELD
   )
 
+  if (withEffectiveLeadtime) {
+    for (const required of ["seller_id", "leadtime_to_ship"]) {
+      if (!filteredFields.includes(required)) {
+        filteredFields.push(required)
+      }
+    }
+  }
+
+  const needsInventory = withInventoryQuantity || withInStock
+  // Availability is derived from these columns, so they are read whenever it is
+  // requested, even if the client's field list leaves them out.
+  const queryFields = needsInventory
+    ? Array.from(new Set([...filteredFields, ...inventoryQuantityFields]))
+    : filteredFields
+
   return {
-    fields: filteredFields,
+    fields: queryFields,
     withCalculatedPrice,
-    withInventoryQuantity: withInventoryQuantity || withInStock,
+    withInventoryQuantity: needsInventory,
+    withEffectiveLeadtime,
+  }
+}
+
+export const EFFECTIVE_LEADTIME_FIELD = "effective_leadtime_to_ship"
+
+export type LeadtimeOffer = {
+  seller_id?: string | null
+  leadtime_to_ship?: number | null
+  effective_leadtime_to_ship?: number | null
+}
+
+/**
+ * Adds `effective_leadtime_to_ship`: the offer's lead time, else its seller's
+ * default, else the marketplace default, so storefronts need no fallback logic.
+ */
+export const wrapOffersWithEffectiveLeadtime = async (
+  req: MedusaStoreRequest<unknown>,
+  offers: LeadtimeOffer[]
+): Promise<void> => {
+  if (!offers?.length) {
+    return
+  }
+
+  const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
+  const sellerIds = [
+    ...new Set(offers.map((o) => o.seller_id).filter((id): id is string => !!id)),
+  ]
+
+  const sellerDefaults = new Map<string, number | null>()
+  if (sellerIds.length) {
+    const { data: sellers } = await query.graph({
+      entity: "seller",
+      fields: ["id", "default_leadtime_to_ship"],
+      filters: { id: sellerIds },
+    })
+    for (const seller of sellers) {
+      sellerDefaults.set(seller.id, seller.default_leadtime_to_ship ?? null)
+    }
+  }
+
+  const { data: stores } = await query.graph({
+    entity: "store",
+    fields: ["id", "metadata"],
+    pagination: { take: 1 },
+  })
+  const marketplaceDefault = getMarketplaceDefaultLeadtime(stores[0]?.metadata)
+
+  for (const offer of offers) {
+    offer.effective_leadtime_to_ship = resolveLeadtimeToShip(
+      offer.leadtime_to_ship,
+      offer.seller_id ? sellerDefaults.get(offer.seller_id) : null,
+      marketplaceDefault
+    )
   }
 }

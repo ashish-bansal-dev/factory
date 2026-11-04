@@ -7,12 +7,237 @@ session detail aggressively. The per-spec source of truth lives in
 ## Current Verified State
 
 - **Repository root**: `/Users/viktorholik/Desktop/mercur`
-- **Current branch**: `main`
+- **Current branch**: `feat/extendable-offer-tables-forms`
 - **Current version**: `2.2.0-rc.1`
 - **Standard startup path**: `bun install && bun run dev`
 - **Standard verification path**: `bun run build`, `bun run lint` (oxlint),
   `bun run test:integration:http -- <pattern>`
 - **Current blocker**: none
+
+## Session — Medusa 2.22.3 upgrade (2026-11-04), branch `chore/medusa-2-22-3`
+
+Every `@medusajs/*` pin moved 2.22.0 → 2.22.3 and every peer range `>=2.22.0` → `>=2.22.3` (packages,
+plugins, apps, integration-tests, e2e-tests, root, templates); `@medusajs/ui` stays on 4.2.3. `bun.lock`
+refreshed. Release notes 2.22.1–2.22.3 absorbed: 2.22.1 upstreamed the order cross-module count fix
+(medusajs/medusa#17471, same helper as ours), so `@medusajs+order@2.21.2-cross-module-count.patch` and the
+`@medusajs/order` dev dependency it needed are gone; the four core-flows patches apply unchanged (their
+target files are byte-identical in 2.22.3). 2.22.2 dependency round: `BigNumber`/`MathBN` now throw on
+invalid input instead of `NaN`, `bodyParser.sizeLimit` typos throw, `@tailwindcss/forms` dropped from
+`ui-preset` (nothing here loads it), Medusa admin on vite 7 (our panels run their own vite). 2.22.3 ships
+Medusa's own RBAC module behind `Modules.RBAC` with `/admin/users/:id/roles` routes; Mercur keeps its own
+roles module and never registers Medusa's, so those two stock routes 500 if called, nothing in our panels
+calls them. Gotcha: `bun test src/patches` fails the load-order fixtures with bun+tsx ("Cannot find module
+'./cjs/index.cjs'", the nested `@tanstack/react-virtual` the dashboard now pulls); Jest under node (the
+`test:unit` path CI uses) is fine.
+
+## Session — Store offers on the Medusa index engine (2026-11-03), branch `feat/index-engine-store-offers`
+
+`GET /store/offers` goes through `api/utils/list-offers.ts` `listOffers()`: `query.index` with seller visibility
+(`seller.status = open`, scheduled-closure dates) and `product.status = published` as index filters, `query.graph`
+with the previous id-list prefetch when a filter isn't indexed (`q`) or the index is off. The index can only join
+across modules through link tables, so `offer_seller` and `offer_product` are now writable links (`isList` on the
+offer side) that `createOffersWorkflow` writes next to `offer.seller_id` / `product_id`; migration script
+`backfill-offer-links.ts` seeds rows for existing offers after `db:migrate` syncs the tables. `withMercur` passes
+`utils/index-schema.ts` (Medusa's product schema + `Offer` + `Seller`) as the index module's `schema` option. Shared
+index helpers moved to `api/utils/index-engine.ts`. The detail route checks seller/product visibility from the
+database (the index is async). Tests: store `store-offers.spec` 16/16 with `helpers/wait-for-indexed-offers.ts`;
+`http/offer` vendor + store specs pass; `order.spec` / `multi-seller-shipping-methods.spec` 500 locally with the
+nested-worktree awilix leak, not this change (CI is the source of truth).
+
+Pre-existing, unchanged: the seller visibility rule hides a seller whenever `closed_to` is in the future, even
+before `closed_from`, in both `resolveVisibleSellerIds` and `store/sellers/middlewares.ts`.
+
+## Session — Product lists on the Medusa index engine (2026-11-03), branch `feat/index-engine-product-lists`
+
+`GET /admin|/vendor|/store/products` now go through `api/utils/list-products.ts` `listProducts()`. It uses
+`query.index` when every filter key and the sort fall in the indexed whitelist, otherwise `query.graph` (categories,
+tags, variant options, withDeleted, admin `seller_id`). `count` = `estimate_count`, exact when the page isn't full;
+`estimate_count` is also returned. `withMercur` enables `index_engine` and injects `@medusajs/index` (direct dep
+of apps/api, integration-tests, templates/basic api). `product_seller` link is `filterable`. Vendor list no longer
+scans every seller's `product_seller` rows: visibility is own PRODUCT_ADD ids (draft/proposed), plus published with
+no `product_seller` row, plus published `id IN` this seller's own rows. It's passed per engine through
+`ProductVisibility`. The detail guard is one product query + the scoped authorship lookup. `has_offer` filters by
+`offer.product_id`. New index `IDX_product_change_created_by`. Tests: vendor `product.spec` 17/17 (new graph-fallback
+and count cases), admin `product` + `product-publish-and-sku` 26 pass (4 pre-existing skips), store `product/` 18/18,
+with deterministic index waits (`helpers/wait-for-indexed-products.ts`). Core tsc green; full `bun run build` not run.
+
+Open risk: sellers created after boot never land in the index (`seller.seller.created` doesn't reach it), so
+`sellers.id` filters are unusable. Production needs the Redis event bus for incremental index sync.
+
+Follow-up (same day, same PR #1740): Medusa Caching Module. `withMercur` sets the `caching` flag and registers
+`@medusajs/medusa/caching`, using the Redis provider when `projectConfig.redisUrl` is set (dep in apps/api +
+template) and in-memory otherwise (tests). `listProducts` takes `cache: { ttl, tags }`, always tags
+`Product:list:*` (automatic tags come from rows, so empty pages would otherwise never clear) and caps index-backed
+entries at 5s: one event clears the cache and starts the async index sync, so a request in between re-caches the
+pre-write state. Store 300s / admin 60s / vendor 60s + `LinkProductSeller:list:*` (link attach only clears that
+tag). Invalidation tests: store 22/22, vendor 19/19, admin 26 pass.
+
+Follow-ups (same day, same PR):
+- **Exact counts** on admin/vendor via an ids-only index call; it's what `query.index` sends internally, minus
+  pagination. Measured cost: 234ms vendor / 33ms admin at 20k.
+- **Routing:** plain lists go to `query.graph`; the index is only used for `product_seller` / sales channel / price
+  filters.
+- **Seller events:** the service overrides now use `@InjectManager` + `@EmitEvents` + `@MedusaContext`, so
+  `seller.seller.*` is emitted and sellers reach the index. Deployments need one full index sync.
+- **Previously no-op cache calls**, now live:
+  - CI caught them (store-offers, offer-region-prices). Each got the link/list tag that actually clears.
+  - Membership checks are no longer cached.
+- **Open:** tie ordering. `query.index` takes one sort key only, so there's no `id` tiebreak and paging can repeat or
+  skip products when `created_at` ties (on main too).
+
+## Session — Extendable offer tables, grid and form fields (2026-10-26), branch `feat/extendable-offer-tables-forms`
+
+Panel extensions can now hide, replace, and add columns and fields beyond list pages, reusing the existing
+custom-fields keys (no new config keys). `list` takes an optional `zone` and may be an array; `useExtendableTable`
+takes `zone` (default `"list"`). `forms[].fields` keyed by a built-in id overrides it (`null` hides), through the
+new `<ExtendableFormField>` and, for spreadsheet tabs, `useExtendableGrid` (cells come from the panel via
+`createDataGridExtensionColumn`). Wired on offers: vendor `variants` / `create-catalogue` tables, the create
+stock-and-prices grid, the edit drawer; admin `variants` / `inventory` tables. Core: `POST /vendor/offers/batch`
+items accept `additional_data`, surfaced on `offersCreated` as `offers_additional_data` keyed by offer id.
+Generators emit `listZones`, `listColumnIds`, `formFieldIds`. Tests: registry + grid unit specs (32 pass), SDK type
+test, `offer/vendor` integration suites 7/7 (62 tests). `bun run build` green (13/13). Other pages still use
+list-only extensions; follow the offer wiring to migrate them.
+
+Follow-up (same day): product create (both panels) takes per-tab added fields, built-in overrides (title, subtitle,
+handle, description, media, discountable, category/collection/type, tags; admin also sellers + global availability)
+and an extendable variants grid. `POST /vendor|admin/products` variants accept `additional_data`, surfaced on
+`productsCreated` as `variants_additional_data` keyed by variant id (the variant batch route still rejects it).
+Untabbed `forms` fields now render on the first tab only and never become spreadsheet columns (`exactTab`), which also
+fixes the create-offer grid. Vendor offer grids: `edit-price` takes added columns (saved via `offersUpdated`);
+`edit-stock`, `pricing`, `inventory-batch` take overrides only (`allowAdd: false`). Vendor offer `inventory` table,
+inventory detail `location-levels` / reservations `inventory-item` tables in both panels. Generator follows
+`use-*-columns` imports and resolves constant zones. Tests: shared 37, SDK types, variant-sync specs, integration
+11 suites (103 pass). Build green.
+
+Unrelated finding, not fixed: the batch route drops `condition_id` when mapping items, though the validator
+accepts it and the create form sends it. The admin `ProductCreateAttributeSection` (dimensions) is never rendered.
+
+Follow-up 2: detail-page tables in both panels take `list` blocks: `product` `variants`, `collection` `products`,
+`category` `products` (select stays first, actions last; collection/category also merge extension filters). Generator
+now follows `@<dir>/` alias column imports, so vendor list pages (product, order, customer, promotion, campaign,
+payout, collection) finally get `listColumnIds`. Example configs in `apps/vendor/src/custom-fields` (offer, product,
+collection, category) plus an `offersCreated` logging hook in `apps/api`. Generator specs 10/10 per panel, build green.
+Known gap (pre-existing, all tables): added list filters render in the menu but their keys are not forwarded to the
+API query, because each `use*TableQuery` reads a fixed key list. Not browser-verified.
+
+## Session — Magento integration gaps in core (2026-10-23), branch `fix/magento-integration-gaps`
+
+Running the Magento connector against a live API (see the connector PRs #2–#5) exposed core behaviour the
+integration had to work around. Fixed here: `POST /store/carts` now ignores an empty `currency_code` instead of
+storing it and failing every later price calculation; the cart completion response lists the order group's child
+`orders` with `display_id`, `status` and `seller`; an admin product created or updated as `published` emits
+`product.published` (previously only `/confirm` did, so webhook subscribers never saw admin-published products);
+`createOffersWorkflow` refuses offers on products restricted to other sellers or rejected
+(`validateOfferProductsStep`); `GET /admin/products?sku=` filters variants instead of 500ing on `Product.sku`;
+the plugin's event list drops `order.shipment_created`, which nothing emits. Tests: new
+`product/admin/product-publish-and-sku.spec.ts`, three cases in `offer/vendor/offer.spec.ts`, one each in
+`offer/cart/cart.spec.ts` and `offer/order/order.spec.ts`. `bun run build` green (13/13).
+
+## Session — Magento connector hardening sweep (2026-10-22), branches `feat/magento-external-payment-capture` (this repo) + `feat/checkout-orders-indexer-platform` (magento2-connector)
+
+## Session — Stripe connector (2026-10-22), branch `feat/stripe-connector`, worktree `~/Desktop/mercur-stripe-connector`
+
+Spec: `docs/specs/spec-stripe-connector/` (local, gitignored; `brief.md`, `research.md`, `blueprint.md`, `assert.md`,
+`removals.md`, `deltas/D-001…D-012` all `done`). Scheduled payout pipeline in the shape of
+Medusa's payment module.
+- Core payout module is provider-agnostic: `pop_<identifier>_<id>` registry (`pop_system_default` always),
+  ten-method `IPayoutProvider` + `AbstractPayoutProvider`, new models `transfer`, `settlement`, `adjustment`,
+  `payout_provider`, `payout_checkpoint`, `payout_job_run`, `payout_notification`, extended `payout_account`/`payout`
+  (migration `Migration20261022120000`), `/hooks/payout/[provider]` (+ legacy alias).
+- Seven scheduled jobs (`packages/core/src/jobs`), pipeline functions under
+  `workflows/payout/pipeline`, pure rules under `workflows/payout/utils` (transfer factory, capture decision,
+  settlement builder), workflows for transfer/reversal/payout dispatch, account sync, capture/cancel, operator
+  notifications; admin routes for accounts, transfers, settlements, adjustments, jobs, status, captures,
+  notifications; vendor `payout-accounts/me`, `transfers`, `settlements`; public onboarding refresh.
+- Plugin `packages/plugins/stripe-connector` (`@mercurjs/stripe-connector-plugin`): Stripe payment provider
+  (manual capture, order-group metadata) + Stripe Connect payout provider, admin Finance → Stripe (tab per job),
+  Settings → Stripe, seller/order widgets, vendor Settings → Stripe. `packages/providers` deleted; docs rewritten.
+- Verified: core tsc + build, plugin server/admin/vendor tsc + `dashboard:build`, `bun test` unit specs 35/35
+  (core utils + plugin provider), lint clean on touched files, `payouts/vendor/*` 8/10 → racing subscriber removed
+  (re-run pending), new `payouts/admin/payout-pipeline.spec.ts` (fixes in progress). Gotchas: integration tests need
+  `packages/plugins/magento2-connector` built (test config loads its provider); `bun run test:unit` can't resolve
+  `@swc/jest` locally, use `bun test <dirs>`; declaration emit needs an explicit `ReturnWorkflow<>` annotation on
+  workflows that return `when()` results (TS2742).
+- Open: Stripe test-mode run by hand (assert.md § I); PR to `main`.
+
+## Session — Medusa 2.22.0 upgrade (2026-10-22), branch `chore/medusa-2-22`
+
+Every `@medusajs/*` pin moved 2.21.2 → 2.22.0 and every peer range `>=2.21.0` → `>=2.22.0` (packages,
+providers, apps, integration-tests, root, and all three templates — they already tracked the workspace
+line at 2.21.2, so they follow it; `@medusajs/ui` keeps its own 4.2.3 line). `bun.lock` refreshed.
+Medusa 2.22.0 requires Node 22.22+, so the `engines.node` floor on core, the payout provider, the API
+app and the templates is `>=22.22.0`; docs say Node 22.22+. Breaking change absorbed: 2.22.0 made
+`refundPaymentWorkflow` replay-safe (medusajs/medusa#16964), which moved the hunk the payment-hooks patch
+anchored on. Regenerated as `@medusajs+core-flows@2.22.0-payment-hooks.patch` (range 2.22.0–2.23.0);
+the `paymentRefunded` hook now also carries `is_replay` so a ledger can skip a replay the way the credit
+line and event are skipped. The other four patches apply unchanged; their ranges extend to 2.23.0.
+test-utils dropped the `inApp` option, removed from both `health.spec.ts`. `routes-manifest.json` gained
+`/admin/customers/export`. Verified locally: `bun run build`, `bun run lint`, patch unit specs 40/40,
+`payment/split-order-payments` + `order/admin/order-payment-status` 16/16. Gotcha: after changing a patch,
+rebuild core and `jest --clearCache`, or the transformer replays the old manifest from `.medusa/server`.
+
+## Session — Magento 2 connector, Part A (2026-10-21), branch `feat/magento2-connector`
+
+Spec: `docs/specs/SPEC-003-magento2-connector.md` (local, `in_progress`). Design: Magento keeps
+storefront, checkout, payment capture and 1P products; Mercur owns sellers, 3P offers, split orders,
+commissions, payouts. Checkout drives a shadow Mercur cart (line items by `offer_id`, per-seller
+shipping, `pp_external_external` session, complete).
+- New plugin `packages/plugins/magento2-connector` (`@mercurjs/magento2-connector-plugin`):
+  `magento_webhook` module (endpoints + signed, retried deliveries), `external` payment provider,
+  `/admin/magento/*` routes (webhooks CRUD, deliveries, redeliver, status, external refund), fan-out
+  subscriber, retry/prune jobs, admin UI at `/settings/magento` built with `mercurjs dashboard:build`.
+- Core: `deleted_at` filter + `with_deleted` forwarding on admin offers/sellers lists; `order_group.metadata`
+  (+ migration) copied from `cart.metadata`; `integrations` permission key (core catalog + SDK).
+- Verified: turbo build 7/7, plugin admin tsc clean, oxlint clean, integration specs
+  `magento2-connector/*` 9/9 and `offer/admin/offer-soft-delete` 1/1. `test:unit` cannot resolve
+  `@swc/jest` locally; registry spec left to CI.
+- Reviewed with the enterprise `medusa-review` skill (Medusa eslint preset + exemplar diff) and fixed all
+  findings: writes go through workflows with compensation and refetch, validation step instead of throw in
+  transform, service under `services/` with `IMagentoWebhookModuleService`, generated migration, typed
+  responses, strict validators. Gate clean on plugin files; specs 10/10 after the refactor.
+- Part B pushed: github.com/mercurjs/magento2-connector (`mercurjs/magento2-connector` Composer package,
+  modules Core/Process/Connector/OfferIndexer/Catalog/Settlement/Frontend/GraphQl). Lint + 13 unit tests
+  green locally via a static PHP binary in the scratchpad (Homebrew PHP won't build on this macOS). Not
+  yet run on a Magento install.
+- Next: dashboard Channel column/filter, roles preset once a roles module exists, Magento end-to-end run.
+
+## Session — Core hot-path performance (2026-10-21), branch `perf/core-hot-path-optimizations`, PR #1677
+
+Technique catalog from the Medusa source in `docs/PERFORMANCE.md` (section 4 lists what this branch
+applied, section 5 the remaining checklist). Fixed: checkout lock timeout/ttl/retention passed in ms
+instead of s; cart lock skipped on the webhook-driven completion path; commission rates loaded once per
+checkout via `getCommissionLinesBatch`; vendor single-product scoping no longer scans `product_seller`;
+cache opt-in on reference reads; order-group SQL soft-delete joins; composite partial indexes on
+order_group/offer/payout/review/commission_rule (+ migrations). Verified locally: core tsc, unit specs
+4/4, `commission-rates/admin/(commission-providers|commission-calculation)` 15/15; other suites on CI.
+Gotcha: the order module decorates totals only when a top-level total field (e.g. `subtotal`) is
+selected, and needs `items.*` to derive line totals. Follow-ups listed in the PR body.
+
+## Session — Dashboard extensions, OS deltas D-001…D-005 (2026-10-20), branch `feat/dashboard-layout-composer`
+
+Spec: `docs/specs/spec-dashboard-extensions/` (local; `docs/specs` is gitignored), `in_progress`. PR #1674.
+- `LayoutComposer` (Medusa port, no edit mode) in `@mercurjs/dashboard-shared`; registry gained layouts,
+  gates, layered preferences, `getWidgetsForSections`; `resolveRouteOverrides` gives overriding routes
+  `renderDefault`. SDK: every virtual module merges ordered layers (`layers.ts`), new `layouts`/`preferences` modules, `defineRouteConfig`/`defineLayoutConfig`/`defineLayoutPreferences`.
+- Pilots on the composer: admin product detail, vendor offer detail (existing zone ids kept).
+- Verified: SDK vitest 16/16, shared vitest 33/33, panel tsc no new errors vs baseline, admin/vendor/cli
+  packages build, both host apps `vite build`. Docs page `references/panel-extensions/layouts.mdx`.
+- Next: D-006 (rewrite the remaining 116 compound pages, public `/hooks` + `/components`, peer deps),
+  D-007 (CLI emits extension-targets for plugins, typed plugin routes), sidebars as composers.
+
+## Session — Seller ↔ Region assignment (SPEC-001), branch `feat/seller-regions`
+
+Spec: `docs/specs/SPEC-001-seller-regions.md`. New `region_seller` link; `linkSellerRegionsWorkflow`;
+seller creation (admin + vendor registration) links `region_ids` or the store default region.
+Admin: `POST /admin/sellers/:id/regions`, `POST /admin/regions/:id/sellers`, `GET /admin/sellers?region_id=`,
+`seller.regions` on retrieve. Vendor: `/vendor/regions` scoped to assigned regions; offer + shipping-option
+prices validated against assigned regions (400). Admin UI: region detail *Sellers* section + add modal,
+store detail *Regions* sidebar + add modal, Create Seller regions picker. Vendor UI: offer price grids gain
+a column per assigned region (`rules.region_id`); offer pricing sections list region prices.
+Verified: `test:integration:http -- "regions|offer-region-prices|shipping-options/vendor|seller/(admin|vendor)/seller"`
+(10 suites, 238 tests). `bun run build` see spec Evidence. Not verified in a browser. Uncommitted.
+Known pre-existing: admin `validate-translations.spec.ts` fails on `sellers.*` schema keys missing from
+`en.json` (unrelated); `bun run lint` tsc noise in untouched files.
 
 ## Session — Panel auth collision, branch `fix/panel-auth-session-collision`
 

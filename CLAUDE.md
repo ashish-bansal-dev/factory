@@ -10,6 +10,7 @@
 ## Skills
 
 - **Design → code (Figma)**: when the task is turning a Figma design into dashboard UI code — the user shares a `figma.com` URL, selects a Figma node, or asks to "convert / implement / build this design / screen / mockup" in `packages/admin` or `packages/vendor` — load the `figma-ui` skill at `.claude/skills/figma-ui/SKILL.md` first. It reads the design from the Figma MCP (`get_screenshot` as the source of truth, `get_metadata` for structure) and maps it onto the design-system conventions in its `references/` (`components.md`, `spacing.md`, `patterns.md`) before writing JSX. Gate: `bun run lint` + `bun run build` stay green.
+- **Review (`/mercur-review`)**: before opening a PR, or when asked to review / QA a change or make it "match Medusa", load `.claude/skills/mercur-review/SKILL.md`. It runs independent reviewer agents (Medusa patterns, dashboard patterns, technical QA, security, taste) against `references/`, triages findings into actionable / nit / ambiguous, fixes the actionable ones, verifies them by running checks, and loops up to 3 rounds.
 
 ## Project Overview
 
@@ -36,7 +37,7 @@ bun run test:integration:tests       # Run integration tests
 - `packages/admin` - Admin panel UI package
 - `packages/vendor` - Vendor panel UI package
 - `packages/registry` - Private workspace for the Mercur blocks registry
-- `packages/providers/payout-stripe-connect` - Stripe Connect payout provider
+- `packages/plugins/stripe-connector` - Stripe connector plugin: Stripe payment provider, Stripe Connect payout provider, admin and vendor Stripe screens
 - `apps/api` - Starter Medusa server wired to `@mercurjs/core`
 - `apps/admin-test` - Starter admin Vite app (port 7000)
 - `apps/vendor` - Starter vendor Vite app (port 7001)
@@ -47,6 +48,18 @@ bun run test:integration:tests       # Run integration tests
 
 - ALWAYS use `bun` (never npm, yarn, or pnpm)
 - NEVER run `bun run test:integration:http` (runs all packages). Use `bun run test:integration:http -- <pattern>`
+- Run locally only the integration specs for the endpoints you touched. For a repo-wide check, open the PR and read the integration-test jobs there instead of running broad patterns locally: the full suite takes far too long on a laptop, and CI is the source of truth
+
+## Codebase Knowledge Graph (Graphify)
+
+A pre-built knowledge graph is maintained at `graphify-out/` covering the entire monorepo (packages, apps, modules, and workflows).
+
+- **Impact & Blast Radius**: Before modifying or refactoring core entities, workflows, or shared types, run `graphify affected "<symbol>"` to inspect all downstream dependents across apps and packages.
+- **Trace Relationships**: Run `graphify path "<source>" "<target>"` to find the shortest call/dependency chain across packages.
+- **Symbol Exploration**: Run `graphify explain "<symbol>"` to inspect callers, callees, and dependencies without noisy repo-wide text searches.
+- **Architecture Questions**: Run `graphify query "<question>"` to obtain a focused topological subgraph answering structural questions.
+- **Broad Overview**: Refer to `graphify-out/GRAPH_REPORT.md` for cluster and community overviews.
+- **Keeping Graph Fresh**: After making code edits or adding new files, run `graphify update .` to update the AST graph incrementally (local, no API key required).
 
 ## Testing a Worktree
 

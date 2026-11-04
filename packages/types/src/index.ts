@@ -55,6 +55,7 @@ export {
   type WrappedProductAttributeValueDTO,
   type ProductChangeDTO,
   type ProductChangeActionDTO,
+  type ProductChangeRequestDTO,
   type CreateProductDTO,
   type CreateProductAttributeDTO,
   type UpdateProductAttributeDTO,

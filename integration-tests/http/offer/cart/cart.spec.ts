@@ -15,6 +15,8 @@ import {
     generateStoreHeaders,
 } from "../../../helpers/create-admin-user"
 import { createVendorProduct } from "../../../helpers/create-product"
+import { approveSeller } from "../../../helpers/split-order-checkout"
+import { MercurModules, SellerStatus } from "@mercurjs/types"
 
 jest.setTimeout(120000)
 
@@ -42,6 +44,7 @@ medusaIntegrationTestRunner({
                     email: opts.email,
                     name: opts.name,
                 })
+                await approveSeller(appContainer, result.seller.id)
                 const headers = result.headers
 
                 const stockLocation = (
@@ -165,7 +168,24 @@ medusaIntegrationTestRunner({
             })
 
             describe("POST /store/carts/:id/line-items", () => {
-                it("should reject add-to-cart when offer_id is missing", async () => {
+                it("creates the cart in the region currency when currency_code is empty", async () => {
+                const response = await api.post(
+                    `/store/carts`,
+                    {
+                        region_id: region.id,
+                        sales_channel_id: salesChannel.id,
+                        currency_code: "",
+                    },
+                    storeHeaders
+                )
+
+                expect(response.status).toEqual(200)
+                expect(response.data.cart.currency_code).toEqual(
+                    region.currency_code
+                )
+            })
+
+            it("should reject add-to-cart when offer_id is missing", async () => {
                     await seedSellerOffer({
                         email: "missing-offer@test.com",
                         name: "Missing Offer",
@@ -251,16 +271,15 @@ medusaIntegrationTestRunner({
                     expect(data.cart.items).toHaveLength(0)
                 })
 
-                // SPEC-007: buybox preselection guarantees one offer per
-                // variant per cart. Medusa's default add-to-cart merges
-                // same-variant lines into a single line, which is the
-                // intended behaviour under the new model.
-                it.skip("should keep sibling offers on the same variant as separate cart lines", async () => {
-                    // One seller, one variant, two offers with distinct skus + prices.
+                // Medusa prices a cart per variant, so a second offer on a
+                // variant already in the cart would reprice both lines to
+                // the cheaper offer. One offer per variant per cart.
+                it("should reject a second offer on a variant already in the cart", async () => {
                     const result = await createSellerUser(appContainer, {
                         email: "siblings@test.com",
                         name: "Siblings",
                     })
+                    await approveSeller(appContainer, result.seller.id)
                     const headers = result.headers
 
                     const stockLocation = (
@@ -352,22 +371,86 @@ medusaIntegrationTestRunner({
                         },
                         storeHeaders
                     )
-                    const addBundle = await api.post(
-                        `/store/carts/${cart.id}/line-items`,
-                        {
-                            offer_id: offerBundle.id,
-                            quantity: 1,
-                        },
+                    const addBundle = await api
+                        .post(
+                            `/store/carts/${cart.id}/line-items`,
+                            {
+                                offer_id: offerBundle.id,
+                                quantity: 1,
+                            },
+                            storeHeaders
+                        )
+                        .catch((e) => e.response)
+
+                    expect(addBundle.status).toEqual(400)
+                    expect(addBundle.data.message).toContain(offerSingle.id)
+
+                    const { data } = await api.get(
+                        `/store/carts/${cart.id}`,
                         storeHeaders
                     )
+                    expect(data.cart.items).toHaveLength(1)
+                    expect(data.cart.items[0].unit_price).toEqual(2000)
 
-                    expect(addBundle.status).toEqual(200)
-                    expect(addBundle.data.cart.items).toHaveLength(2)
+                    const addSingleAgain = await api.post(
+                        `/store/carts/${cart.id}/line-items`,
+                        { offer_id: offerSingle.id, quantity: 1 },
+                        storeHeaders
+                    )
+                    expect(addSingleAgain.status).toEqual(200)
+                    expect(addSingleAgain.data.cart.items).toHaveLength(1)
+                    expect(addSingleAgain.data.cart.items[0].quantity).toEqual(2)
+                })
 
-                    const prices = addBundle.data.cart.items
-                        .map((i: any) => i.unit_price)
-                        .sort((a: number, b: number) => a - b)
-                    expect(prices).toEqual([2000, 8000])
+                it("should reject an offer whose seller is closed or suspended but not one pending approval", async () => {
+                    const sellerModule = appContainer.resolve(MercurModules.SELLER)
+                    const seed: SellerSeed = await seedSellerOffer({
+                        email: "closed-seller@test.com",
+                        name: "Closed Seller",
+                        stocked: 10,
+                        offerPrice: 1500,
+                    })
+                    const cart = await createCart()
+                    const addOffer = () =>
+                        api
+                            .post(
+                                `/store/carts/${cart.id}/line-items`,
+                                { offer_id: seed.offer.id, quantity: 1 },
+                                storeHeaders
+                            )
+                            .catch((e) => e.response)
+
+                    const dayMs = 24 * 60 * 60 * 1000
+                    await sellerModule.updateSellers({
+                        id: seed.sellerId,
+                        closed_from: new Date(Date.now() - dayMs),
+                        closed_to: new Date(Date.now() + dayMs),
+                    })
+                    const closed = await addOffer()
+                    expect(closed.status).toEqual(400)
+                    expect(closed.data.message).toContain("not accepting orders")
+
+                    await sellerModule.updateSellers({
+                        id: seed.sellerId,
+                        closed_from: null,
+                        closed_to: null,
+                        status: SellerStatus.SUSPENDED,
+                    })
+                    expect((await addOffer()).status).toEqual(400)
+
+                    await sellerModule.updateSellers({
+                        id: seed.sellerId,
+                        status: SellerStatus.PENDING_APPROVAL,
+                    })
+                    expect((await addOffer()).status).toEqual(200)
+
+                    await sellerModule.updateSellers({
+                        id: seed.sellerId,
+                        status: SellerStatus.OPEN,
+                    })
+                    const reopened = await addOffer()
+                    expect(reopened.status).toEqual(200)
+                    expect(reopened.data.cart.items).toHaveLength(1)
                 })
 
                 it("should materialize a cart.LineItem ↔ Offer link row keyed by line_item_id", async () => {
@@ -405,6 +488,50 @@ medusaIntegrationTestRunner({
                             id: seed.offer.id,
                         })
                     )
+                })
+
+                it("should return each line's offer and seller on GET /store/carts/:id when requested", async () => {
+                    const first: SellerSeed = await seedSellerOffer({
+                        email: "cart-seller-a@test.com",
+                        name: "Cart Seller A",
+                        stocked: 10,
+                        offerPrice: 3000,
+                    })
+                    const second: SellerSeed = await seedSellerOffer({
+                        email: "cart-seller-b@test.com",
+                        name: "Cart Seller B",
+                        stocked: 10,
+                        offerPrice: 3200,
+                    })
+
+                    const cart = await createCart()
+
+                    for (const seed of [first, second]) {
+                        await api.post(
+                            `/store/carts/${cart.id}/line-items`,
+                            { offer_id: seed.offer.id, quantity: 1 },
+                            storeHeaders
+                        )
+                    }
+
+                    const response = await api.get(
+                        `/store/carts/${cart.id}?fields=*items,*items.offer,*items.offer.seller`,
+                        storeHeaders
+                    )
+
+                    expect(response.status).toEqual(200)
+
+                    const sellerByOffer = Object.fromEntries(
+                        response.data.cart.items.map((item: any) => [
+                            item.offer?.id,
+                            item.offer?.seller?.id,
+                        ])
+                    )
+
+                    expect(sellerByOffer).toEqual({
+                        [first.offer.id]: first.sellerId,
+                        [second.offer.id]: second.sellerId,
+                    })
                 })
 
                 // SPEC-007: decorateLineItemWithOfferStep is removed.

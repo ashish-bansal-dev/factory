@@ -15,4 +15,5 @@ export enum MercurModules {
     BRAND = "brand",
     INQUIRY = "inquiry",
     DOMAIN = "domain",
+    TELEMETRY = "telemetry",
 }

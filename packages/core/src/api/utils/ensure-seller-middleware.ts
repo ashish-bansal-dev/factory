@@ -7,9 +7,20 @@ import {
   ContainerRegistrationKeys,
   MedusaError,
 } from "@medusajs/framework/utils"
+import { SellerStatus } from "@mercurjs/types"
 import { SellerContext } from "../../types/seller-context"
 
 const SELLER_ID_HEADER = "x-seller-id"
+
+const INACTIVE_STATUSES: string[] = [
+  SellerStatus.SUSPENDED,
+  SellerStatus.TERMINATED,
+]
+
+// The vendor panel still reads the seller profile to show the suspension /
+// termination notice, so the self read stays reachable.
+const isSelfProfileRead = (req: AuthenticatedMedusaRequest) =>
+  req.method.toUpperCase() === "GET" && /^\/vendor\/sellers\/me$/.test(req.baseUrl)
 
 export async function ensureSellerMiddleware(
   req: AuthenticatedMedusaRequest,
@@ -30,28 +41,41 @@ export async function ensureSellerMiddleware(
   const memberId = req.auth_context.actor_id
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
-  const { data: sellerMembers } = await query.graph(
-    {
-      entity: "seller_member",
-      fields: ["id", "seller_id", "member_id", "role_id", "seller.*"],
-      filters: {
-        seller_id: sellerId,
-        member_id: memberId,
-      },
+  // Not cached: an authorization read must reflect a removed member or a
+  // suspended seller on the very next request, not after a TTL.
+  const { data: sellerMembers } = await query.graph({
+    entity: "seller_member",
+    fields: ["id", "seller_id", "member_id", "role_id", "seller.*"],
+    filters: {
+      seller_id: sellerId,
+      member_id: memberId,
     },
-    { cache: { enable: true } }
-  )
+  })
 
   if (!sellerMembers.length) {
     return next(
       new MedusaError(
-        MedusaError.Types.NOT_ALLOWED,
+        MedusaError.Types.FORBIDDEN,
         "You are not a member of this seller account"
       )
     )
   }
 
   const sellerMember = sellerMembers[0]
+  const sellerStatus = sellerMember.seller?.status as string | undefined
+
+  if (
+    sellerStatus &&
+    INACTIVE_STATUSES.includes(sellerStatus) &&
+    !isSelfProfileRead(req)
+  ) {
+    return next(
+      new MedusaError(
+        MedusaError.Types.FORBIDDEN,
+        `This seller account is ${sellerStatus}`
+      )
+    )
+  }
 
   req.seller_context = {
     seller_id: sellerId,

@@ -2,24 +2,27 @@ import {
   MedusaResponse,
   MedusaStoreRequest,
 } from "@medusajs/framework/http"
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 
 import {
+  type EnrichableOffer,
+  type LeadtimeOffer,
   splitComputedOfferFields,
   wrapOffersWithCalculatedPrices,
+  wrapOffersWithEffectiveLeadtime,
   wrapOffersWithInventoryQuantityForSalesChannel,
   wrapOffersWithTaxPrices,
 } from "./helpers"
 import { StoreGetOffersParamsType } from "./validators"
+import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
 import { resolveChannel } from "../../utils/channel"
+import { getStoreOfferVisibility, listOffers } from "../../utils/list-offers"
 
 export const GET = async (
   req: MedusaStoreRequest<StoreGetOffersParamsType>,
   res: MedusaResponse
 ) => {
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
-
-  const { fields, withCalculatedPrice, withInventoryQuantity } =
+  const { fields, withCalculatedPrice, withInventoryQuantity, withEffectiveLeadtime } =
     splitComputedOfferFields(req.queryConfig.fields)
 
   const effectiveChannel = resolveChannel(req)
@@ -58,10 +61,12 @@ export const GET = async (
     filters.seller_id = effectiveSellerId
   }
 
-  const { data: offers, metadata } = await query.graph({
-    entity: "offer",
-    fields: fields,
+  const { offers, count, estimate_count, offset, limit } = await listOffers<
+    EnrichableOffer & LeadtimeOffer
+  >(req.scope, {
+    fields,
     filters,
+    visibility: getStoreOfferVisibility(req.scope),
     pagination: req.queryConfig.pagination,
   })
 
@@ -93,16 +98,14 @@ export const GET = async (
         allowedByProduct.get(ps.product_id)!.add(ps.seller_id)
       }
 
-      validOffers = offers.filter(
-        (o: { product_id?: string; seller_id?: string }) => {
-          if (o.product_id && allowedByProduct.has(o.product_id)) {
-            return Boolean(
-              o.seller_id && allowedByProduct.get(o.product_id)!.has(o.seller_id)
-            )
-          }
-          return true
+      validOffers = offers.filter((o) => {
+        if (o.product_id && allowedByProduct.has(o.product_id)) {
+          return Boolean(
+            o.seller_id && allowedByProduct.get(o.product_id)!.has(o.seller_id)
+          )
         }
-      )
+        return true
+      })
     }
   }
 
@@ -118,11 +121,16 @@ export const GET = async (
     await wrapOffersWithInventoryQuantityForSalesChannel(req, validOffers)
   }
 
+  if (withEffectiveLeadtime) {
+    await wrapOffersWithEffectiveLeadtime(req, validOffers)
+  }
+
   const countDiff = offers.length - validOffers.length
   res.json({
     offers: validOffers,
-    count: Math.max(0, (metadata?.count ?? validOffers.length) - countDiff),
-    offset: metadata?.skip ?? 0,
-    limit: metadata?.take ?? 0,
+    count: Math.max(0, (count ?? validOffers.length) - countDiff),
+    ...(estimate_count !== undefined ? { estimate_count } : {}),
+    offset,
+    limit,
   })
 }

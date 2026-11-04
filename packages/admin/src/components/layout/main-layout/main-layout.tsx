@@ -71,6 +71,7 @@ import {
   getNestedMenuItems,
 } from "../../../utils/routes";
 import { canReachRoute } from "../../../lib/permissions/can-reach-route";
+import { useFeatureFlag } from "../../../providers/feature-flag-provider";
 
 export const MainLayout = () => {
   return (
@@ -145,6 +146,7 @@ const useSidebarRoutes = () => {
       icon: item.icon ? <item.icon /> : undefined,
       translationNs: item.translationNs,
       group: item.group,
+      type: "extension" as const,
       items: addNestedItems(item.path, visibleMenuItems),
     }));
 
@@ -415,6 +417,7 @@ const Header = () => {
 
 const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
   const { t } = useTranslation();
+  const inboxEnabled = useFeatureFlag("product_request");
 
   return [
     {
@@ -434,6 +437,9 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
       label: t("products.domain"),
       to: "/products",
       items: [
+        ...(inboxEnabled
+          ? [{ label: t("products.inbox.domain"), to: "/products/inbox" }]
+          : []),
         {
           label: t("offers.domain"),
           to: "/offers",
@@ -515,6 +521,12 @@ const useCoreRoutes = (): Omit<INavItem, "pathname">[] => {
       icon: <CreditCardRefresh />,
       label: t("payouts.domain"),
       to: "/payouts",
+      items: [
+        {
+          label: t("payoutAccounts.domain"),
+          to: "/payout-accounts",
+        },
+      ],
     },
   ];
 };

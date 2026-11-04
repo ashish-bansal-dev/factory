@@ -1,11 +1,8 @@
-import {
-  CartItemsFooter,
-  CartItemsHeader,
-  CartItemsProducts,
-} from "@/components/cells"
-import { CartSeller } from "@/components/cells/CartItemsHeader/CartItemsHeader"
+import { CartItemsFooter } from '@/components/cells/CartItemsFooter/CartItemsFooter';
+import { CartItemsHeader, type CartSeller } from '@/components/cells/CartItemsHeader/CartItemsHeader';
+import { CartItemsProducts } from '@/components/cells/CartItemsProducts/CartItemsProducts';
 import { HttpTypes } from "@medusajs/types"
-import { EmptyCart } from "./EmptyCart"
+import { CartEmpty } from "@/components/organisms/CartEmpty/CartEmpty"
 import { Cart } from "@/types/cart"
 import { SellerDTO } from "@mercurjs/types"
 
@@ -25,7 +22,7 @@ export const CartItems = ({ cart }: { cart: HttpTypes.StoreCart | Cart | null })
 
   const groupedItems = groupItemsBySeller(cart)
 
-  if (!Object.keys(groupedItems).length) return <EmptyCart />
+  if (!Object.keys(groupedItems).length) return <CartEmpty />
 
   return Object.keys(groupedItems).map((key) => (
     <div key={key} className="mb-4" data-testid={`cart-items-seller-${key}`}>

@@ -99,6 +99,14 @@ export function getRouteMap({
                 },
                 children: [
                   {
+                    path: "inbox",
+                    handle: {
+                      breadcrumb: () => t("products.inbox.domain"),
+                      permissions: ["product_changes:view", "products:view"],
+                    },
+                    lazy: () => import("./pages/products/product-inbox"),
+                  },
+                  {
                     path: "",
                     lazy: () => import("./pages/products/product-list"),
                     children: [
@@ -1074,6 +1082,12 @@ export function getRouteMap({
                             lazy: () =>
                               import("./pages/stores/store-member-invite"),
                           },
+                          {
+                            path: "regions/add",
+                            handle: { permissions: "sellers:edit" },
+                            lazy: () =>
+                              import("./pages/stores/store-add-regions"),
+                          },
                         ],
                       },
                     ],
@@ -1112,6 +1126,43 @@ export function getRouteMap({
                       {
                         path: "",
                         lazy: () => import("./pages/payouts/payout-detail").then(withLoaderPermission("payouts:view")),
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                path: "/payout-accounts",
+                errorElement: <ErrorBoundary />,
+                handle: {
+                  breadcrumb: () => t("payoutAccounts.domain"),
+                  permissions: "payouts:view",
+                },
+                children: [
+                  {
+                    path: "",
+                    lazy: () => import("./pages/payout-accounts/payout-account-list"),
+                  },
+                  {
+                    path: ":id",
+                    lazy: async () => {
+                      const { Breadcrumb, loader } =
+                        await import("./pages/payout-accounts/payout-account-detail");
+
+                      return {
+                        Component: Outlet,
+                        loader: withPermission(loader, "payouts:view"),
+                        handle: {
+                          breadcrumb: (match: UIMatch) => (
+                            <Breadcrumb {...match} />
+                          ),
+                        },
+                      };
+                    },
+                    children: [
+                      {
+                        path: "",
+                        lazy: () => import("./pages/payout-accounts/payout-account-detail").then(withLoaderPermission("payouts:view")),
                       },
                     ],
                   },
@@ -1434,6 +1485,12 @@ export function getRouteMap({
                             handle: { permissions: "regions:edit" },
                             lazy: () =>
                               import("./pages/regions/region-add-countries"),
+                          },
+                          {
+                            path: "sellers/add",
+                            handle: { permissions: "regions:edit" },
+                            lazy: () =>
+                              import("./pages/regions/region-add-sellers"),
                           },
                           {
                             path: "metadata/edit",

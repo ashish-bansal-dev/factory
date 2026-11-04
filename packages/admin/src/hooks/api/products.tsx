@@ -184,6 +184,9 @@ export const useDeleteProduct = (
     onSuccess: (data: any, variables: any, context: any) => {
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.lists() });
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.detail(id) });
+      queryClient.invalidateQueries({
+        queryKey: productChangeQueryKeys.lists(),
+      });
 
       options?.onSuccess?.(data, variables, context);
     },
@@ -227,6 +230,9 @@ export const useConfirmProduct = (
     onSuccess: (data: any, variables: any, context: any) => {
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.lists() });
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.detail(id) });
+      queryClient.invalidateQueries({
+        queryKey: productChangeQueryKeys.lists(),
+      });
 
       options?.onSuccess?.(data, variables, context);
     },
@@ -248,6 +254,9 @@ export const useRejectProduct = (
     onSuccess: (data: any, variables: any, context: any) => {
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.lists() });
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.detail(id) });
+      queryClient.invalidateQueries({
+        queryKey: productChangeQueryKeys.lists(),
+      });
 
       options?.onSuccess?.(data, variables, context);
     },
@@ -269,6 +278,9 @@ export const useRequestProductChanges = (
     onSuccess: (data: any, variables: any, context: any) => {
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.lists() });
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.detail(id) });
+      queryClient.invalidateQueries({
+        queryKey: productChangeQueryKeys.lists(),
+      });
 
       options?.onSuccess?.(data, variables, context);
     },
@@ -315,6 +327,9 @@ export const useConfirmProductChange = (
         queryKey: productChangeQueryKeys.detail(productId),
       });
       queryClient.invalidateQueries({
+        queryKey: productChangeQueryKeys.lists(),
+      });
+      queryClient.invalidateQueries({
         queryKey: productsQueryKeys.detail(productId),
       });
       queryClient.invalidateQueries({ queryKey: productsQueryKeys.lists() });
@@ -343,6 +358,9 @@ export const useCancelProductChange = (
     onSuccess: (data, variables, context) => {
       queryClient.invalidateQueries({
         queryKey: productChangeQueryKeys.detail(productId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: productChangeQueryKeys.lists(),
       });
       queryClient.invalidateQueries({
         queryKey: productsQueryKeys.detail(productId),

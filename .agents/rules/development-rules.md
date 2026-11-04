@@ -53,6 +53,17 @@ bun run test:integration:tests       # Run integration tests
 - NEVER run full builds (`bun run build`) unnecessarily during exploration, diagnosis, or reading code. Only run targeted type-checks (`tsc --noEmit` in the specific package) or build when required to verify actual code modifications.
 - NEVER run `bun run test:integration:http` (runs all packages). Use `bun run test:integration:http -- <pattern>`
 
+## Codebase Knowledge Graph (Graphify)
+
+A pre-built knowledge graph is maintained at `graphify-out/` covering the entire monorepo (packages, apps, modules, and workflows).
+
+- **Impact & Blast Radius**: Before modifying or refactoring core entities, workflows, or shared types, run `graphify affected "<symbol>"` to inspect all downstream dependents across apps and packages.
+- **Trace Relationships**: Run `graphify path "<source>" "<target>"` to find the shortest call/dependency chain across packages.
+- **Symbol Exploration**: Run `graphify explain "<symbol>"` to inspect callers, callees, and dependencies without noisy repo-wide text searches.
+- **Architecture Questions**: Run `graphify query "<question>"` to obtain a focused topological subgraph answering structural questions.
+- **Broad Overview**: Refer to `graphify-out/GRAPH_REPORT.md` for cluster and community overviews.
+- **Keeping Graph Fresh**: After making code edits or adding new files, run `graphify update .` to update the AST graph incrementally (local, no API key required).
+
 ## Testing a Worktree
 
 When the user asks to test a worktree (e.g. "test this worktree", "run this worktree", "spin up <worktree-name>"):

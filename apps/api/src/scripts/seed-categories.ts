@@ -1,10 +1,7 @@
 import { ExecArgs } from '@medusajs/framework/types';
-import { ContainerRegistrationKeys } from '@medusajs/framework/utils';
 import { createProductCategoriesWorkflow } from '@medusajs/medusa/core-flows';
 
 export default async function createProductCategories({ container }: ExecArgs) {
-
-    const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
     // Create main categories for Men, Women, and Kids
     const mainCategories = [
         { name: 'Men', is_active: true },

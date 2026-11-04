@@ -2,6 +2,7 @@ export const storeOrderGroupFields = [
   "id",
   "display_id",
   "customer_id",
+  "metadata",
   "seller_count",
   "total",
   "created_at",
@@ -28,13 +29,12 @@ export const storeOrderGroupFields = [
   "orders.items.subtitle",
   "orders.items.thumbnail",
   "orders.items.product_title",
+  "orders.items.product_handle",
   "orders.items.variant_title",
   "orders.items.quantity",
   "orders.items.unit_price",
   "orders.items.total",
   "orders.items.variant_id",
-  "orders.items.variant.product.handle",
-  "orders.items.variant.product.title",
 ]
 
 // Relations a caller may expand wholesale (`*orders`, `*orders.items`). Allowed

@@ -19,6 +19,7 @@ import {
     generatePublishableKey,
     generateStoreHeaders,
 } from "../../../helpers/create-admin-user"
+import { waitForIndexedProducts } from "../../../helpers/wait-for-indexed-products"
 
 const approveSeller = async (container: MedusaContainer, sellerId: string) => {
     const sellerModule: any = container.resolve(MercurModules.SELLER)
@@ -82,15 +83,20 @@ medusaIntegrationTestRunner({
                         headers
                     )
 
-                    await assignProductsToSeller(
-                        appContainer,
-                        result.seller.id as string,
-                        [product.id]
-                    )
-
                     productId = product.id
                     variantId = product.variants[0].id
                 }
+
+                // The product–seller link is an allowlist: once the first seller is
+                // linked, every other seller offering the product must be linked too.
+                await assignProductsToSeller(
+                    appContainer,
+                    result.seller.id as string,
+                    [productId]
+                )
+                await waitForIndexedProducts(appContainer, [
+                    { id: productId, restricted: true },
+                ])
 
                 const shippingProfile = await createShippingProfile(appContainer, {
                     name: `${opts.name} Profile ${tag}`,

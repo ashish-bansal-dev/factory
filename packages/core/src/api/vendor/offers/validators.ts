@@ -162,6 +162,7 @@ const VendorCreateOffersBatchItem = z
     bundle_size: z.number().int().min(1).optional(),
     mrp: z.number().positive().nullish(),
     metadata: z.record(z.string(), z.unknown()).nullish(),
+    additional_data: z.record(z.string(), z.unknown()).optional(),
   })
   .strict()
 
