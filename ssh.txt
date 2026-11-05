@@ -1,3 +1,23 @@
+# ==============================================================================
+# FactoryTribe Backend Direct Deployment (One-Command)
+# ==============================================================================
+# Pushes local backend changes & builds directly to the server, installs dependencies,
+# prompts for database migrations, restarts PM2 'api', and verifies health:
+./scripts/deploy-factorytribe-backend.sh
+
+# Flags:
+# Auto-migrate database:
+./scripts/deploy-factorytribe-backend.sh --migrate
+# Skip database migration:
+./scripts/deploy-factorytribe-backend.sh --no-migrate
+# Fast hot-push without rebuilding local packages:
+./scripts/deploy-factorytribe-backend.sh --no-build --no-migrate
+# Dry run:
+./scripts/deploy-factorytribe-backend.sh --dry-run
+
+# ==============================================================================
+# SSH Connections & Manual Operations
+# ==============================================================================
 # SSH Local Machine (Direct LAN IP)
 ssh dev@10.76.38.185
 # Or via alias:

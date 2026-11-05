@@ -52,13 +52,12 @@ async function getRegionMap(cacheId: string) {
       },
       cache: 'force-cache'
     }).then(async response => {
-      const json = await response.json();
-
       if (!response.ok) {
-        throw new Error(json.message);
+        const text = await response.text();
+        throw new Error(`Failed to fetch regions (${response.status}): ${text.slice(0, 200)}`);
       }
 
-      return json;
+      return response.json();
     });
 
     if (!regions?.length) {
