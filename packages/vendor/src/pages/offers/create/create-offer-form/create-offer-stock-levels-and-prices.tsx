@@ -64,7 +64,7 @@ const Root = () => {
   const form = useFormContext<CreateOfferFormValues>();
   const { setCloseOnEscape } = useRouteModal();
 
-  const { seller } = useCurrentSeller();
+  const { seller, currency_code } = useCurrentSeller();
   const isRetailer = seller?.type === "retailer";
   const { currencies, regions } = useSellerCurrencies();
   const { can } = usePermissions();
@@ -137,6 +137,7 @@ const Root = () => {
   }, [variants]);
 
   const baseColumns = useColumns({
+    currencyCode: currency_code,
     currencies,
     channel,
     stockLocations: stock_locations as
@@ -226,6 +227,7 @@ const Root = () => {
 };
 
 type ColumnArgs = {
+  currencyCode?: string;
   currencies?: string[];
   channel?: "retail" | "wholesale";
   stockLocations?: HttpTypes.AdminStockLocation[];
@@ -238,6 +240,7 @@ type ColumnArgs = {
 const columnHelper = createDataGridHelper<GridRow, CreateOfferFormValues>();
 
 const useColumns = ({
+  currencyCode,
   currencies = [],
   channel = "retail",
   stockLocations = [],
@@ -260,6 +263,7 @@ const useColumns = ({
     const cellCurrencies = Array.from(
       new Set([...currencies, ...regions.map((r) => r.currency_code)])
     );
+    const resolvedCurrencyCode = currencyCode || cellCurrencies[0];
 
     return [
       columnHelper.column({
@@ -321,10 +325,10 @@ const useColumns = ({
         cell: (context) =>
           isGroup(context.row.original) ? (
             <DataGrid.ReadonlyCell context={context} />
-          ) : currencyCode ? (
+          ) : resolvedCurrencyCode ? (
             <DataGrid.CurrencyCell
               context={context}
-              code={currencyCode}
+              code={resolvedCurrencyCode}
             />
           ) : (
             <DataGrid.NumberCell
@@ -462,6 +466,7 @@ const useColumns = ({
     ];
   }, [
     t,
+    currencyCode,
     currencies,
     channel,
     stockLocations,

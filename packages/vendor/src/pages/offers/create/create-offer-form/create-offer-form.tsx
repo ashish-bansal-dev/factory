@@ -13,6 +13,7 @@ import { RouteFocusModal, useRouteModal } from "../../../../components/modals";
 import { TabbedForm } from "../../../../components/tabbed-form/tabbed-form";
 import { useOfferConditions } from "../../../../hooks/api/offer-conditions";
 import { useBulkCreateOffers } from "../../../../hooks/api/offers";
+import { useCurrentSeller } from "../../../../hooks/api/sellers";
 import { castNumber } from "../../../../lib/cast-number";
 import { useProducts } from "../../../../hooks/api/products";
 import { useStockLocations } from "../../../../hooks/api/stock-locations";
