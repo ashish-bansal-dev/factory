@@ -57,12 +57,24 @@ const fileProviders: Record<string, unknown>[] = isR2Configured
       },
     ]
 
+const resolveStoreCors = () => {
+  const envCors = process.env.STORE_CORS || ""
+  const localhostRegex = "/^https?:\\/\\/([a-zA-Z0-9_-]+\\.)*localhost(:\\d+)?$/"
+  const origins = envCors
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => Boolean(s) && !s.includes("localhost:8000") && s !== localhostRegex)
+  origins.push(localhostRegex)
+  origins.push("http://localhost:8000")
+  return origins.join(",")
+}
+
 module.exports = withMercur({
   projectConfig: {
     databaseUrl: process.env.DATABASE_URL,
     redisUrl: REDIS_URL,
     http: {
-      storeCors: process.env.STORE_CORS!,
+      storeCors: resolveStoreCors(),
       adminCors: process.env.ADMIN_CORS!,
       vendorCors: process.env.VENDOR_CORS!,
       authCors: process.env.AUTH_CORS!,
