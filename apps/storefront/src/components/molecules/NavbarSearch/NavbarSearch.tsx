@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
-import { InstantSearch, useSearchBox, useHits, useInstantSearch } from "react-instantsearch"
+import { Configure, InstantSearch, useSearchBox, useHits, useInstantSearch } from "react-instantsearch"
 import clsx from "clsx"
 
 import { Input } from "@/components/atoms/Input/Input"
@@ -24,19 +24,24 @@ export type ProductHit = {
 
 interface Props {
   className?: string
+  sellerId?: string | null
+  sellerName?: string | null
 }
 
-export const NavbarSearch = ({ className }: Props) => {
+export const NavbarSearch = ({ className, sellerId, sellerName }: Props) => {
   return (
     <div className={clsx("relative w-full", className)}>
       <InstantSearch searchClient={searchClient} indexName={PRODUCT_INDEX_NAME}>
-        <NavbarSearchInner />
+        {sellerId && (
+          <Configure facetFilters={[`seller_ids:${sellerId}`]} />
+        )}
+        <NavbarSearchInner sellerName={sellerName} />
       </InstantSearch>
     </div>
   )
 }
 
-const NavbarSearchInner = () => {
+const NavbarSearchInner = ({ sellerName }: { sellerName?: string | null }) => {
   const { query, refine } = useSearchBox()
   const { hits } = useHits<ProductHit>()
   const { status, results, error } = useInstantSearch()
@@ -83,7 +88,7 @@ const NavbarSearchInner = () => {
     <div ref={containerRef} className="relative w-full" onKeyDown={handleKeyDown}>
       <Input
         icon={<SearchIcon />}
-        placeholder="Search products..."
+        placeholder={sellerName ? `Search ${sellerName}...` : "Search products..."}
         value={inputValue}
         changeValue={(val) => {
           setInputValue(val)

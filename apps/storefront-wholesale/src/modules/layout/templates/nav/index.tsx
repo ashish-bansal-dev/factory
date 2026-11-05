@@ -144,7 +144,10 @@ export default async function Nav() {
 
           {/* Center: Search */}
           <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-2 sm:mx-4">
-            <WholesaleNavbarSearch />
+            <WholesaleNavbarSearch
+              sellerId={isTenant && tenantSeller ? tenantSeller.id : undefined}
+              sellerName={isTenant && tenantSeller ? tenantSeller.name : undefined}
+            />
           </div>
 
           {/* Right: Actions (Account & Cart) */}

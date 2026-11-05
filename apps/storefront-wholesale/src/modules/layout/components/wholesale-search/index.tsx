@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { InstantSearch, useSearchBox, useHits, useInstantSearch } from "react-instantsearch"
+import { Configure, InstantSearch, useSearchBox, useHits, useInstantSearch } from "react-instantsearch"
 import { MagnifyingGlass, XMark } from "@medusajs/icons"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import { searchClient, PRODUCT_INDEX_NAME } from "@lib/search-client"
@@ -18,17 +18,28 @@ export type WholesaleProductHit = {
   created_at?: string
 }
 
-export default function WholesaleNavbarSearch() {
+interface WholesaleNavbarSearchProps {
+  sellerId?: string | null
+  sellerName?: string | null
+}
+
+export default function WholesaleNavbarSearch({
+  sellerId,
+  sellerName,
+}: WholesaleNavbarSearchProps) {
   return (
     <div className="relative w-full">
       <InstantSearch searchClient={searchClient} indexName={PRODUCT_INDEX_NAME}>
-        <WholesaleNavbarSearchInner />
+        {sellerId && (
+          <Configure facetFilters={[`seller_ids:${sellerId}`]} />
+        )}
+        <WholesaleNavbarSearchInner sellerName={sellerName} />
       </InstantSearch>
     </div>
   )
 }
 
-function WholesaleNavbarSearchInner() {
+function WholesaleNavbarSearchInner({ sellerName }: { sellerName?: string | null }) {
   const { query, refine } = useSearchBox()
   const { hits } = useHits<WholesaleProductHit>()
   const { status, results, error } = useInstantSearch()
@@ -85,7 +96,11 @@ function WholesaleNavbarSearchInner() {
             setIsOpen(true)
           }}
           onFocus={() => setIsOpen(true)}
-          placeholder="Search wholesale products, brands..."
+          placeholder={
+            sellerName
+              ? `Search ${sellerName} products...`
+              : "Search wholesale products, brands..."
+          }
           className="w-full pl-10 pr-9 py-2 text-sm bg-sand-50/70 hover:bg-sand-50 focus:bg-white border border-stone-200 rounded-full text-charcoal-900 placeholder:text-stone-400 focus:outline-none focus:border-terracotta-500 focus:ring-1 focus:ring-terracotta-500 transition-all duration-150"
           data-testid="wholesale-search-input"
         />

@@ -40,6 +40,7 @@ type ProductRecord = {
   created_at: string | Date
   sales_channels?: { id: string }[]
   sellers?: { id: string }[]
+  offers?: { seller_id?: string }[]
   categories?: { name: string }[]
   tags?: { value: string }[]
 }
@@ -55,31 +56,39 @@ const source = {
     "created_at",
     "sales_channels.id",
     "sellers.id",
+    "offers.seller_id",
     "categories.name",
     "tags.value",
   ],
   transform: (products: ProductRecord[]) => {
-    return products.map((product) => ({
-      id: product.id,
-      status: product.status,
-      sales_channel_ids: (product.sales_channels ?? []).map(
-        (sc) => sc.id
-      ),
-      title: product.title,
-      description: product.description ?? "",
-      handle: product.handle,
-      thumbnail: product.thumbnail ?? null,
-      created_at: product.created_at,
-      seller_ids: (product.sellers ?? []).map(
-        (seller) => seller.id
-      ),
-      categories: (product.categories ?? []).map(
-        (cat) => cat.name
-      ),
-      labels: (product.tags ?? []).map(
-        (tag) => tag.value
-      ),
-    }))
+    return products.map((product) => {
+      const sellerIds = Array.from(
+        new Set([
+          ...(product.sellers ?? []).map((s) => s.id),
+          ...(product.offers ?? []).map((o) => o.seller_id).filter(Boolean) as string[],
+        ])
+      )
+
+      return {
+        id: product.id,
+        status: product.status,
+        sales_channel_ids: (product.sales_channels ?? []).map(
+          (sc) => sc.id
+        ),
+        title: product.title,
+        description: product.description ?? "",
+        handle: product.handle,
+        thumbnail: product.thumbnail ?? null,
+        created_at: product.created_at,
+        seller_ids: sellerIds,
+        categories: (product.categories ?? []).map(
+          (cat) => cat.name
+        ),
+        labels: (product.tags ?? []).map(
+          (tag) => tag.value
+        ),
+      }
+    })
   },
 }
 
@@ -102,6 +111,9 @@ export const productIndex = defineSearchIndex({
     "product-category.updated",
     "product-category.deleted",
     "sales-channel.deleted",
+    "offer.created",
+    "offer.updated",
+    "offer.deleted",
   ],
   consume: graphConsume(source),
   seed: graphSeed(source),
