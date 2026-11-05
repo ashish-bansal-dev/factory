@@ -404,6 +404,24 @@ checkout / CI (fresh worktree has no install).
 
 ## Session Log
 
+### Session: 2026-11-06 -- Medusa Search Setup & InstantSearch Integration (Storefront & Wholesale)
+
+- **Goal.** Set up search engine on Medusa backend (`/store/search`) and wire live InstantSearch components for retail (`apps/storefront`) and wholesale (`apps/storefront-wholesale`).
+- **Landed.**
+  - `apps/api/src/search/product.ts`: Defined `productIndex` with searchable title, description, categories, and labels, retrievable handle and thumbnail. Configured `typo_tolerance: { enabled: false }` to ensure exact prefix matching without false positives on short alphanumeric codes.
+  - `apps/api/src/api/middlewares.ts`: Added `configureStoreSearch({ allowed_indexes: { product: true } })` enabling the `/store/search` store route.
+  - `apps/api/src/scripts/reindex.ts`: Executable Medusa script for rebuilding search indexes on demand.
+  - `apps/storefront/src/lib/search-client.ts` & `apps/storefront-wholesale/src/lib/search-client.ts`: Configured `@medusajs/instantsearch-adapter` with `match_strategy: "last"`.
+  - `apps/storefront/src/components/molecules/NavbarSearch/NavbarSearch.tsx`: Live debounced InstantSearch dropdown integrated into retail navbar.
+  - `apps/storefront-wholesale/src/modules/layout/components/wholesale-search/index.tsx`: Live debounced InstantSearch dropdown integrated into FactoryTribe wholesale navbar.
+- **Verified.**
+  - Tested search queries against live `/store/search` HTTP endpoint:
+    - `"95"` -> Hits (2): `9524`, `9532` (clean prefix match)
+    - `"953"` -> Hits (1): `9532` (exact prefix, no typo false positives)
+    - `"952"` -> Hits (1): `9524`
+    - `"Kids"` -> Hits (2): `9524`, `9532` (category search)
+- **Next.** Optional facets/filters for wholesale categories and price ranges if requested.
+
 ### Session: 2026-09-24 -- Fix Out-of-Stock on Product Details & Buybox Inventory Resolution
 
 - **Issue.** Vendor retail offer defined on Shirt-102 (`http://localhost:3000/in/products/shirt-102?men%27s+size=38&color=Grey`) displayed "OUT OF STOCK" on retail storefront despite vendor having stock and active offer.

@@ -8,6 +8,7 @@ import LocalizedClientLink from "@modules/common/components/localized-client-lin
 import CartButton from "@modules/layout/components/cart-button"
 import NestedCategoriesMenu from "@modules/layout/components/nested-categories-menu"
 import MobileMenu from "@modules/layout/components/mobile-menu"
+import WholesaleNavbarSearch from "@modules/layout/components/wholesale-search"
 import { headers } from "next/headers"
 import { getTenantSeller } from "@lib/data/seller"
 
@@ -139,6 +140,11 @@ export default async function Nav() {
                 <NestedCategoriesMenu categories={categories || []} />
               </div>
             )}
+          </div>
+
+          {/* Center: Search */}
+          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-2 sm:mx-4">
+            <WholesaleNavbarSearch />
           </div>
 
           {/* Right: Actions (Account & Cart) */}
