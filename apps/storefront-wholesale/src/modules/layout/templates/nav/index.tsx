@@ -65,9 +65,9 @@ export default async function Nav() {
 
       {/* Main Header */}
       <header className="relative bg-white/95 backdrop-blur border-b border-stone-200">
-        <nav className="content-container flex items-center justify-between gap-4 h-16 py-2.5">
+        <nav className="content-container flex items-center justify-between gap-3 sm:gap-4 h-16 py-2.5">
           {/* Left: Brand Navigation */}
-          <div className="flex items-center gap-x-2 sm:gap-x-6">
+          <div className="flex items-center gap-x-2 sm:gap-x-6 min-w-0">
             {/* Mobile Side Menu */}
             <MobileMenu
               categories={categories || []}
@@ -78,34 +78,34 @@ export default async function Nav() {
             {/* Logo */}
             <LocalizedClientLink
               href="/"
-              className="flex items-center gap-2.5 group"
+              className="flex items-center gap-2.5 group min-w-0"
               data-testid="nav-store-link"
             >
               {isTenant && tenantSeller ? (
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                   {tenantSeller.logo ? (
                     <img
                       src={tenantSeller.logo}
                       alt={tenantSeller.name}
-                      className="w-8 h-8 rounded-lg object-contain border border-stone-200 bg-white"
+                      className="w-8 h-8 rounded-lg object-contain border border-stone-200 bg-white flex-shrink-0"
                     />
                   ) : (
-                    <span className="w-8 h-8 rounded-lg bg-sand-100 border border-stone-200 flex items-center justify-center font-bold text-xs text-charcoal-900">
+                    <span className="w-8 h-8 rounded-lg bg-sand-100 border border-stone-200 flex items-center justify-center font-bold text-xs text-charcoal-900 flex-shrink-0">
                       {tenantSeller.name.slice(0, 2).toUpperCase()}
                     </span>
                   )}
-                  <div>
-                    <span className="font-serif text-lg font-bold text-charcoal-900 group-hover:text-terracotta-600 transition">
+                  <div className="min-w-0">
+                    <span className="font-serif text-base sm:text-lg font-bold text-charcoal-900 group-hover:text-terracotta-600 transition truncate block">
                       {tenantSeller.name}
                     </span>
-                    <span className="block text-[10px] uppercase tracking-wider text-stone-500 font-sans">
+                    <span className="hidden sm:block text-[10px] uppercase tracking-wider text-stone-500 font-sans">
                       Wholesale Showroom
                     </span>
                   </div>
                 </div>
               ) : (
                 <div className="flex items-baseline gap-2">
-                  <span className="font-serif text-2xl font-bold tracking-tight text-charcoal-900 group-hover:text-terracotta-600 transition">
+                  <span className="font-serif text-xl sm:text-2xl font-bold tracking-tight text-charcoal-900 group-hover:text-terracotta-600 transition">
                     FactoryTribe
                   </span>
                   <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-sand-100 text-charcoal-800 border border-stone-200">
@@ -142,8 +142,8 @@ export default async function Nav() {
             )}
           </div>
 
-          {/* Center: Search */}
-          <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-2 sm:mx-4">
+          {/* Desktop Center: Search */}
+          <div className="hidden md:flex flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-4 justify-center">
             <WholesaleNavbarSearch
               sellerId={isTenant && tenantSeller ? tenantSeller.id : undefined}
               sellerName={isTenant && tenantSeller ? tenantSeller.name : undefined}
@@ -151,7 +151,7 @@ export default async function Nav() {
           </div>
 
           {/* Right: Actions (Account & Cart) */}
-          <div className="flex items-center gap-x-4 sm:gap-x-5 justify-end">
+          <div className="flex items-center gap-x-3 sm:gap-x-5 justify-end flex-shrink-0">
             <LocalizedClientLink
               className="inline-flex items-center text-sm font-medium text-stone-700 hover:text-terracotta-600 transition"
               href="/account"
@@ -177,6 +177,14 @@ export default async function Nav() {
             </Suspense>
           </div>
         </nav>
+
+        {/* Mobile Search: Full-width responsive search bar positioned below the top navigation row */}
+        <div className="md:hidden content-container pb-3 pt-0.5" data-testid="mobile-search-container">
+          <WholesaleNavbarSearch
+            sellerId={isTenant && tenantSeller ? tenantSeller.id : undefined}
+            sellerName={isTenant && tenantSeller ? tenantSeller.name : undefined}
+          />
+        </div>
       </header>
     </div>
   )

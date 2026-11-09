@@ -20,7 +20,7 @@ const MCP_TOOLS = [
         title: { type: "string", description: "Product title" },
         description: { type: "string", description: "Product description" },
         price: { type: "number", description: "Base product price in standard units (e.g. 45.00)" },
-        currency_code: { type: "string", description: "Currency code (default 'usd')" },
+        currency_code: { type: "string", description: "Currency code (default 'inr')" },
         seller_id: { type: "string", description: "Seller/Vendor ID to attribute the product to" },
         category_name: { type: "string", description: "Product category name" },
         images: {
@@ -189,7 +189,20 @@ export async function POST(req: MedusaRequest<McpJsonRpcRequest>, res: MedusaRes
 
       if (toolName === "create_marketplace_product") {
         const priceAmount = Math.round(Number(args.price) * 100)
-        const currencyCode = (args.currency_code || "usd").toLowerCase()
+        const currencyCode = (args.currency_code || "inr").toLowerCase()
+
+        // Fetch active sales channels for global availability
+        let salesChannels: Array<{ id: string }> = []
+        try {
+          const { data } = await query.graph({
+            entity: "sales_channel",
+            fields: ["id"],
+            filters: { is_disabled: false },
+          })
+          salesChannels = data || []
+        } catch {
+          // ignore error
+        }
 
         const variants =
           args.variants && args.variants.length > 0
@@ -217,8 +230,9 @@ export async function POST(req: MedusaRequest<McpJsonRpcRequest>, res: MedusaRes
           images: (args.images || []).map((url: string) => ({ url })),
           thumbnail: args.images?.[0],
           variants,
+          sales_channels: salesChannels.map((sc) => ({ id: sc.id })),
           metadata: {
-            listing_scope: "store_only",
+            listing_scope: "global",
             created_via: "mcp",
           },
         }

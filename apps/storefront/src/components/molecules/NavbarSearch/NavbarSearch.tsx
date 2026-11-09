@@ -102,7 +102,7 @@ const NavbarSearchInner = ({ sellerName }: { sellerName?: string | null }) => {
 
       {isOpen && (
         <div
-          className="absolute left-0 right-0 top-full mt-2 z-50 bg-white border border-stone-200 rounded-md shadow-lg max-h-96 overflow-y-auto"
+          className="absolute left-0 right-0 top-full mt-2 z-50 bg-white border border-stone-200 rounded-md shadow-lg max-h-[75vh] sm:max-h-96 overflow-y-auto"
           data-testid="search-results-dropdown"
         >
           {error ? (

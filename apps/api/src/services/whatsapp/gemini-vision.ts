@@ -6,7 +6,7 @@ export class GeminiVisionService {
   private aiInstance: any = null
 
   constructor(apiKey?: string, model?: string) {
-    this.apiKey = apiKey || process.env.GEMINI_API_KEY
+    this.apiKey = apiKey !== undefined ? apiKey : process.env.GEMINI_API_KEY
     this.model = model || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite"
   }
 
@@ -48,7 +48,7 @@ Extract the following JSON structure:
   "category_name": "Primary category (e.g. 'Apparel', 'Footwear', 'Home Decor', 'Electronics')",
   "material": "Material or fabric if visible or mentioned (e.g. '100% Linen', 'Genuine Leather', 'Stainless Steel')",
   "suggested_price": number or null (Extract price if shown in image tag/label or stated in caption. If unknown, return null),
-  "currency_code": "3-letter currency code (default 'usd' unless another currency symbol like ₹, €, £, $ is specified)",
+  "currency_code": "3-letter currency code in lowercase (default 'inr', Indian Rupee ₹)",
   "options": [
     {
       "title": "e.g. 'Size' or 'Color'",
@@ -107,7 +107,7 @@ Always output strict, valid JSON matching the schema.`
           !isNaN(parsed.suggested_price)
             ? parsed.suggested_price
             : null,
-        currency_code: (parsed.currency_code || "usd").toLowerCase(),
+        currency_code: (parsed.currency_code || "inr").toLowerCase(),
         options: Array.isArray(parsed.options) ? parsed.options : [],
         variants:
           Array.isArray(parsed.variants) && parsed.variants.length > 0

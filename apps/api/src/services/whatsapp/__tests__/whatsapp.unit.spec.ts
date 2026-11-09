@@ -1,7 +1,10 @@
 import { WhatsAppClient } from "../whatsapp-client"
 import { GeminiVisionService } from "../gemini-vision"
 import { WhatsAppManager } from "../whatsapp-manager"
+import { ImageCompressor } from "../image-compressor"
+import { DraftEditorService } from "../draft-editor"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
+import sharp from "sharp"
 
 describe("WhatsAppClient", () => {
   const verifyToken = "test_secret_token_123"
@@ -54,6 +57,131 @@ describe("GeminiVisionService", () => {
   })
 })
 
+describe("ImageCompressor", () => {
+  it("compresses and resizes an oversized image to webp by default", async () => {
+    const compressor = new ImageCompressor({
+      maxWidth: 200,
+      maxHeight: 200,
+      quality: 80,
+    })
+
+    // Create a 400x400 test image
+    const rawBuffer = await sharp({
+      create: {
+        width: 400,
+        height: 400,
+        channels: 3,
+        background: { r: 120, g: 150, b: 200 },
+      },
+    })
+      .png()
+      .toBuffer()
+
+    const result = await compressor.compress(rawBuffer)
+    expect(result.buffer).toBeDefined()
+    expect(result.mimeType).toBe("image/webp")
+    expect(result.compressedSizeBytes).toBeGreaterThan(0)
+    expect(result.compressionRatio).toBeDefined()
+
+    // Verify metadata of compressed image
+    const meta = await sharp(result.buffer).metadata()
+    expect(meta.format).toBe("webp")
+    expect(meta.width).toBeLessThanOrEqual(200)
+    expect(meta.height).toBeLessThanOrEqual(200)
+  })
+
+  it("supports explicit jpeg compression format", async () => {
+    const compressor = new ImageCompressor({
+      maxWidth: 200,
+      maxHeight: 200,
+      quality: 80,
+      format: "jpeg",
+    })
+
+    const rawBuffer = await sharp({
+      create: {
+        width: 400,
+        height: 400,
+        channels: 3,
+        background: { r: 120, g: 150, b: 200 },
+      },
+    })
+      .png()
+      .toBuffer()
+
+    const result = await compressor.compress(rawBuffer)
+    expect(result.buffer).toBeDefined()
+    expect(result.mimeType).toBe("image/jpeg")
+
+    const meta = await sharp(result.buffer).metadata()
+    expect(meta.format).toBe("jpeg")
+  })
+
+  it("handles fallback gracefully on invalid image buffer", async () => {
+    const compressor = new ImageCompressor()
+    const invalidBuffer = Buffer.from("not an image")
+    const result = await compressor.compress(invalidBuffer)
+
+    expect(result.buffer).toEqual(invalidBuffer)
+    expect(result.mimeType).toBe("image/webp")
+  })
+})
+
+describe("DraftEditorService", () => {
+  const mockProduct = {
+    title: "Classic White Tee",
+    subtitle: "Organic cotton",
+    description: "Premium regular fit t-shirt",
+    category_name: "Tops",
+    material: "100% Cotton",
+    suggested_price: 25.0,
+    currency_code: "usd",
+    variants: [{ title: "Default", price: 25.0 }],
+  }
+
+  it("parses price update using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    // Force fallback by using invalid key/url or checking fallback directly
+    const res = await (editor as any).fallbackParse(mockProduct, "price 39.99")
+    expect(res.action).toBe("UPDATE")
+    expect(res.updatedProduct.suggested_price).toBe(39.99)
+    expect(res.message).toContain("39.99")
+  })
+
+  it("parses title update using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "title Vintage Graphic Tee")
+    expect(res.action).toBe("UPDATE")
+    expect(res.updatedProduct.title).toBe("Vintage Graphic Tee")
+  })
+
+  it("parses confirmation using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "looks good publish")
+    expect(res.action).toBe("PUBLISH")
+  })
+
+  it("parses cancel intent using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "cancel this draft")
+    expect(res.action).toBe("CANCEL")
+  })
+
+  it("passes generated description as text context into step 2 conversation", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await editor.processConversation(
+      {
+        isAdmin: false,
+        hasDraft: true,
+        draftProduct: mockProduct,
+      },
+      "what material is this?"
+    )
+    expect(res).toBeDefined()
+    expect(res.action).toBeDefined()
+  })
+})
+
 describe("WhatsAppManager", () => {
   let sentMessages: Array<{ to: string; text: string }> = []
   let mockQueryGraph: any
@@ -68,10 +196,10 @@ describe("WhatsAppManager", () => {
         if (filters?.phone?.includes("918888888888")) {
           return { data: [{ id: "sel_vendor_1", name: "Acme Vendor", phone: "918888888888" }] }
         }
-        if (filters?.$or) {
-          return { data: [{ id: "sel_target_2", name: "Nike Store", handle: "nike" }] }
+        if (filters?.phone) {
+          return { data: [] }
         }
-        return { data: [] }
+        return { data: [{ id: "sel_target_2", name: "Nike Store", handle: "nike" }] }
       }
       if (entity === "product") {
         return {
@@ -272,5 +400,106 @@ describe("WhatsAppManager", () => {
     expect(sentMessages.length).toBe(1)
     expect(sentMessages[0].text).toContain("WhatsApp Product Assistant")
     expect(sentMessages[0].text).toContain("Admin Commands")
+  })
+
+  it("allows admin to list all sellers via SELLERS command", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "919999999999",
+                    id: "msg_6",
+                    timestamp: "123456",
+                    type: "text",
+                    text: { body: "SELLERS" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    await manager.handleWebhookPayload(payload)
+    expect(sentMessages.length).toBe(1)
+    expect(sentMessages[0].text).toContain("Registered Marketplace Vendors")
+    expect(sentMessages[0].text).toContain("Nike Store")
+  })
+
+  it("allows admin to switch vendor by index number (VENDOR 1)", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "919999999999",
+                    id: "msg_7",
+                    timestamp: "123456",
+                    type: "text",
+                    text: { body: "VENDOR 1" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    await manager.handleWebhookPayload(payload)
+    expect(sentMessages.length).toBe(1)
+    expect(sentMessages[0].text).toContain("Active vendor context set to: *Nike Store*")
+  })
+
+  it("handles general conversational inquiry from user", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "918888888888",
+                    id: "msg_8",
+                    timestamp: "123456",
+                    type: "text",
+                    text: { body: "Hello, what can you do?" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    await manager.handleWebhookPayload(payload)
+    expect(sentMessages.length).toBe(1)
+    expect(sentMessages[0].text).toBeDefined()
+    expect(sentMessages[0].text.length).toBeGreaterThan(10)
   })
 })

@@ -404,6 +404,20 @@ checkout / CI (fresh worktree has no install).
 
 ## Session Log
 
+### Session: 2026-11-09 -- Mobile Responsive Search Bar & Cloudflare Worker Deployment
+
+- **Goal.** Fix mobile view search bar out-of-bounds overflow by relocating it below the top nav as a dedicated responsive full-width row, and deploy the updated storefront to the Cloudflare Worker.
+- **Landed.**
+  - `apps/storefront-wholesale/src/modules/layout/templates/nav/index.tsx`: Repositioned search bar on mobile screens into a dedicated full-width container underneath the top navigation row (`md:hidden content-container pb-3 pt-0.5`), keeping the desktop search bar centered in the top header (`hidden md:flex`).
+  - `apps/storefront-wholesale/src/modules/layout/components/wholesale-search/index.tsx`: Updated dropdown max-height to `max-h-[75vh] sm:max-h-96` to ensure responsive vertical constraints on mobile viewports.
+  - `apps/storefront/src/components/cells/Navbar/Navbar.tsx` & `NavbarSearch.tsx`: Removed rigid 296px constraint on mobile search to allow 100% width responsiveness.
+  - `apps/storefront-wholesale/src/lib/search-client.ts`: Added dynamic backend resolution for client-side fetches targeting `https://api.factorytribe.com` in production environments.
+  - `apps/api/src/services/whatsapp`: Added image compression with sharp, interactive draft editing, and fixed test timeout and mock handlers.
+- **Verified.**
+  - Local tests: All 20 WhatsApp unit tests pass. Storefront Next.js and OpenNext builds compile with 0 errors.
+  - Cloudflare Worker: Deployed `factorytribe` worker via `opennextjs-cloudflare build && wrangler deploy` (`fd649dbf-51c5-485f-888b-9b97ad3ce6fc`). Verified live deployment at `https://factorytribe.ashish-bansal-dev.workers.dev/in` returns HTTP 200 with `data-testid="mobile-search-container"`.
+- **Next.** Monitor analytics and search latency on production worker.
+
 ### Session: 2026-11-06 -- Medusa Search Setup & InstantSearch Integration (Storefront & Wholesale)
 
 - **Goal.** Set up search engine on Medusa backend (`/store/search`) and wire live InstantSearch components for retail (`apps/storefront`) and wholesale (`apps/storefront-wholesale`).

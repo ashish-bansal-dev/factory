@@ -20,8 +20,8 @@ export const Navbar = ({
           <NavbarSearch />
         </div>
       </div>
-      <div className="lg:hidden max-w-[296px] w-full" data-testid="navbar-search-mobile">
-        <NavbarSearch className="max-w-[296px]" />
+      <div className="lg:hidden w-full" data-testid="navbar-search-mobile">
+        <NavbarSearch className="w-full" />
       </div>
     </div>
   )

@@ -1,9 +1,11 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, ProductStatus } from "@medusajs/framework/utils"
-import { uploadFilesWorkflow } from "@medusajs/medusa/core-flows"
+import { uploadFilesWorkflow, linkProductsToSalesChannelWorkflow } from "@medusajs/medusa/core-flows"
 import { createProductsWorkflow } from "@mercurjs/core/workflows"
 import { GeminiVisionService } from "./gemini-vision"
 import { WhatsAppClient } from "./whatsapp-client"
+import { ImageCompressor } from "./image-compressor"
+import { DraftEditorService } from "./draft-editor"
 import {
   AdminVendorContext,
   ExtractedProduct,
@@ -21,6 +23,8 @@ export class WhatsAppManager {
   private container: MedusaContainer
   private client: WhatsAppClient
   private vision: GeminiVisionService
+  private compressor: ImageCompressor
+  private draftEditor: DraftEditorService
   private adminPhone: string
   private storefrontUrl: string
   private vendorUrl: string
@@ -29,6 +33,13 @@ export class WhatsAppManager {
     this.container = container
     this.client = new WhatsAppClient()
     this.vision = new GeminiVisionService()
+    this.compressor = new ImageCompressor({
+      maxWidth: 1600,
+      maxHeight: 1600,
+      quality: 82,
+      format: "webp",
+    })
+    this.draftEditor = new DraftEditorService()
     this.adminPhone = (process.env.ADMIN_WHATSAPP_PHONE || "").replace(/[^0-9]/g, "")
     this.storefrontUrl = (process.env.STOREFRONT_URL || "http://localhost:3000").replace(/\/+$/, "")
     this.vendorUrl = (process.env.VENDOR_URL || "http://localhost:7001").replace(/\/+$/, "")
@@ -190,9 +201,21 @@ export class WhatsAppManager {
       return
     }
 
-    // Command: VENDOR <name> / SWITCH VENDOR <name> (Admin only)
-    if (isAdmin && (textUpper.startsWith("VENDOR ") || textUpper.startsWith("SWITCH VENDOR "))) {
-      const vendorQuery = rawText.replace(/^(SWITCH\s+)?VENDOR\s+/i, "").trim()
+    // Command: SELLERS / LIST SELLERS / VENDORS (Admin only)
+    if (
+      isAdmin &&
+      (textUpper === "SELLERS" ||
+        textUpper === "LIST SELLERS" ||
+        textUpper === "VENDORS" ||
+        textUpper === "LIST VENDORS")
+    ) {
+      await this.handleListSellers(toPhone)
+      return
+    }
+
+    // Command: VENDOR <name> / SWITCH VENDOR <name> / SELLER <name> (Admin only)
+    if (isAdmin && (textUpper.startsWith("VENDOR ") || textUpper.startsWith("SWITCH VENDOR ") || textUpper.startsWith("SELLER "))) {
+      const vendorQuery = rawText.replace(/^(SWITCH\s+)?(VENDOR|SELLER)\s+/i, "").trim()
       await this.handleAdminSwitchVendor(toPhone, cleanPhone, vendorQuery)
       return
     }
@@ -220,21 +243,87 @@ export class WhatsAppManager {
       return
     }
 
+    const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+    let availableSellers: Array<{ id: string; name: string; handle: string }> = []
+    if (isAdmin) {
+      try {
+        const { data: sellers } = await query.graph({
+          entity: "seller",
+          fields: ["id", "name", "handle"],
+        })
+        availableSellers = sellers || []
+      } catch {}
+    }
+
     // Check ongoing Draft session
     const session = activeSessions.get(cleanPhone)
     if (!session || !session.draft) {
       // Check if user replied "DONE" while images are being buffered
       if (session && session.step === "COLLECTING_IMAGES" && textUpper === "DONE") {
         if (session.debounceTimer) clearTimeout(session.debounceTimer)
-        await this.finalizeImageCollection(cleanPhone, toPhone)
+        await this.finalizeImageCollection(
+          cleanPhone,
+          toPhone,
+          isAdmin,
+          (session as any).targetSellerId || currentSellerId,
+          (session as any).targetSellerName || currentSellerName
+        )
         return
       }
 
-      await this.client.sendMessage(
-        toPhone,
-        `👋 Welcome! Send 1 or more product photos with an optional caption to create a product draft, or type *LIST PRODUCTS* to inspect inventory. Type *HELP* for all commands.`
-      )
-      return
+      // General conversation and handling with Gemma 4 31B
+      try {
+        const assistantRes = await this.draftEditor.processConversation(
+          {
+            isAdmin,
+            sellerId: currentSellerId,
+            sellerName: currentSellerName,
+            availableSellers,
+            hasDraft: false,
+          },
+          rawText
+        )
+
+        if (assistantRes.action === "LIST_PRODUCTS") {
+          await this.handleCatalogQuery(toPhone, cleanPhone, rawText, currentSellerId, currentSellerName)
+          return
+        }
+
+        if (assistantRes.action === "LIST_SELLERS" && isAdmin) {
+          await this.handleListSellers(toPhone)
+          return
+        }
+
+        if (assistantRes.action === "SWITCH_VENDOR" && isAdmin && assistantRes.sellerQuery) {
+          await this.handleAdminSwitchVendor(toPhone, cleanPhone, assistantRes.sellerQuery)
+          return
+        }
+
+        if (assistantRes.action === "CLEAR_VENDOR" && isAdmin) {
+          adminVendorContexts.delete(cleanPhone)
+          await this.client.sendMessage(
+            toPhone,
+            assistantRes.replyMessage || `ℹ️ Active vendor context cleared.`
+          )
+          return
+        }
+
+        if (assistantRes.action === "HELP") {
+          await this.sendHelpMessage(toPhone, isAdmin)
+          return
+        }
+
+        // Send friendly conversational response from Gemma 4
+        await this.client.sendMessage(toPhone, assistantRes.replyMessage)
+        return
+      } catch (err: any) {
+        console.warn("[WhatsAppManager] General conversation AI error:", err)
+        await this.client.sendMessage(
+          toPhone,
+          `👋 Welcome! Send 1 or more product photos with an optional caption to create a product draft, or type *LIST PRODUCTS* to inspect inventory. Type *HELP* for all commands.`
+        )
+        return
+      }
     }
 
     // Draft Actions: CANCEL
@@ -245,15 +334,16 @@ export class WhatsAppManager {
     }
 
     // Draft Actions: PRICE <amount>
-    if (textUpper.startsWith("PRICE ") || /^\$?\d+(\.\d+)?$/.test(rawText)) {
+    if (textUpper.startsWith("PRICE ") || /^[₹\$]?\d+(\.\d+)?$/.test(rawText)) {
       const priceStr = rawText.replace(/[^0-9.]/g, "")
       const newPrice = parseFloat(priceStr)
       if (isNaN(newPrice) || newPrice <= 0) {
-        await this.client.sendMessage(toPhone, `⚠️ Please enter a valid price, e.g. *PRICE 49.99*`)
+        await this.client.sendMessage(toPhone, `⚠️ Please enter a valid price in INR, e.g. *PRICE 1499*`)
         return
       }
 
       session.draft.product.suggested_price = newPrice
+      session.draft.product.currency_code = "inr"
       if (session.draft.product.variants?.length) {
         for (const v of session.draft.product.variants) {
           v.price = newPrice
@@ -262,7 +352,7 @@ export class WhatsAppManager {
       session.step = "AWAITING_CONFIRMATION"
       activeSessions.set(cleanPhone, session)
 
-      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated price to *$${newPrice.toFixed(2)}*!`)
+      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated price to *₹${newPrice}*!`)
       return
     }
 
@@ -291,7 +381,7 @@ export class WhatsAppManager {
       ) {
         await this.client.sendMessage(
           toPhone,
-          `⚠️ A valid price is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 35*)`
+          `⚠️ A valid price is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*)`
         )
         return
       }
@@ -301,15 +391,116 @@ export class WhatsAppManager {
       return
     }
 
+    // Draft Actions: VENDOR <name> / SELLER <name> (Admin only)
+    if (isAdmin && (textUpper.startsWith("VENDOR ") || textUpper.startsWith("SELLER ") || textUpper.startsWith("ASSIGN "))) {
+      const vendorQuery = rawText.replace(/^(VENDOR|SELLER|ASSIGN(\s+TO)?)\s+/i, "").trim()
+      await this.handleAdminSwitchVendor(toPhone, cleanPhone, vendorQuery)
+      return
+    }
+
+    // Natural Language Draft Edits via Gemma 4 31B
+    try {
+      const assistantRes = await this.draftEditor.processConversation(
+        {
+          isAdmin,
+          sellerId: session.draft.targetSellerId,
+          sellerName: session.draft.targetSellerName,
+          availableSellers,
+          hasDraft: true,
+          draftProduct: session.draft.product,
+        },
+        rawText
+      )
+
+      // Handle Admin Seller Assignment during Draft
+      if (isAdmin && (assistantRes.action === "ASSIGN_SELLER" || assistantRes.action === "SWITCH_VENDOR")) {
+        const queryToMatch = assistantRes.sellerQuery
+        if (queryToMatch) {
+          const matched = availableSellers.find(
+            (s) =>
+              s.id.toLowerCase() === queryToMatch.toLowerCase() ||
+              s.handle?.toLowerCase() === queryToMatch.toLowerCase() ||
+              s.name.toLowerCase().includes(queryToMatch.toLowerCase())
+          )
+          if (matched) {
+            session.draft.targetSellerId = matched.id
+            session.draft.targetSellerName = matched.name
+            adminVendorContexts.set(cleanPhone, {
+              sellerId: matched.id,
+              sellerName: matched.name,
+              updatedAt: Date.now(),
+            })
+          }
+        }
+        if (assistantRes.updatedProduct) {
+          session.draft.product = assistantRes.updatedProduct
+        }
+        activeSessions.set(cleanPhone, session)
+        await this.sendDraftPreview(toPhone, session.draft, `✅ ${assistantRes.replyMessage}`)
+        return
+      }
+
+      if (assistantRes.action === "PUBLISH_DRAFT") {
+        if (
+          assistantRes.updatedProduct?.suggested_price != null &&
+          assistantRes.updatedProduct.suggested_price > 0
+        ) {
+          session.draft.product = assistantRes.updatedProduct
+        }
+
+        if (
+          session.draft.product.suggested_price == null ||
+          isNaN(session.draft.product.suggested_price) ||
+          session.draft.product.suggested_price <= 0
+        ) {
+          await this.client.sendMessage(
+            toPhone,
+            `⚠️ A valid price is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*)`
+          )
+          return
+        }
+
+        await this.publishDraft(toPhone, cleanPhone, session.draft)
+        activeSessions.delete(cleanPhone)
+        return
+      }
+
+      if (assistantRes.action === "CANCEL_DRAFT") {
+        activeSessions.delete(cleanPhone)
+        await this.client.sendMessage(
+          toPhone,
+          `🗑️ ${assistantRes.replyMessage || "Product draft has been cancelled and discarded."}`
+        )
+        return
+      }
+
+      if (assistantRes.action === "UPDATE_DRAFT" && assistantRes.updatedProduct) {
+        session.draft.product = assistantRes.updatedProduct
+        session.step =
+          session.draft.product.suggested_price == null ? "AWAITING_PRICE" : "AWAITING_CONFIRMATION"
+        activeSessions.set(cleanPhone, session)
+
+        await this.sendDraftPreview(toPhone, session.draft, `✏️ ${assistantRes.replyMessage}`)
+        return
+      }
+
+      if (assistantRes.action === "CHAT" || assistantRes.action === "HELP") {
+        await this.client.sendMessage(toPhone, assistantRes.replyMessage)
+        return
+      }
+    } catch (editorErr: any) {
+      console.warn("[WhatsAppManager] Draft editor AI error, falling back to help prompt:", editorErr)
+    }
+
     // Unrecognized text during draft confirmation
     await this.client.sendMessage(
       toPhone,
-      `❓ Unrecognized command. Reply:\n- *YES* to publish\n- *PRICE <amount>* to change price\n- *TITLE <text>* to change title\n- *CANCEL* to discard`
+      `❓ Unrecognized command. Reply:\n- *YES* to publish\n- *PRICE <amount>* to change price\n- *TITLE <text>* to change title\n- Or simply tell me what to change (e.g. "change price to 45" or "make title Vintage Denim")\n- *CANCEL* to discard`
     )
   }
 
   /**
-   * Switches the active vendor context for an Admin.
+   * Switches the active vendor context for an Admin (supports name, handle, ID, or index number).
    */
   private async handleAdminSwitchVendor(
     toPhone: string,
@@ -319,32 +510,57 @@ export class WhatsAppManager {
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
 
     try {
-      const { data: sellers } = await query.graph({
+      const { data: allSellers } = await query.graph({
         entity: "seller",
         fields: ["id", "name", "handle"],
-        filters: {
-          $or: [
-            { id: vendorQuery },
-            { name: { $ilike: `%${vendorQuery}%` } },
-            { handle: { $ilike: `%${vendorQuery}%` } },
-          ],
-        },
       })
 
-      if (!sellers || sellers.length === 0) {
+      if (!allSellers || allSellers.length === 0) {
+        await this.client.sendMessage(toPhone, `❌ No vendors registered on the marketplace yet.`)
+        return
+      }
+
+      let selected = allSellers.find(
+        (s) =>
+          s.id.toLowerCase() === vendorQuery.toLowerCase() ||
+          s.handle?.toLowerCase() === vendorQuery.toLowerCase() ||
+          s.name.toLowerCase().includes(vendorQuery.toLowerCase())
+      )
+
+      // Support index number (e.g. VENDOR 1 from SELLERS list)
+      const num = parseInt(vendorQuery, 10)
+      if (!selected && !isNaN(num) && num >= 1 && num <= allSellers.length) {
+        selected = allSellers[num - 1]
+      }
+
+      if (!selected) {
         await this.client.sendMessage(
           toPhone,
-          `❌ No vendor found matching "*${vendorQuery}*". Please check the vendor name or ID.`
+          `❌ No vendor found matching "*${vendorQuery}*". Reply *SELLERS* to see all available vendors.`
         )
         return
       }
 
-      const selected = sellers[0]
       adminVendorContexts.set(cleanPhone, {
         sellerId: selected.id,
         sellerName: selected.name,
         updatedAt: Date.now(),
       })
+
+      // If an active draft exists, update the draft's target seller directly
+      const session = activeSessions.get(cleanPhone)
+      if (session?.draft) {
+        session.draft.targetSellerId = selected.id
+        session.draft.targetSellerName = selected.name
+        activeSessions.set(cleanPhone, session)
+
+        await this.sendDraftPreview(
+          toPhone,
+          session.draft,
+          `✅ Assigned product to vendor *${selected.name}* (ID: \`${selected.id}\`)!`
+        )
+        return
+      }
 
       await this.client.sendMessage(
         toPhone,
@@ -352,6 +568,36 @@ export class WhatsAppManager {
       )
     } catch (e: any) {
       await this.client.sendMessage(toPhone, `⚠️ Error searching for vendor: ${e.message}`)
+    }
+  }
+
+  /**
+   * Lists all registered sellers for an Admin.
+   */
+  private async handleListSellers(toPhone: string): Promise<void> {
+    const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+    try {
+      const { data: sellers } = await query.graph({
+        entity: "seller",
+        fields: ["id", "name", "handle", "phone"],
+      })
+
+      if (!sellers || sellers.length === 0) {
+        await this.client.sendMessage(toPhone, `ℹ️ No sellers registered yet on the marketplace.`)
+        return
+      }
+
+      const lines = [`🏪 *Registered Marketplace Vendors* (${sellers.length} total):\n`]
+      sellers.forEach((s, idx) => {
+        lines.push(`${idx + 1}. *${s.name}* (Handle: \`${s.handle}\`, ID: \`${s.id}\`)`)
+      })
+      lines.push(
+        `\n👉 Reply:\n• *VENDOR <number or name>* to switch active vendor to upload or query on their behalf.\n• *CLEAR VENDOR* to reset to general admin.`
+      )
+
+      await this.client.sendMessage(toPhone, lines.join("\n"))
+    } catch (e: any) {
+      await this.client.sendMessage(toPhone, `⚠️ Error listing sellers: ${e.message}`)
     }
   }
 
@@ -396,7 +642,7 @@ export class WhatsAppManager {
       const p = products[targetIndex - 1]
       const firstVariantPrices = (p.variants?.[0] as any)?.prices
       const price = firstVariantPrices?.[0]?.amount
-        ? `$${(firstVariantPrices[0].amount / 100).toFixed(2)}`
+        ? `₹${(firstVariantPrices[0].amount / 100).toFixed(0)}`
         : "N/A"
 
       const storefrontLink = `${this.storefrontUrl}/products/${p.handle}`
@@ -459,7 +705,7 @@ export class WhatsAppManager {
     products.forEach((p, idx) => {
       const firstVariantPrices = (p.variants?.[0] as any)?.prices
       const firstPrice = firstVariantPrices?.[0]?.amount
-      const priceStr = firstPrice ? `$${(firstPrice / 100).toFixed(2)}` : "No price"
+      const priceStr = firstPrice ? `₹${(firstPrice / 100).toFixed(0)}` : "No price"
       lines.push(`${idx + 1}. *${p.title}* - ${priceStr} (${p.status})`)
     })
 
@@ -525,10 +771,51 @@ export class WhatsAppManager {
       )
     }
 
+    // If admin and caption mentions a vendor (e.g. "for Bhawani" or "vendor: Bhawani")
+    let targetSellerId = sellerId
+    let targetSellerName = sellerName
+
+    if (isAdmin && caption) {
+      const captionMatch =
+        caption.match(/(?:for|vendor|seller)\s*[:\-]?\s*([a-zA-Z0-9_\-\s]+?)(?:[,.]|$|\s+(?:price|title))/i)
+      if (captionMatch) {
+        const potentialVendor = captionMatch[1].trim()
+        const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+        try {
+          const { data: matchedSellers } = await query.graph({
+            entity: "seller",
+            fields: ["id", "name", "handle"],
+            filters: {
+              $or: [
+                { name: { $ilike: `%${potentialVendor}%` } },
+                { handle: { $ilike: `%${potentialVendor}%` } },
+              ],
+            },
+          })
+          if (matchedSellers && matchedSellers.length > 0) {
+            targetSellerId = matchedSellers[0].id
+            targetSellerName = matchedSellers[0].name
+            console.log(`[WhatsAppManager] Auto-detected vendor from caption: ${targetSellerName} (${targetSellerId})`)
+          }
+        } catch {}
+      }
+    }
+
+    if (targetSellerId) {
+      ;(session as any).targetSellerId = targetSellerId
+      ;(session as any).targetSellerName = targetSellerName
+    }
+
     // Set 30-second debounce timer
     session.debounceTimer = setTimeout(async () => {
       try {
-        await this.finalizeImageCollection(cleanPhone, toPhone, isAdmin, sellerId, sellerName)
+        await this.finalizeImageCollection(
+          cleanPhone,
+          toPhone,
+          isAdmin,
+          (session as any).targetSellerId || targetSellerId,
+          (session as any).targetSellerName || targetSellerName
+        )
       } catch (err: any) {
         console.error("[WhatsAppManager] Debounce processing failed:", err)
         await this.client.sendMessage(toPhone, `⚠️ Failed to process product images: ${err.message}`)
@@ -554,14 +841,19 @@ export class WhatsAppManager {
       `⏳ Analyzing ${session.pendingImages.length} image(s) with Google Gemini Vision... Please wait a few seconds.`
     )
 
-    // 1. Download images from WhatsApp Graph API
+    // 1. Download & compress images from WhatsApp Graph API
     const downloadedImages: Array<{ buffer: Buffer; mimeType: string }> = []
     for (const item of session.pendingImages) {
       try {
         const fileData = await this.client.downloadMedia(item.mediaId)
-        downloadedImages.push(fileData)
+        console.log(`[WhatsAppManager] Compressing media ${item.mediaId} (${fileData.buffer.length} bytes)...`)
+        const compressed = await this.compressor.compress(fileData.buffer)
+        downloadedImages.push({
+          buffer: compressed.buffer,
+          mimeType: compressed.mimeType,
+        })
       } catch (dlErr: any) {
-        console.error(`[WhatsAppManager] Failed to download media ${item.mediaId}:`, dlErr)
+        console.error(`[WhatsAppManager] Failed to download/compress media ${item.mediaId}:`, dlErr)
       }
     }
 
@@ -579,12 +871,15 @@ export class WhatsAppManager {
     let imageUrls: string[] = []
     try {
       const targetSellerId = sellerId || "marketplace_admin"
-      const uploadInput = downloadedImages.map((img, idx) => ({
-        filename: `whatsapp/${targetSellerId}/${Date.now()}_img_${idx + 1}.jpg`,
-        mimeType: img.mimeType,
-        content: img.buffer.toString("base64"),
-        access: "public" as const,
-      }))
+      const uploadInput = downloadedImages.map((img, idx) => {
+        const ext = img.mimeType === "image/webp" ? "webp" : "jpg"
+        return {
+          filename: `whatsapp/${targetSellerId}/${Date.now()}_img_${idx + 1}.${ext}`,
+          mimeType: img.mimeType,
+          content: img.buffer.toString("base64"),
+          access: "public" as const,
+        }
+      })
 
       const { result: uploadedFiles } = await uploadFilesWorkflow(this.container).run({
         input: { files: uploadInput },
@@ -593,7 +888,10 @@ export class WhatsAppManager {
       imageUrls = (uploadedFiles as Array<{ url: string }>).map((f) => f.url)
     } catch (uploadErr: any) {
       console.warn("[WhatsAppManager] File upload workflow warning (using fallback):", uploadErr.message)
-      imageUrls = downloadedImages.map((_, idx) => `http://localhost:9000/static/whatsapp_img_${Date.now()}_${idx + 1}.jpg`)
+      imageUrls = downloadedImages.map((img, idx) => {
+        const ext = img.mimeType === "image/webp" ? "webp" : "jpg"
+        return `http://localhost:9000/static/whatsapp_img_${Date.now()}_${idx + 1}.${ext}`
+      })
     }
 
     // 3. Multimodal Analysis with Gemini 3.1 Flash Lite
@@ -613,20 +911,31 @@ export class WhatsAppManager {
       return
     }
 
+    const effectiveSellerId = (session as any).targetSellerId || sellerId || ""
+    const effectiveSellerName = (session as any).targetSellerName || sellerName
+
     // 4. Save Draft
     const draft: ProductDraft = {
       product: extracted,
       imageUrls,
       createdAt: Date.now(),
-      targetSellerId: sellerId || "",
-      targetSellerName: sellerName,
+      targetSellerId: effectiveSellerId,
+      targetSellerName: effectiveSellerName,
       isAdmin: Boolean(isAdmin),
     }
 
     session.draft = draft
     session.step = extracted.suggested_price == null ? "AWAITING_PRICE" : "AWAITING_CONFIRMATION"
+
+    // Step 1 complete: release raw image buffers from session.
+    // Step 2 conversational editing uses the extracted text description and metadata.
     session.pendingImages = []
+    delete (session as any).caption
     if (session.debounceTimer) clearTimeout(session.debounceTimer)
+
+    console.log(
+      `[WhatsAppManager] Image context released after Step 1. Transitioning to Step 2 text-only chat with description for "${extracted.title}".`
+    )
 
     activeSessions.set(cleanPhone, session)
 
@@ -644,10 +953,16 @@ export class WhatsAppManager {
   ): Promise<void> {
     const p = draft.product
     const priceDisplay =
-      p.suggested_price != null ? `$${p.suggested_price.toFixed(2)}` : "⚠️ *NOT SET*"
+      p.suggested_price != null ? `₹${p.suggested_price.toFixed(0)}` : "⚠️ *NOT SET*"
 
     const variantsText =
       p.variants?.map((v) => v.title).join(", ") || "Default"
+
+    const vendorDisplay = draft.targetSellerName
+      ? `• *Vendor*: ${draft.targetSellerName}`
+      : draft.isAdmin
+      ? `• *Vendor*: ⚠️ *Not Assigned* (Reply *VENDOR <name>* or *SELLERS*)`
+      : ""
 
     const messageLines = [
       prefixMessage ? `${prefixMessage}\n` : "",
@@ -656,22 +971,25 @@ export class WhatsAppManager {
       p.subtitle ? `• *Subtitle*: ${p.subtitle}` : "",
       `• *Category*: ${p.category_name || "General"}`,
       p.material ? `• *Material*: ${p.material}` : "",
-      `• *Price*: ${priceDisplay}`,
+      `• *Price*: ${priceDisplay} (INR)`,
       `• *Variants*: ${variantsText}`,
       `• *Images*: ${draft.imageUrls.length} attached`,
-      draft.targetSellerName ? `• *Vendor*: ${draft.targetSellerName}` : "",
+      vendorDisplay,
       "",
       `📝 *Description*:\n${p.description.slice(0, 300)}${p.description.length > 300 ? "..." : ""}`,
       "",
     ].filter(Boolean)
 
     if (p.suggested_price == null) {
-      messageLines.push(`👉 *Please reply with the price to continue* (e.g. *PRICE 49.99*):`)
+      messageLines.push(`👉 *Please reply with the price in INR (₹) to continue* (e.g. *PRICE 999*):`)
     } else {
       messageLines.push(`👉 Reply:`)
-      messageLines.push(`- *YES* to publish to store`)
-      messageLines.push(`- *PRICE <amount>* to change price (e.g. PRICE 50)`)
+      messageLines.push(`- *YES* to publish globally to store`)
+      messageLines.push(`- *PRICE <amount>* to change price (e.g. PRICE 1299)`)
       messageLines.push(`- *TITLE <text>* to change title`)
+      if (draft.isAdmin) {
+        messageLines.push(`- *VENDOR <name or number>* to assign to a vendor (or *SELLERS* to view all)`)
+      }
       messageLines.push(`- *CANCEL* to discard`)
     }
 
@@ -679,7 +997,7 @@ export class WhatsAppManager {
   }
 
   /**
-   * Publishes the confirmed product using Mercur's createProductsWorkflow.
+   * Publishes the confirmed product globally with INR pricing using Mercur's createProductsWorkflow.
    */
   private async publishDraft(
     toPhone: string,
@@ -688,6 +1006,21 @@ export class WhatsAppManager {
   ): Promise<void> {
     const p = draft.product
     const priceAmount = Math.round((p.suggested_price || 0) * 100)
+    const currencyCode = "inr"
+    const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+
+    // Fetch active sales channels so product is globally available across all channels
+    let salesChannels: Array<{ id: string }> = []
+    try {
+      const { data } = await query.graph({
+        entity: "sales_channel",
+        fields: ["id"],
+        filters: { is_disabled: false },
+      })
+      salesChannels = data || []
+    } catch (scErr: any) {
+      console.warn("[WhatsAppManager] Warning fetching sales channels:", scErr.message)
+    }
 
     const variants =
       p.variants && p.variants.length > 0
@@ -696,7 +1029,7 @@ export class WhatsAppManager {
             sku: v.sku,
             prices: [
               {
-                currency_code: p.currency_code || "usd",
+                currency_code: currencyCode,
                 amount: Math.round((v.price || p.suggested_price || 0) * 100),
               },
             ],
@@ -706,7 +1039,7 @@ export class WhatsAppManager {
               title: "Default",
               prices: [
                 {
-                  currency_code: p.currency_code || "usd",
+                  currency_code: currencyCode,
                   amount: priceAmount,
                 },
               ],
@@ -721,11 +1054,21 @@ export class WhatsAppManager {
       images: draft.imageUrls.map((url) => ({ url })),
       thumbnail: draft.imageUrls[0],
       variants,
+      sales_channels: salesChannels.map((sc) => ({ id: sc.id })),
       metadata: {
-        listing_scope: "store_only",
+        listing_scope: "global",
         created_via: "whatsapp",
         material: p.material,
       },
+    }
+
+    // For Admin: require vendor assignment so product belongs to a valid seller
+    if (draft.isAdmin && !draft.targetSellerId) {
+      await this.client.sendMessage(
+        toPhone,
+        `⚠️ *Vendor Assignment Required*\n\nPlease assign this product to a vendor before publishing.\n\n👉 Reply *VENDOR <name or number>* (or reply *SELLERS* to see all vendors).`
+      )
+      return
     }
 
     if (draft.targetSellerId) {
@@ -742,8 +1085,23 @@ export class WhatsAppManager {
 
     const createdId = (result as { id: string }[])[0].id
 
+    // Explicitly link to all sales channels to ensure global availability
+    if (salesChannels.length > 0) {
+      for (const sc of salesChannels) {
+        try {
+          await linkProductsToSalesChannelWorkflow(this.container).run({
+            input: {
+              id: sc.id,
+              add: [createdId],
+            },
+          })
+        } catch {
+          // If already linked by createProductsWorkflow, ignore
+        }
+      }
+    }
+
     // Fetch created product for handle
-    const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
     const {
       data: [createdProduct],
     } = await query.graph({
@@ -759,7 +1117,7 @@ export class WhatsAppManager {
 
     await this.client.sendMessage(
       toPhone,
-      `🎉 *Product Published Successfully!*\n\n• *Title*: ${p.title}\n• *Price*: $${(p.suggested_price || 0).toFixed(2)}\n• *Seller*: ${draft.targetSellerName || "Marketplace"}\n\n🌐 *View Live on Store*: ${storefrontLink}\n🛠️ *Edit in Dashboard*: ${dashboardLink}`
+      `🎉 *Product Published Successfully!*\n\n• *Title*: ${p.title}\n• *Price*: ₹${(p.suggested_price || 0).toFixed(0)}\n• *Scope*: 🌐 Globally Available (Marketplace & All Channels)\n• *Seller*: ${draft.targetSellerName || "Marketplace"}\n\n🌐 *View Live on Store*: ${storefrontLink}\n🛠️ *Edit in Dashboard*: ${dashboardLink}`
     )
   }
 
@@ -775,12 +1133,18 @@ export class WhatsAppManager {
     if (isAdmin) {
       lines.push(
         `\n👑 *Admin Commands*:`,
-        `• *VENDOR <Name or ID>*: Switch active vendor to upload or query on their behalf.`,
+        `• *SELLERS*: View all registered marketplace vendors.`,
+        `• *VENDOR <Name or Number>*: Switch active vendor to upload or query on their behalf.`,
         `• *CLEAR VENDOR*: Clear active vendor context.`
       )
     }
 
-    lines.push(`\nDuring draft confirmation:`, `• *YES* | *PRICE <amount>* | *TITLE <text>* | *CANCEL*`)
+    lines.push(
+      `\n💬 *Gemma 4 AI Assistant*:`,
+      `You can chat naturally anytime! Ask questions, say "who are my sellers?", "list products for Bhawani", or "assign this draft to Nike".`
+    )
+
+    lines.push(`\nDuring draft confirmation:`, `• *YES* | *PRICE <amount>* | *TITLE <text>* | *VENDOR <name>* | *CANCEL*`)
     await this.client.sendMessage(toPhone, lines.join("\n"))
   }
 }
