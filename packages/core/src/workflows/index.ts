@@ -25,3 +25,5 @@ export * from './media'
 export * from './order'
 export * from './review'
 export * from './payment'
+export * from './brand'
+

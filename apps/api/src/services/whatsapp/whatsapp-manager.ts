@@ -1,7 +1,17 @@
 import { MedusaContainer } from "@medusajs/framework/types"
 import { ContainerRegistrationKeys, ProductStatus } from "@medusajs/framework/utils"
-import { uploadFilesWorkflow, linkProductsToSalesChannelWorkflow } from "@medusajs/medusa/core-flows"
-import { createProductsWorkflow } from "@mercurjs/core/workflows"
+import {
+  uploadFilesWorkflow,
+  linkProductsToSalesChannelWorkflow,
+  createProductCategoriesWorkflow,
+} from "@medusajs/medusa/core-flows"
+import {
+  createProductsWorkflow,
+  createBrandWorkflow,
+  linkProductBrandWorkflow,
+  createProductAttributeValuesWorkflow,
+} from "@mercurjs/core/workflows"
+import { BrandStatus, AttributeType } from "@mercurjs/types"
 import { GeminiVisionService } from "./gemini-vision"
 import { WhatsAppClient } from "./whatsapp-client"
 import { ImageCompressor } from "./image-compressor"
@@ -13,6 +23,15 @@ import {
   WhatsAppSession,
   WhatsAppWebhookBody,
 } from "./types"
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
 
 // In-memory cache for active sessions and admin vendor context
 const activeSessions = new Map<string, WhatsAppSession>()
@@ -894,12 +913,23 @@ export class WhatsAppManager {
       })
     }
 
-    // 3. Multimodal Analysis with Gemini 3.1 Flash Lite
+    // 3. Multimodal Analysis with Gemini 3.5 Flash Lite
     let extracted: ExtractedProduct
     try {
       const caption = (session as any).caption as string | undefined
-      extracted = await this.vision.extractProductDetails(downloadedImages, caption)
+      const systemCategories = await this.getSystemCategories()
+      const categoryNames = systemCategories.map((c) => c.name)
+      extracted = await this.vision.extractProductDetails(downloadedImages, caption, categoryNames)
       console.log(`[WhatsAppManager] Successfully extracted: "${extracted.title}"`)
+
+      // Match and resolve against system category
+      if (extracted.category_name) {
+        const resolvedCategory = await this.resolveSystemCategory(extracted.category_name, systemCategories)
+        if (resolvedCategory) {
+          extracted.category_id = resolvedCategory.id
+          extracted.category_name = resolvedCategory.name
+        }
+      }
     } catch (aiErr: any) {
       console.error("[WhatsAppManager] Gemini extraction failed:", aiErr)
       await this.client.sendMessage(
@@ -964,12 +994,18 @@ export class WhatsAppManager {
       ? `• *Vendor*: ⚠️ *Not Assigned* (Reply *VENDOR <name>* or *SELLERS*)`
       : ""
 
+    const sizesText = p.sizes?.length ? p.sizes.join(", ") : ""
+    const colorsText = p.colors?.length ? p.colors.join(", ") : ""
+
     const messageLines = [
       prefixMessage ? `${prefixMessage}\n` : "",
       `📦 *Product Preview*`,
       `• *Title*: ${p.title}`,
       p.subtitle ? `• *Subtitle*: ${p.subtitle}` : "",
+      `• *Brand*: ${p.brand || "Unbranded / Generic"}`,
       `• *Category*: ${p.category_name || "General"}`,
+      sizesText ? `• *Sizes*: ${sizesText}` : "",
+      colorsText ? `• *Colors*: ${colorsText}` : "",
       p.material ? `• *Material*: ${p.material}` : "",
       `• *Price*: ${priceDisplay} (INR)`,
       `• *Variants*: ${variantsText}`,
@@ -987,6 +1023,9 @@ export class WhatsAppManager {
       messageLines.push(`- *YES* to publish globally to store`)
       messageLines.push(`- *PRICE <amount>* to change price (e.g. PRICE 1299)`)
       messageLines.push(`- *TITLE <text>* to change title`)
+      messageLines.push(`- *BRAND <name>* to set brand (auto-created if new)`)
+      messageLines.push(`- *CATEGORY <name>* to change category`)
+      messageLines.push(`- *SIZE <sizes>* / *COLOR <colors>* to set attributes`)
       if (draft.isAdmin) {
         messageLines.push(`- *VENDOR <name or number>* to assign to a vendor (or *SELLERS* to view all)`)
       }
@@ -1009,7 +1048,16 @@ export class WhatsAppManager {
     const currencyCode = "inr"
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
 
-    // Fetch active sales channels so product is globally available across all channels
+    // For Admin: require vendor assignment so product belongs to a valid seller
+    if (draft.isAdmin && !draft.targetSellerId) {
+      await this.client.sendMessage(
+        toPhone,
+        `⚠️ *Vendor Assignment Required*\n\nPlease assign this product to a vendor before publishing.\n\n👉 Reply *VENDOR <name or number>* (or reply *SELLERS* to see all vendors).`
+      )
+      return
+    }
+
+    // 1. Fetch active sales channels so product is globally available across all channels
     let salesChannels: Array<{ id: string }> = []
     try {
       const { data } = await query.graph({
@@ -1022,29 +1070,22 @@ export class WhatsAppManager {
       console.warn("[WhatsAppManager] Warning fetching sales channels:", scErr.message)
     }
 
-    const variants =
-      p.variants && p.variants.length > 0
-        ? p.variants.map((v) => ({
-            title: v.title || "Default",
-            sku: v.sku,
-            prices: [
-              {
-                currency_code: currencyCode,
-                amount: Math.round((v.price || p.suggested_price || 0) * 100),
-              },
-            ],
-          }))
-        : [
-            {
-              title: "Default",
-              prices: [
-                {
-                  currency_code: currencyCode,
-                  amount: priceAmount,
-                },
-              ],
-            },
-          ]
+    // 2. Resolve Category from the system (or auto-create if not in system)
+    const resolvedCategory = await this.resolveSystemCategory(p.category_name)
+    if (resolvedCategory) {
+      p.category_id = resolvedCategory.id
+      p.category_name = resolvedCategory.name
+    }
+
+    // 3. Resolve Brand from system or auto-create if not in system
+    let brandId = p.brand_id
+    if (!brandId && p.brand) {
+      brandId = (await this.resolveOrCreateBrand(p.brand, draft.targetSellerId)) || undefined
+      if (brandId) p.brand_id = brandId
+    }
+
+    // 4. Build Attributes and Variants for Size and Color
+    const { attributes, variants } = await this.buildAttributesAndVariants(p, currencyCode, priceAmount)
 
     const productPayload: any = {
       title: p.title,
@@ -1059,23 +1100,28 @@ export class WhatsAppManager {
         listing_scope: "global",
         created_via: "whatsapp",
         material: p.material,
+        brand_name: p.brand || undefined,
+        category_name: p.category_name || undefined,
       },
     }
 
-    // For Admin: require vendor assignment so product belongs to a valid seller
-    if (draft.isAdmin && !draft.targetSellerId) {
-      await this.client.sendMessage(
-        toPhone,
-        `⚠️ *Vendor Assignment Required*\n\nPlease assign this product to a vendor before publishing.\n\n👉 Reply *VENDOR <name or number>* (or reply *SELLERS* to see all vendors).`
-      )
-      return
+    if (resolvedCategory) {
+      productPayload.category_ids = [resolvedCategory.id]
+    }
+
+    if (brandId) {
+      productPayload.brand_id = brandId
+    }
+
+    if (attributes.length > 0) {
+      productPayload.attributes = attributes
     }
 
     if (draft.targetSellerId) {
       productPayload.seller_ids = [draft.targetSellerId]
     }
 
-    // Run createProductsWorkflow
+    // 5. Run createProductsWorkflow
     const { result } = await createProductsWorkflow(this.container).run({
       input: {
         products: [productPayload],
@@ -1085,7 +1131,21 @@ export class WhatsAppManager {
 
     const createdId = (result as { id: string }[])[0].id
 
-    // Explicitly link to all sales channels to ensure global availability
+    // 6. Explicitly link Brand if created/resolved
+    if (brandId) {
+      try {
+        await linkProductBrandWorkflow(this.container).run({
+          input: {
+            id: createdId,
+            add: [brandId],
+          },
+        })
+      } catch (brandLinkErr: any) {
+        console.warn("[WhatsAppManager] linkProductBrandWorkflow note:", brandLinkErr.message)
+      }
+    }
+
+    // 7. Explicitly link to all sales channels to ensure global availability
     if (salesChannels.length > 0) {
       for (const sc of salesChannels) {
         try {
@@ -1115,10 +1175,358 @@ export class WhatsAppManager {
       ? `${this.vendorUrl}/products/${createdId}`
       : `${this.storefrontUrl}/admin/products/${createdId}`
 
+    const brandDisplay = p.brand ? `\n• *Brand*: ${p.brand}` : ""
+    const categoryDisplay = p.category_name ? `\n• *Category*: ${p.category_name}` : ""
+    const sizesDisplay = p.sizes?.length ? `\n• *Sizes*: ${p.sizes.join(", ")}` : ""
+    const colorsDisplay = p.colors?.length ? `\n• *Colors*: ${p.colors.join(", ")}` : ""
+    const variantsCount = variants.length > 1 ? ` (${variants.length} variants)` : ""
+
     await this.client.sendMessage(
       toPhone,
-      `🎉 *Product Published Successfully!*\n\n• *Title*: ${p.title}\n• *Price*: ₹${(p.suggested_price || 0).toFixed(0)}\n• *Scope*: 🌐 Globally Available (Marketplace & All Channels)\n• *Seller*: ${draft.targetSellerName || "Marketplace"}\n\n🌐 *View Live on Store*: ${storefrontLink}\n🛠️ *Edit in Dashboard*: ${dashboardLink}`
+      `🎉 *Product Published Successfully!*\n\n• *Title*: ${p.title}${brandDisplay}${categoryDisplay}\n• *Price*: ₹${(p.suggested_price || 0).toFixed(0)}${variantsCount}${sizesDisplay}${colorsDisplay}\n• *Scope*: 🌐 Globally Available (Marketplace & All Channels)\n• *Seller*: ${draft.targetSellerName || "Marketplace"}\n\n🌐 *View Live on Store*: ${storefrontLink}\n🛠️ *Edit in Dashboard*: ${dashboardLink}`
     )
+  }
+
+  /**
+   * Fetches existing product categories from the system.
+   */
+  async getSystemCategories(): Promise<Array<{ id: string; name: string; handle: string }>> {
+    try {
+      const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+      const { data } = await query.graph({
+        entity: "product_category",
+        fields: ["id", "name", "handle"],
+        pagination: { skip: 0, take: 200 },
+      })
+      return (data || []) as Array<{ id: string; name: string; handle: string }>
+    } catch (err: any) {
+      console.warn("[WhatsAppManager] Failed to fetch system categories:", err.message)
+      return []
+    }
+  }
+
+  /**
+   * Resolves a category name to a system product_category, or auto-creates it in the system.
+   */
+  async resolveSystemCategory(
+    categoryName?: string,
+    prefetchedCategories?: Array<{ id: string; name: string; handle: string }>
+  ): Promise<{ id: string; name: string } | null> {
+    if (!categoryName || !categoryName.trim()) return null
+
+    const clean = categoryName.trim()
+    const cleanLower = clean.toLowerCase()
+    const categories = prefetchedCategories || (await this.getSystemCategories())
+
+    // 1. Exact match by name or handle
+    const exactMatch = categories.find(
+      (c) => c.name.toLowerCase() === cleanLower || c.handle.toLowerCase() === cleanLower
+    )
+    if (exactMatch) return { id: exactMatch.id, name: exactMatch.name }
+
+    // 2. Substring match
+    const subMatch = categories.find(
+      (c) =>
+        c.name.toLowerCase().includes(cleanLower) ||
+        cleanLower.includes(c.name.toLowerCase())
+    )
+    if (subMatch) return { id: subMatch.id, name: subMatch.name }
+
+    // 3. If no matching system category found, create it in the system so it's a real system category
+    try {
+      console.log(`[WhatsAppManager] Category "${clean}" not in system. Auto-creating product category...`)
+      const handle = slugify(clean)
+      const { result: created } = await createProductCategoriesWorkflow(this.container).run({
+        input: {
+          product_categories: [
+            {
+              name: clean,
+              handle: handle || `cat-${Date.now()}`,
+              is_active: true,
+            },
+          ],
+        },
+      })
+      const newCat = (created as any[])?.[0]
+      if (newCat) {
+        return { id: newCat.id, name: newCat.name }
+      }
+    } catch (createErr: any) {
+      console.warn(`[WhatsAppManager] Failed to auto-create category "${clean}":`, createErr.message)
+    }
+
+    return null
+  }
+
+  /**
+   * Checks if the brand exists in the system; if not, creates it via createBrandWorkflow.
+   */
+  async resolveOrCreateBrand(
+    brandName: string,
+    sellerId?: string
+  ): Promise<string | null> {
+    const clean = brandName.trim()
+    if (!clean) return null
+
+    const handle = slugify(clean)
+    const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+
+    // 1. Check if brand exists in system
+    try {
+      const { data: existingBrands } = await query.graph({
+        entity: "brand",
+        fields: ["id", "name", "handle"],
+        pagination: { skip: 0, take: 100 },
+      })
+
+      const match = existingBrands?.find(
+        (b: any) =>
+          b.name?.toLowerCase() === clean.toLowerCase() ||
+          b.handle?.toLowerCase() === handle
+      )
+      if (match) {
+        return match.id
+      }
+    } catch (queryErr: any) {
+      console.warn("[WhatsAppManager] Warning querying brands:", queryErr.message)
+    }
+
+    // 2. Brand not found in system -> Auto-create brand
+    try {
+      console.log(`[WhatsAppManager] Brand "${clean}" not found in system. Auto-creating brand...`)
+      const { result: createdBrand } = await createBrandWorkflow(this.container).run({
+        input: {
+          name: clean,
+          handle: handle || `brand-${Date.now()}`,
+          status: BrandStatus.APPROVED,
+          seller_ids: sellerId ? [sellerId] : [],
+        },
+      })
+      return createdBrand.id
+    } catch (createBrandErr: any) {
+      console.error(`[WhatsAppManager] Failed to auto-create brand "${clean}":`, createBrandErr)
+      return null
+    }
+  }
+
+  /**
+   * Builds product attributes and variants using provided size and color attributes.
+   */
+  async buildAttributesAndVariants(
+    product: ExtractedProduct,
+    currencyCode: string,
+    priceAmount: number
+  ): Promise<{
+    attributes: any[]
+    variants: any[]
+  }> {
+    const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
+
+    // Determine sizes & colors
+    let sizes = product.sizes && product.sizes.length > 0 ? product.sizes : []
+    let colors = product.colors && product.colors.length > 0 ? product.colors : []
+
+    // If empty, inspect product.options for "Size" or "Color"
+    if (!sizes.length && product.options) {
+      const sizeOpt = product.options.find((o) => /size/i.test(o.title))
+      if (sizeOpt && sizeOpt.values?.length) {
+        sizes = sizeOpt.values
+      }
+    }
+    if (!colors.length && product.options) {
+      const colorOpt = product.options.find((o) => /colou?r/i.test(o.title))
+      if (colorOpt && colorOpt.values?.length) {
+        colors = colorOpt.values
+      }
+    }
+
+    // Query system global attributes
+    let systemAttrs: any[] = []
+    try {
+      const { data } = await query.graph({
+        entity: "product_attribute",
+        fields: ["id", "handle", "name", "is_variant_axis", "values.id", "values.name"],
+        filters: { product_id: null },
+      })
+      systemAttrs = data || []
+    } catch (attrErr: any) {
+      console.warn("[WhatsAppManager] Warning fetching system attributes:", attrErr.message)
+    }
+
+    const sizeAttr = systemAttrs.find((a: any) => a.handle === "size" || /^size$/i.test(a.name))
+    const colorAttr = systemAttrs.find((a: any) => a.handle === "color" || /^colou?r$/i.test(a.name))
+
+    const attributes: any[] = []
+
+    // 1. Resolve Size Attribute
+    if (sizes.length > 0) {
+      if (sizeAttr) {
+        const sizeValueIds: string[] = []
+        const missingSizes: string[] = []
+
+        for (const s of sizes) {
+          const val = sizeAttr.values?.find(
+            (v: any) => v.name?.toLowerCase() === s.toLowerCase()
+          )
+          if (val) {
+            sizeValueIds.push(val.id)
+          } else {
+            missingSizes.push(s)
+          }
+        }
+
+        if (missingSizes.length > 0) {
+          try {
+            const { result: createdVals } = await createProductAttributeValuesWorkflow(this.container).run({
+              input: {
+                attribute_id: sizeAttr.id,
+                values: missingSizes.map((name, idx) => ({
+                  name,
+                  rank: (sizeAttr.values?.length || 0) + idx,
+                })),
+              },
+            })
+            for (const cv of (createdVals as any[]) || []) {
+              sizeValueIds.push(cv.id)
+            }
+          } catch (createValErr: any) {
+            console.warn("[WhatsAppManager] Warning adding size values to system attribute:", createValErr.message)
+          }
+        }
+
+        attributes.push({
+          id: sizeAttr.id,
+          value_ids: sizeValueIds,
+        })
+      } else {
+        attributes.push({
+          title: "Size",
+          type: AttributeType.MULTI_SELECT,
+          is_variant_axis: true,
+          values: sizes,
+        })
+      }
+    }
+
+    // 2. Resolve Color Attribute
+    if (colors.length > 0) {
+      if (colorAttr) {
+        const colorValueIds: string[] = []
+        const missingColors: string[] = []
+
+        for (const c of colors) {
+          const val = colorAttr.values?.find(
+            (v: any) => v.name?.toLowerCase() === c.toLowerCase()
+          )
+          if (val) {
+            colorValueIds.push(val.id)
+          } else {
+            missingColors.push(c)
+          }
+        }
+
+        if (missingColors.length > 0) {
+          try {
+            const { result: createdVals } = await createProductAttributeValuesWorkflow(this.container).run({
+              input: {
+                attribute_id: colorAttr.id,
+                values: missingColors.map((name, idx) => ({
+                  name,
+                  rank: (colorAttr.values?.length || 0) + idx,
+                })),
+              },
+            })
+            for (const cv of (createdVals as any[]) || []) {
+              colorValueIds.push(cv.id)
+            }
+          } catch (createValErr: any) {
+            console.warn("[WhatsAppManager] Warning adding color values to system attribute:", createValErr.message)
+          }
+        }
+
+        attributes.push({
+          id: colorAttr.id,
+          value_ids: colorValueIds,
+        })
+      } else {
+        attributes.push({
+          title: "Color",
+          type: AttributeType.MULTI_SELECT,
+          is_variant_axis: true,
+          values: colors,
+        })
+      }
+    }
+
+    // 3. Build Variants
+    const skuBase = slugify(product.title).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "PROD"
+    const variants: any[] = []
+
+    if (sizes.length > 0 && colors.length > 0) {
+      for (const size of sizes) {
+        for (const color of colors) {
+          variants.push({
+            title: `${size} / ${color}`,
+            sku: `${skuBase}-${slugify(size).toUpperCase()}-${slugify(color).toUpperCase().slice(0, 4)}`,
+            options: {
+              Size: size,
+              Color: color,
+            },
+            prices: [
+              {
+                currency_code: currencyCode,
+                amount: priceAmount,
+              },
+            ],
+          })
+        }
+      }
+    } else if (sizes.length > 0) {
+      for (const size of sizes) {
+        variants.push({
+          title: size,
+          sku: `${skuBase}-${slugify(size).toUpperCase()}`,
+          options: {
+            Size: size,
+          },
+          prices: [
+            {
+              currency_code: currencyCode,
+              amount: priceAmount,
+            },
+          ],
+        })
+      }
+    } else if (colors.length > 0) {
+      for (const color of colors) {
+        variants.push({
+          title: color,
+          sku: `${skuBase}-${slugify(color).toUpperCase().slice(0, 4)}`,
+          options: {
+            Color: color,
+          },
+          prices: [
+            {
+              currency_code: currencyCode,
+              amount: priceAmount,
+            },
+          ],
+        })
+      }
+    } else {
+      // Default single variant with no axis attributes
+      variants.push({
+        title: "Default",
+        prices: [
+          {
+            currency_code: currencyCode,
+            amount: priceAmount,
+          },
+        ],
+      })
+    }
+
+    return { attributes, variants }
   }
 
   private async sendHelpMessage(toPhone: string, isAdmin: boolean): Promise<void> {
@@ -1144,7 +1552,7 @@ export class WhatsAppManager {
       `You can chat naturally anytime! Ask questions, say "who are my sellers?", "list products for Bhawani", or "assign this draft to Nike".`
     )
 
-    lines.push(`\nDuring draft confirmation:`, `• *YES* | *PRICE <amount>* | *TITLE <text>* | *VENDOR <name>* | *CANCEL*`)
+    lines.push(`\nDuring draft confirmation:`, `• *YES* | *PRICE <amount>* | *TITLE <text>* | *BRAND <name>* | *CATEGORY <name>* | *SIZE <sizes>* | *COLOR <colors>* | *VENDOR <name>* | *CANCEL*`)
     await this.client.sendMessage(toPhone, lines.join("\n"))
   }
 }

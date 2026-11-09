@@ -56,7 +56,10 @@ export class DraftEditorService {
   * Title: "${context.draftProduct.title}"
   * Subtitle: "${context.draftProduct.subtitle || "N/A"}"
   * Visual & Detailed Description: "${context.draftProduct.description}"
+  * Brand: "${context.draftProduct.brand || "Unbranded / Generic"}"
   * Category: "${context.draftProduct.category_name || "General"}"
+  * Sizes: "${context.draftProduct.sizes?.join(", ") || "None / One Size"}"
+  * Colors: "${context.draftProduct.colors?.join(", ") || "None"}"
   * Material/Fabric: "${context.draftProduct.material || "Unspecified"}"
   * Current Price: ${context.draftProduct.suggested_price != null ? `₹${context.draftProduct.suggested_price}` : "Not set"} (INR)
   * Variants: ${context.draftProduct.variants?.map((v) => `${v.title}: ₹${v.price}`).join(", ") || "Default"}
@@ -352,6 +355,54 @@ Output ONLY valid JSON matching this schema:
           action: "UPDATE_DRAFT",
           updatedProduct: updated,
           replyMessage: `Updated title to "${newTitle}". Reply YES to publish!`,
+        }
+      }
+
+      // Brand update
+      const brandMatch = text.match(/^(?:BRAND|SET BRAND TO)\s*(.+)/i)
+      if (brandMatch) {
+        const newBrand = brandMatch[1].trim()
+        const updated = { ...context.draftProduct, brand: newBrand }
+        return {
+          action: "UPDATE_DRAFT",
+          updatedProduct: updated,
+          replyMessage: `Updated brand to "${newBrand}". Reply YES to publish!`,
+        }
+      }
+
+      // Category update
+      const catMatch = text.match(/^(?:CATEGORY|SET CATEGORY TO)\s*(.+)/i)
+      if (catMatch) {
+        const newCat = catMatch[1].trim()
+        const updated = { ...context.draftProduct, category_name: newCat }
+        return {
+          action: "UPDATE_DRAFT",
+          updatedProduct: updated,
+          replyMessage: `Updated category to "${newCat}". Reply YES to publish!`,
+        }
+      }
+
+      // Size update
+      const sizeMatch = text.match(/^(?:SIZES?|SET SIZES? TO)\s+(.+)/i)
+      if (sizeMatch) {
+        const sizes = sizeMatch[1].split(/[,/ ]+/).map((s) => s.trim()).filter(Boolean)
+        const updated = { ...context.draftProduct, sizes }
+        return {
+          action: "UPDATE_DRAFT",
+          updatedProduct: updated,
+          replyMessage: `Updated sizes to: ${sizes.join(", ")}. Reply YES to publish!`,
+        }
+      }
+
+      // Color update
+      const colorMatch = text.match(/^(?:COLOU?RS?|SET COLOU?RS? TO)\s+(.+)/i)
+      if (colorMatch) {
+        const colors = colorMatch[1].split(/[,/]+/).map((c) => c.trim()).filter(Boolean)
+        const updated = { ...context.draftProduct, colors }
+        return {
+          action: "UPDATE_DRAFT",
+          updatedProduct: updated,
+          replyMessage: `Updated colors to: ${colors.join(", ")}. Reply YES to publish!`,
         }
       }
     }

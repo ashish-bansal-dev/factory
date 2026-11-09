@@ -28,25 +28,34 @@ export class GeminiVisionService {
   }
 
   /**
-   * Analyzes one or more images and an optional caption using Gemini 2.0 Flash
+   * Analyzes one or more images and an optional caption using Gemini 3.5 Flash Lite
    * and extracts structured e-commerce product fields.
    */
   async extractProductDetails(
     images: Array<{ buffer: Buffer; mimeType: string }>,
-    caption?: string
+    caption?: string,
+    availableCategories?: string[]
   ): Promise<ExtractedProduct> {
     const ai = await this.getClient()
 
+    const categoriesSection =
+      availableCategories && availableCategories.length > 0
+        ? `\nAvailable Store Categories (strictly choose the best match from this list if applicable):\n${availableCategories.map((c) => `- "${c}"`).join("\n")}\n`
+        : ""
+
     const systemPrompt = `You are an expert e-commerce catalog specialist and merchandising assistant.
 Analyze the provided product image(s) and any vendor caption to extract rich, accurate product metadata.
-
+${categoriesSection}
 Extract the following JSON structure:
 {
   "title": "A crisp, catchy product title (e.g. 'Pure Linen Casual Shirt')",
   "subtitle": "Short 1-sentence highlight or slogan",
   "description": "Engaging 2-3 paragraph product description highlighting materials, style, fit, and use cases",
-  "category_name": "Primary category (e.g. 'Apparel', 'Footwear', 'Home Decor', 'Electronics')",
+  "brand": "Brand name detected from labels, tags, emblems, logos, or caption (e.g. 'Nike', 'FabIndia', 'Puma'). Return null if unbranded or generic.",
+  "category_name": "Primary category (best match from available store categories if provided, e.g. 'Topwear', 'Footwear', 'Indian & Festive Wear', 'Apparel')",
   "material": "Material or fabric if visible or mentioned (e.g. '100% Linen', 'Genuine Leather', 'Stainless Steel')",
+  "sizes": ["Array of detected sizes (e.g. ['S', 'M', 'L'] or ['40', '41', '42'] or ['Free Size']). Empty array if none."],
+  "colors": ["Array of detected colors (e.g. ['Blue', 'Black'] or ['Beige']). Empty array if none."],
   "suggested_price": number or null (Extract price if shown in image tag/label or stated in caption. If unknown, return null),
   "currency_code": "3-letter currency code in lowercase (default 'inr', Indian Rupee ₹)",
   "options": [
@@ -100,8 +109,11 @@ Always output strict, valid JSON matching the schema.`
         subtitle: parsed.subtitle || "",
         description:
           parsed.description || "High quality product crafted with care.",
+        brand: parsed.brand || undefined,
         category_name: parsed.category_name,
         material: parsed.material,
+        sizes: Array.isArray(parsed.sizes) ? parsed.sizes : [],
+        colors: Array.isArray(parsed.colors) ? parsed.colors : [],
         suggested_price:
           typeof parsed.suggested_price === "number" &&
           !isNaN(parsed.suggested_price)

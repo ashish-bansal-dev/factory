@@ -155,6 +155,34 @@ describe("DraftEditorService", () => {
     expect(res.updatedProduct.title).toBe("Vintage Graphic Tee")
   })
 
+  it("parses brand update using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "brand Nike")
+    expect(res.action).toBe("UPDATE")
+    expect(res.updatedProduct.brand).toBe("Nike")
+  })
+
+  it("parses category update using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "category Topwear")
+    expect(res.action).toBe("UPDATE")
+    expect(res.updatedProduct.category_name).toBe("Topwear")
+  })
+
+  it("parses size update using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "sizes S, M, L, XL")
+    expect(res.action).toBe("UPDATE")
+    expect(res.updatedProduct.sizes).toEqual(["S", "M", "L", "XL"])
+  })
+
+  it("parses color update using fallback parser", async () => {
+    const editor = new DraftEditorService("fake_key")
+    const res = await (editor as any).fallbackParse(mockProduct, "colors Navy Blue, Olive Green")
+    expect(res.action).toBe("UPDATE")
+    expect(res.updatedProduct.colors).toEqual(["Navy Blue", "Olive Green"])
+  })
+
   it("parses confirmation using fallback parser", async () => {
     const editor = new DraftEditorService("fake_key")
     const res = await (editor as any).fallbackParse(mockProduct, "looks good publish")
@@ -212,6 +240,46 @@ describe("WhatsAppManager", () => {
             },
           ],
           metadata: { count: 1 },
+        }
+      }
+      if (entity === "product_category") {
+        return {
+          data: [
+            { id: "pcat_topwear", name: "Topwear", handle: "topwear" },
+            { id: "pcat_bottomwear", name: "Bottomwear", handle: "bottomwear" },
+          ],
+        }
+      }
+      if (entity === "brand") {
+        return {
+          data: [
+            { id: "brand_nike", name: "Nike", handle: "nike" },
+          ],
+        }
+      }
+      if (entity === "product_attribute") {
+        return {
+          data: [
+            {
+              id: "attr_size",
+              name: "Size",
+              handle: "size",
+              is_variant_axis: true,
+              values: [
+                { id: "val_s", name: "S" },
+                { id: "val_m", name: "M" },
+              ],
+            },
+            {
+              id: "attr_color",
+              name: "Color",
+              handle: "color",
+              is_variant_axis: true,
+              values: [
+                { id: "val_blue", name: "Blue" },
+              ],
+            },
+          ],
         }
       }
       return { data: [] }
@@ -501,5 +569,78 @@ describe("WhatsAppManager", () => {
     expect(sentMessages.length).toBe(1)
     expect(sentMessages[0].text).toBeDefined()
     expect(sentMessages[0].text.length).toBeGreaterThan(10)
+  })
+
+  it("resolves system categories by exact name or substring", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const exact = await manager.resolveSystemCategory("Topwear")
+    expect(exact).toEqual({ id: "pcat_topwear", name: "Topwear" })
+
+    const lower = await manager.resolveSystemCategory("bottomwear")
+    expect(lower).toEqual({ id: "pcat_bottomwear", name: "Bottomwear" })
+
+    const none = await manager.resolveSystemCategory("")
+    expect(none).toBeNull()
+  })
+
+  it("resolves existing brand from system", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const brandId = await manager.resolveOrCreateBrand("Nike")
+    expect(brandId).toBe("brand_nike")
+  })
+
+  it("builds attributes and variants matrix for sizes and colors", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const res = await manager.buildAttributesAndVariants(
+      {
+        title: "Casual Linen Shirt",
+        description: "Comfortable linen shirt",
+        suggested_price: 1499,
+        currency_code: "inr",
+        sizes: ["S", "M"],
+        colors: ["Blue"],
+      },
+      "inr",
+      149900
+    )
+
+    expect(res.attributes.length).toBe(2)
+    // Check size attribute
+    const sizeAttr = res.attributes.find((a: any) => a.id === "attr_size")
+    expect(sizeAttr).toBeDefined()
+    expect(sizeAttr.value_ids).toContain("val_s")
+    expect(sizeAttr.value_ids).toContain("val_m")
+
+    // Check color attribute
+    const colorAttr = res.attributes.find((a: any) => a.id === "attr_color")
+    expect(colorAttr).toBeDefined()
+    expect(colorAttr.value_ids).toContain("val_blue")
+
+    // Check variants matrix (2 sizes * 1 color = 2 variants)
+    expect(res.variants.length).toBe(2)
+    expect(res.variants[0].title).toBe("S / Blue")
+    expect(res.variants[0].options).toEqual({ Size: "S", Color: "Blue" })
+    expect(res.variants[1].title).toBe("M / Blue")
+    expect(res.variants[1].options).toEqual({ Size: "M", Color: "Blue" })
+  })
+
+  it("builds single default variant when no size/color attributes provided", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const res = await manager.buildAttributesAndVariants(
+      {
+        title: "Brass Table Lamp",
+        description: "Handcrafted lamp",
+        suggested_price: 2999,
+        currency_code: "inr",
+      },
+      "inr",
+      299900
+    )
+
+    expect(res.attributes.length).toBe(0)
+    expect(res.variants.length).toBe(1)
+    expect(res.variants[0].title).toBe("Default")
+    expect(res.variants[0].prices[0].amount).toBe(299900)
+    expect(res.variants[0].prices[0].currency_code).toBe("inr")
   })
 })

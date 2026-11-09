@@ -3,6 +3,11 @@ export interface ExtractedProduct {
   subtitle?: string
   description: string
   category_name?: string
+  category_id?: string
+  brand?: string
+  brand_id?: string
+  sizes?: string[]
+  colors?: string[]
   material?: string
   suggested_price: number | null
   currency_code: string
@@ -14,6 +19,7 @@ export interface ExtractedProduct {
     title: string
     price: number
     sku?: string
+    options?: Record<string, string>
   }>
 }
 
