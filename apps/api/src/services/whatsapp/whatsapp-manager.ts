@@ -16,6 +16,7 @@ import { GeminiVisionService } from "./gemini-vision"
 import { WhatsAppClient } from "./whatsapp-client"
 import { ImageCompressor } from "./image-compressor"
 import { DraftEditorService } from "./draft-editor"
+import { WhatsAppConfigService, WhatsAppAiConfig } from "./config-service"
 import {
   AdminVendorContext,
   ExtractedProduct,
@@ -40,6 +41,7 @@ const catalogPagination = new Map<string, { offset: number; sellerId?: string }>
 
 export class WhatsAppManager {
   private container: MedusaContainer
+  private configService: WhatsAppConfigService
   private client: WhatsAppClient
   private vision: GeminiVisionService
   private compressor: ImageCompressor
@@ -48,8 +50,9 @@ export class WhatsAppManager {
   private storefrontUrl: string
   private vendorUrl: string
 
-  constructor(container: MedusaContainer) {
+  constructor(container: MedusaContainer, configService?: WhatsAppConfigService) {
     this.container = container
+    this.configService = configService || new WhatsAppConfigService(container)
     this.client = new WhatsAppClient()
     this.vision = new GeminiVisionService()
     this.compressor = new ImageCompressor({
@@ -64,14 +67,39 @@ export class WhatsAppManager {
     this.vendorUrl = (process.env.VENDOR_URL || "http://localhost:7001").replace(/\/+$/, "")
   }
 
+  /**
+   * Dynamically loads API credentials and tokens from the database, falling back to environment variables.
+   */
+  async loadConfig(): Promise<WhatsAppAiConfig> {
+    const config = await this.configService.getConfig()
+    this.client = new WhatsAppClient({
+      verifyToken: config.whatsapp_verify_token,
+      phoneNumberId: config.whatsapp_phone_number_id,
+      accessToken: config.whatsapp_access_token,
+    })
+    this.vision = new GeminiVisionService(config.gemini_api_key, config.gemini_model)
+    this.draftEditor = new DraftEditorService(config.gemini_api_key, config.text_model)
+    if (config.admin_whatsapp_phone) {
+      this.adminPhone = config.admin_whatsapp_phone
+    }
+    if (config.storefront_url) {
+      this.storefrontUrl = config.storefront_url.replace(/\/+$/, "")
+    }
+    if (config.vendor_url) {
+      this.vendorUrl = config.vendor_url.replace(/\/+$/, "")
+    }
+    return config
+  }
+
   private getAdminPhone(): string {
-    return (process.env.ADMIN_WHATSAPP_PHONE || "").replace(/[^0-9]/g, "")
+    return this.adminPhone || (process.env.ADMIN_WHATSAPP_PHONE || "").replace(/[^0-9]/g, "")
   }
 
   /**
    * Main webhook event processor.
    */
   async handleWebhookPayload(payload: WhatsAppWebhookBody): Promise<void> {
+    await this.loadConfig()
     if (!payload.entry?.length) {
       console.log("[WhatsAppManager] Received webhook payload with no entries.")
       return
@@ -154,6 +182,7 @@ export class WhatsAppManager {
 
   /**
    * Authenticate phone number against seller table or ADMIN_WHATSAPP_PHONE.
+   * Supports 10-digit numbers (with or without 91 or +91 country prefix).
    */
   private async authenticateSender(cleanPhone: string): Promise<{
     isAdmin: boolean
@@ -162,11 +191,24 @@ export class WhatsAppManager {
   } | null> {
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
     const adminPhone = this.getAdminPhone()
+    const cleanAdmin = (adminPhone || "").replace(/[^0-9]/g, "")
+    const cleanSender = cleanPhone.replace(/[^0-9]/g, "")
+    const last10Admin = cleanAdmin.slice(-10)
+    const last10Sender = cleanSender.slice(-10)
 
-    console.log(`[WhatsAppManager] Authenticating ${cleanPhone} against Admin (${adminPhone})`)
+    console.log(
+      `[WhatsAppManager] Authenticating ${cleanPhone} (10-digit: ${last10Sender}) against Admin (${adminPhone || "none"}, 10-digit: ${last10Admin || "none"})`
+    )
 
-    // Check Admin
-    if (adminPhone && (cleanPhone.endsWith(adminPhone) || adminPhone.endsWith(cleanPhone))) {
+    // Check Admin (matches last 10 digits or endsWith)
+    const isAdmin = Boolean(
+      cleanAdmin &&
+        ((last10Admin.length === 10 && last10Admin === last10Sender) ||
+          cleanSender.endsWith(cleanAdmin) ||
+          cleanAdmin.endsWith(cleanSender))
+    )
+
+    if (isAdmin) {
       const adminCtx = adminVendorContexts.get(cleanPhone)
       return {
         isAdmin: true,
@@ -177,7 +219,19 @@ export class WhatsAppManager {
 
     // Query seller table for matching phone
     try {
-      const phoneVariants = [cleanPhone, `+${cleanPhone}`]
+      const phoneVariants = Array.from(
+        new Set(
+          [
+            cleanPhone,
+            `+${cleanPhone}`,
+            last10Sender,
+            `+91${last10Sender}`,
+            `91${last10Sender}`,
+            `0${last10Sender}`,
+          ].filter(Boolean)
+        )
+      )
+
       const { data: sellers } = await query.graph({
         entity: "seller",
         fields: ["id", "name", "phone"],
@@ -192,6 +246,26 @@ export class WhatsAppManager {
           isAdmin: false,
           sellerId: seller.id,
           sellerName: seller.name,
+        }
+      }
+
+      // Secondary check: match last 10 digits across all sellers in case of irregular stored formatting
+      const { data: allSellers } = await query.graph({
+        entity: "seller",
+        fields: ["id", "name", "phone"],
+        pagination: { skip: 0, take: 100 },
+      })
+      const matchedSeller = allSellers?.find((s: any) => {
+        if (!s.phone) return false
+        const sClean = s.phone.replace(/[^0-9]/g, "")
+        return sClean.slice(-10) === last10Sender && last10Sender.length === 10
+      })
+
+      if (matchedSeller) {
+        return {
+          isAdmin: false,
+          sellerId: matchedSeller.id,
+          sellerName: matchedSeller.name,
         }
       }
     } catch (e: any) {

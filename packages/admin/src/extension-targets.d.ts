@@ -224,6 +224,7 @@ declare module "@mercurjs/dashboard-sdk" {
     "settings/secret-api-keys": true
     "settings/tax-regions": true
     "settings/users": true
+    "settings/whatsapp-ai": true
     "stores": true
   }
 

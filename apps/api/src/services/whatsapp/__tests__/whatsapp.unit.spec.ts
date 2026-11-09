@@ -221,8 +221,8 @@ describe("WhatsAppManager", () => {
 
     mockQueryGraph = jest.fn(async ({ entity, filters }: any) => {
       if (entity === "seller") {
-        if (filters?.phone?.includes("918888888888")) {
-          return { data: [{ id: "sel_vendor_1", name: "Acme Vendor", phone: "918888888888" }] }
+        if (filters?.phone?.some((p: string) => p.includes("8888888888"))) {
+          return { data: [{ id: "sel_vendor_1", name: "Acme Vendor", phone: "8888888888" }] }
         }
         if (filters?.phone) {
           return { data: [] }

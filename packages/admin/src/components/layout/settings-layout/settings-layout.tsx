@@ -147,6 +147,10 @@ const useDeveloperRoutes = (): INavItem[] => {
         label: t("apiKeyManagement.domain.secret"),
         to: "/settings/secret-api-keys",
       },
+      {
+        label: "WhatsApp & AI",
+        to: "/settings/whatsapp-ai",
+      },
     ],
     [t],
   );

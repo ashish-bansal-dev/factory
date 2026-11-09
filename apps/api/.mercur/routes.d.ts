@@ -511,6 +511,7 @@ export type Routes = {
         };
         custom: typeof import("../src/api/admin/custom/route");
         mcp: typeof import("../src/api/admin/mcp/route");
+        whatsappConfig: typeof import("../src/api/admin/whatsapp-config/route");
     };
     auth: {
         $actorType: {

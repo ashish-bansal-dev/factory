@@ -2,13 +2,21 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { WhatsAppClient } from "../../../services/whatsapp/whatsapp-client"
 import { WhatsAppManager } from "../../../services/whatsapp/whatsapp-manager"
 import { WhatsAppWebhookBody } from "../../../services/whatsapp/types"
+import { WhatsAppConfigService } from "../../../services/whatsapp/config-service"
 
 /**
  * GET /hooks/whatsapp
  * Meta WhatsApp Cloud API Webhook verification challenge.
+ * Uses verification token stored in database (falling back to env).
  */
 export async function GET(req: MedusaRequest, res: MedusaResponse) {
-  const client = new WhatsAppClient()
+  const configService = new WhatsAppConfigService(req.scope)
+  const config = await configService.getConfig()
+  const client = new WhatsAppClient({
+    verifyToken: config.whatsapp_verify_token,
+    phoneNumberId: config.whatsapp_phone_number_id,
+    accessToken: config.whatsapp_access_token,
+  })
   const challenge = client.verifyWebhook(req.query)
 
   if (challenge) {

@@ -119,12 +119,14 @@ Output ONLY valid JSON matching this schema:
       return this.fallbackConversation(context, userMessage)
     }
 
+    const timeoutMs = Number(process.env.WHATSAPP_AI_TIMEOUT_MS) || 30000
+
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -164,7 +166,13 @@ Output ONLY valid JSON matching this schema:
         replyMessage: parsed.replyMessage || "I'm here to help you manage your store and products!",
       }
     } catch (err: any) {
-      console.error("[DraftEditorService] Error processing conversation:", err)
+      if (err?.name === "TimeoutError" || err?.message?.includes("timeout")) {
+        console.warn(
+          `[DraftEditorService] Model call (${this.model}) timed out after ${timeoutMs / 1000}s, falling back to rule-based assistant`
+        )
+      } else {
+        console.error("[DraftEditorService] Error processing conversation:", err)
+      }
       return this.fallbackConversation(context, userMessage)
     }
   }
@@ -324,8 +332,8 @@ Output ONLY valid JSON matching this schema:
 
       // Price update
       const priceMatch =
-        text.match(/(?:PRICE|COST|FOR)\s*[₹\$]?([0-9]+(?:\.[0-9]{1,2})?)/i) ||
-        text.match(/^[₹\$]?([0-9]+(?:\.[0-9]{1,2})?)$/)
+        text.match(/(?:PRICE|COST|FOR)\s*[₹$]?([0-9]+(?:\.[0-9]{1,2})?)/i) ||
+        text.match(/^[₹$]?([0-9]+(?:\.[0-9]{1,2})?)$/)
       if (priceMatch) {
         const num = parseFloat(priceMatch[1])
         if (!isNaN(num) && num > 0) {
