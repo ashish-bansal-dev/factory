@@ -8,8 +8,16 @@ export const getPricesForVariant = (variant: any) => {
   }
 
   const bundleSize =
-    variant.bundle_size ?? variant.calculated_price.bundle_size ?? 1
-  const mrpNumber = variant.mrp != null ? Number(variant.mrp) : null
+    Number(variant.metadata?.bundle_size) ||
+    Number(variant.bundle_size) ||
+    Number(variant.calculated_price.bundle_size) ||
+    1
+  const mrpNumber =
+    Number(
+      variant.metadata?.mrp ??
+      variant.mrp ??
+      variant.calculated_price?.mrp
+    ) || 100
   const unitAmount = variant.calculated_price.calculated_amount
   const packPriceAmount =
     variant.pack_price?.amount ??
@@ -67,7 +75,20 @@ export function getProductPrice({
       return null
     }
 
-    const cheapestVariant: any = product.variants
+    const wholesaleVariants = product.variants.filter((v: any) => {
+      const isWholesaleType = v.metadata?.variant_type === "wholesale"
+      const bundleSize =
+        Number(v.metadata?.bundle_size) ||
+        Number(v.bundle_size) ||
+        Number(v.calculated_price?.bundle_size) ||
+        1
+      return isWholesaleType || bundleSize > 1
+    })
+
+    const candidates =
+      wholesaleVariants.length > 0 ? wholesaleVariants : product.variants
+
+    const cheapestVariant: any = candidates
       .filter((v: any) => !!v.calculated_price)
       .sort((a: any, b: any) => {
         return (

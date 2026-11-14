@@ -1,5 +1,12 @@
-import { useQuery, type QueryKey, type UseQueryOptions } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQuery,
+  type QueryKey,
+  type UseMutationOptions,
+  type UseQueryOptions,
+} from "@tanstack/react-query"
 import { fetchQuery } from "../../lib/client"
+import { queryClient } from "../../lib/query-client"
 import { queryKeysFactory } from "../../lib/query-key-factory"
 
 export type VendorInquiryDTO = {
@@ -16,6 +23,8 @@ export type VendorInquiryDTO = {
   metadata?: {
     notes?: string | null
     quantity?: number | null
+    product_title?: string | null
+    draft_order_id?: string | null
     [key: string]: unknown
   } | null
   created_at: string
@@ -27,6 +36,30 @@ export type VendorInquiriesResponse = {
   count: number
   offset: number
   limit: number
+}
+
+export type ConvertInquiryItemPayload = {
+  variant_id: string
+  quantity: number
+  unit_price: number
+  title?: string
+  metadata?: Record<string, unknown>
+}
+
+export type ConvertInquiryToDraftOrderPayload = {
+  items: ConvertInquiryItemPayload[]
+  shipping_amount?: number
+  notes?: string
+  currency_code?: string
+  email?: string
+  customer_id?: string
+  region_id?: string
+  metadata?: Record<string, unknown>
+}
+
+export type ConvertInquiryResponse = {
+  draft_order: Record<string, unknown>
+  inquiry: VendorInquiryDTO
 }
 
 const VENDOR_INQUIRIES_QUERY_KEY = "vendor_inquiries" as const
@@ -51,4 +84,28 @@ export const useVendorInquiries = (
   })
 
   return { ...data, ...rest }
+}
+
+export const useConvertInquiryToDraftOrder = (
+  inquiryId: string,
+  options?: UseMutationOptions<
+    ConvertInquiryResponse,
+    Error,
+    ConvertInquiryToDraftOrderPayload
+  >
+) => {
+  return useMutation({
+    mutationFn: (payload: ConvertInquiryToDraftOrderPayload) =>
+      fetchQuery(`/vendor/inquiries/${inquiryId}/create-draft-order`, {
+        method: "POST",
+        body: payload,
+      }) as Promise<ConvertInquiryResponse>,
+    onSuccess: (data, variables, context) => {
+      queryClient.invalidateQueries({
+        queryKey: vendorInquiriesQueryKeys.all,
+      })
+      options?.onSuccess?.(data, variables, context)
+    },
+    ...options,
+  })
 }

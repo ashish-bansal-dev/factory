@@ -16,6 +16,8 @@ type ProductActionsProps = {
 export default function ProductActions({
   product,
   disabled,
+  seller,
+  isTenant,
 }: ProductActionsProps) {
   const countryCode = useParams().countryCode as string
 
@@ -33,6 +35,8 @@ export default function ProductActions({
         product={product}
         countryCode={countryCode}
         disabled={disabled}
+        seller={seller}
+        isTenant={isTenant}
       />
     </div>
   )

@@ -27,6 +27,10 @@ const CREATE_VARIANT_DEFAULTS: DeepPartial<CreateProductVariantSchemaType> = {
   sku: "",
   title: "",
   options: {},
+  variant_type: "retail",
+  bundle_size: 1,
+  pack_description: "Single pc",
+  mrp: "",
 };
 
 export const CreateProductVariantForm = ({
@@ -53,7 +57,15 @@ export const CreateProductVariantForm = ({
     ).attributes?.filter((a) => a.is_variant_axis) ?? [];
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    const { title, options } = data;
+    const {
+      title,
+      sku,
+      options,
+      variant_type,
+      bundle_size,
+      pack_description,
+      mrp,
+    } = data;
 
     // Form keys variant fields by `handle ?? id`; backend keys options
     // by option title (= attribute name). Remap before submitting.
@@ -70,9 +82,16 @@ export const CreateProductVariantForm = ({
     await mutateAsync(
       {
         title,
+        sku: sku || undefined,
         options: Object.keys(cleanedOptions).length
           ? cleanedOptions
           : undefined,
+        metadata: {
+          variant_type,
+          bundle_size: Number(bundle_size) || 1,
+          pack_description: pack_description || "Single pc",
+          mrp: mrp ? Number(mrp) : undefined,
+        },
       },
       {
         onSuccess: () => {

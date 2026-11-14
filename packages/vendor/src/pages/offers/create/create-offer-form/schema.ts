@@ -49,9 +49,11 @@ export type CreateOfferFormValues = z.infer<typeof CreateOfferSchema>
 export const GRID_COLUMN_IDS = [
   "title",
   "sku",
+  "bundle_size",
+  "mrp",
+  "leadtime_to_ship",
   "shipping_profile",
   "condition",
-  "leadtime_to_ship",
 ]
 
 /** `CreateOfferSchema` with each row's custom-field `additional_data` shape. */
@@ -84,3 +86,21 @@ export const variantRowHasPrice = (
 export const variantRowHasPartialInput = (row: OfferVariantRow): boolean =>
   !!row.shipping_profile_id ||
   Object.values(row.inventory ?? {}).some((v) => v.checked)
+
+export const shouldIncludeVariantForChannel = (
+  variant: {
+    metadata?: Record<string, unknown> | null
+    bundle_size?: number | null
+    variant_type?: string | null
+  },
+  channel: "retail" | "wholesale",
+): boolean => {
+  const metadata = (variant.metadata ?? {}) as Record<string, unknown>
+  const isWholesale =
+    metadata.variant_type === "wholesale" ||
+    variant.variant_type === "wholesale" ||
+    Number(variant.bundle_size ?? metadata.bundle_size ?? 1) > 1
+
+  return channel === "wholesale" ? isWholesale : !isWholesale
+}
+

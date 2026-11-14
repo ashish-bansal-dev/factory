@@ -3,47 +3,95 @@
 import { addMultipleToCart } from "@lib/data/cart"
 import { getPricesForVariant } from "@lib/util/get-product-price"
 import { convertToLocale } from "@lib/util/money"
+import {
+  calculateBundleSize,
+  calculatePackMsrp,
+  calculateRetailMargin,
+  formatPackBreakdown,
+  getPackDescription,
+  getUnitMrp,
+  getVariantAvailability,
+  getVolumeTiers,
+  isWholesaleVariant,
+  parsePackBreakdown,
+  VolumeTier,
+} from "@lib/util/pack"
 import { HttpTypes } from "@medusajs/types"
 import { clx } from "@medusajs/ui"
 import React, { useMemo, useState } from "react"
 import { useCuratedQuote } from "@lib/context/curated-quote-context"
+import VolumeDiscountTable from "../volume-discount-table"
+import WholesaleInquiryModal, {
+  WholesaleInquiryModalProps,
+} from "../wholesale-inquiry-modal"
 
 interface QuickVariantGridProps {
   product: HttpTypes.StoreProduct
   countryCode: string
   disabled?: boolean
+  seller?: {
+    id: string
+    name: string
+    [key: string]: any
+  } | null
+  isTenant?: boolean
 }
 
 export default function QuickVariantGrid({
   product,
   countryCode,
   disabled = false,
+  seller,
+  isTenant,
 }: QuickVariantGridProps) {
   const sortedVariants = useMemo(() => {
     if (!product.variants || product.variants.length === 0) return []
-    return [...product.variants].sort((a, b) => {
-      const rankA = (a as { variant_rank?: number }).variant_rank ?? 0
-      const rankB = (b as { variant_rank?: number }).variant_rank ?? 0
-      if (rankA !== rankB) return rankA - rankB
-      return 0
-    })
+    return [...product.variants]
+      .filter(isWholesaleVariant)
+      .sort((a, b) => {
+        const rankA = (a as { variant_rank?: number }).variant_rank ?? 0
+        const rankB = (b as { variant_rank?: number }).variant_rank ?? 0
+        if (rankA !== rankB) return rankA - rankB
+        return 0
+      })
   }, [product.variants])
 
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [isAddingAll, setIsAddingAll] = useState(false)
-  const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [feedback, setFeedback] = useState<{
+    message: string
+    type: "success" | "error"
+  } | null>(null)
+
+  // Quote modal state
+  const [quoteModalConfig, setQuoteModalConfig] = useState<{
+    isOpen: boolean
+    variantId?: string | null
+    packName?: string | null
+    packBreakdown?: string | Record<string, number> | null
+    bundleSize?: number | null
+    selectedPacks?: number | null
+    selectedSummary?: string | null
+    initialQuantity?: number | null
+    initialNotes?: string | null
+  }>({
+    isOpen: false,
+  })
 
   const getVariantAttributes = (variant: HttpTypes.StoreProductVariant) => {
     let size = ""
     let color = ""
 
-    const optionsMap = (variant.options || []).reduce((acc: Record<string, string>, opt: any) => {
-      const title = (opt.option?.title || "").toLowerCase()
-      if (title.includes("size")) size = opt.value
-      if (title.includes("color") || title.includes("colour")) color = opt.value
-      acc[opt.option_id] = opt.value
-      return acc
-    }, {})
+    const optionsMap = (variant.options || []).reduce(
+      (acc: Record<string, string>, opt: any) => {
+        const title = (opt.option?.title || "").toLowerCase()
+        if (title.includes("size")) size = opt.value
+        if (title.includes("color") || title.includes("colour")) color = opt.value
+        acc[opt.option_id] = opt.value
+        return acc
+      },
+      {}
+    )
 
     if (!size || !color) {
       for (const prodOpt of product.options || []) {
@@ -51,12 +99,19 @@ export default function QuickVariantGrid({
         const val = optionsMap[prodOpt.id]
         if (val) {
           if (!size && optTitle.includes("size")) size = val
-          if (!color && (optTitle.includes("color") || optTitle.includes("colour"))) color = val
+          if (!color && (optTitle.includes("color") || optTitle.includes("colour")))
+            color = val
         }
       }
     }
 
-    if (!size && !color && variant.title && variant.title !== "Default" && variant.title !== "Default Variant") {
+    if (
+      !size &&
+      !color &&
+      variant.title &&
+      variant.title !== "Default" &&
+      variant.title !== "Default Variant"
+    ) {
       const parts = variant.title.split("/").map((s) => s.trim())
       if (parts.length >= 2) {
         const sizeRegex = /^(xs|s|m|l|xl|xxl|2xl|3xl|4xl|one size|free size|\d{2,3})$/i
@@ -76,7 +131,11 @@ export default function QuickVariantGrid({
       }
     }
 
-    if (!size) size = variant.title && variant.title !== "Default" ? variant.title : "Standard"
+    if (!size)
+      size =
+        variant.title && variant.title !== "Default"
+          ? variant.title
+          : "Standard"
     if (!color) color = "Standard"
 
     return { size, color }
@@ -127,6 +186,139 @@ export default function QuickVariantGrid({
 
   const { addItem: addCuratedQuoteItem } = useCuratedQuote()
 
+  // Calculate totals
+  const totalUnits = useMemo(() => {
+    return Object.values(quantities).reduce((acc, q) => acc + (q || 0), 0)
+  }, [quantities])
+
+  const totalPacks = useMemo(() => {
+    let packs = 0
+    for (const v of sortedVariants) {
+      const q = quantities[v.id] || 0
+      if (q > 0) {
+        const breakdown = parsePackBreakdown(
+          (v as any).metadata?.pack_breakdown || (v as any).pack_breakdown
+        )
+        const bSize = calculateBundleSize(v, breakdown)
+        packs += Math.round(q / bSize)
+      }
+    }
+    return packs
+  }, [sortedVariants, quantities])
+
+  const totalEstimatedAmount = useMemo(() => {
+    let sum = 0
+    let currency = "INR"
+    for (const v of sortedVariants) {
+      const q = quantities[v.id] || 0
+      if (q > 0) {
+        const prices = getPricesForVariant(v)
+        if (prices) {
+          sum += (prices.calculated_price_number || 0) * q
+          currency = prices.currency_code || "INR"
+        }
+      }
+    }
+    return { sum, currency }
+  }, [sortedVariants, quantities])
+
+  const handleOpenQuoteModal = (targetVariant?: HttpTypes.StoreProductVariant) => {
+    if (targetVariant) {
+      const breakdown = parsePackBreakdown(
+        (targetVariant as any).metadata?.pack_breakdown ||
+          (targetVariant as any).pack_breakdown
+      )
+      const packDescription = getPackDescription(targetVariant)
+      const bundleSize = calculateBundleSize(targetVariant, breakdown)
+      const q = quantities[targetVariant.id] || bundleSize
+      const packs = Math.round(q / bundleSize)
+      const breakdownStr = formatPackBreakdown(breakdown)
+
+      setQuoteModalConfig({
+        isOpen: true,
+        variantId: targetVariant.id,
+        packName: packDescription,
+        packBreakdown: breakdown,
+        bundleSize,
+        selectedPacks: packs,
+        initialQuantity: q,
+        initialNotes: `Inquiry for ${packDescription || targetVariant.title}: ${packs} pack(s) (${q} pcs)${
+          breakdownStr ? ` [${breakdownStr}]` : ""
+        }`,
+      })
+      return
+    }
+
+    // Multiple variants selected in grid
+    const selected = sortedVariants.filter((v) => (quantities[v.id] || 0) > 0)
+
+    if (selected.length > 0) {
+      const summaryLines = selected.map((v) => {
+        const bd = parsePackBreakdown(
+          (v as any).metadata?.pack_breakdown || (v as any).pack_breakdown
+        )
+        const pn = getPackDescription(v) || v.title
+        const bs = calculateBundleSize(v, bd)
+        const q = quantities[v.id]
+        const pk = Math.round(q / bs)
+        const fmt = formatPackBreakdown(bd)
+        return `• ${pn}: ${pk} pack(s) (${q} pcs)${fmt ? ` [${fmt}]` : ""}`
+      })
+
+      const primary = selected[0]
+      const primaryBreakdown = parsePackBreakdown(
+        (primary as any).metadata?.pack_breakdown ||
+          (primary as any).pack_breakdown
+      )
+
+      setQuoteModalConfig({
+        isOpen: true,
+        variantId: selected.length === 1 ? primary.id : null,
+        packName:
+          selected.length === 1
+            ? getPackDescription(primary) || primary.title
+            : `${selected.length} Pack Options Selected`,
+        packBreakdown: selected.length === 1 ? primaryBreakdown : null,
+        bundleSize:
+          selected.length === 1
+            ? calculateBundleSize(primary, primaryBreakdown)
+            : null,
+        selectedPacks: totalPacks,
+        selectedSummary: `Selected ${totalPacks} packs (${totalUnits} pcs total across ${selected.length} variant(s))`,
+        initialQuantity: totalUnits,
+        initialNotes: `Bulk Wholesale Quote Request for ${product.title}:\n${summaryLines.join(
+          "\n"
+        )}`,
+      })
+    } else {
+      // General product quote
+      const firstVariant = sortedVariants[0]
+      const firstBreakdown = firstVariant
+        ? parsePackBreakdown(
+            (firstVariant as any).metadata?.pack_breakdown ||
+              (firstVariant as any).pack_breakdown
+          )
+        : null
+      const firstBundle = firstVariant
+        ? calculateBundleSize(firstVariant, firstBreakdown)
+        : 1
+
+      setQuoteModalConfig({
+        isOpen: true,
+        variantId: firstVariant?.id,
+        packName:
+          getPackDescription(firstVariant) ||
+          firstVariant?.title ||
+          "Wholesale Pack",
+        packBreakdown: firstBreakdown,
+        bundleSize: firstBundle,
+        selectedPacks: 1,
+        initialQuantity: firstBundle * 5,
+        initialNotes: `Inquiry for wholesale pricing and delivery lead times for ${product.title}.`,
+      })
+    }
+  }
+
   const handleAddAll = async () => {
     const selected = sortedVariants.filter((v) => (quantities[v.id] || 0) > 0)
     if (selected.length === 0) return
@@ -170,13 +362,16 @@ export default function QuickVariantGrid({
         })
       }
 
-      const totalUnits = selected.reduce((sum, v) => sum + quantities[v.id], 0)
+      const totalUnitsSelected = selected.reduce(
+        (sum, v) => sum + quantities[v.id],
+        0
+      )
       const message =
         itemsForQuote.length > 0 && itemsForCart.length > 0
           ? `Added ${itemsForCart.length} variant(s) to Cart and ${itemsForQuote.length} to Quote Basket`
           : itemsForQuote.length > 0
-          ? `Added ${totalUnits} pcs across ${itemsForQuote.length} variant(s) to Quote Basket`
-          : `Added ${totalUnits} pcs to wholesale cart`
+          ? `Added ${totalUnitsSelected} pcs across ${itemsForQuote.length} variant(s) to Quote Basket`
+          : `Added ${totalUnitsSelected} pcs to wholesale cart`
 
       setFeedback({
         message,
@@ -197,66 +392,57 @@ export default function QuickVariantGrid({
     }
   }
 
-  const totalUnits = useMemo(() => {
-    return Object.values(quantities).reduce((acc, q) => acc + (q || 0), 0)
-  }, [quantities])
-
-  const totalPacks = useMemo(() => {
-    let packs = 0
-    for (const v of sortedVariants) {
-      const q = quantities[v.id] || 0
-      if (q > 0) {
-        const bSize =
-          Number((v as any)?.bundle_size) ||
-          Number((v as any)?.calculated_price?.bundle_size) ||
-          1
-        packs += Math.round(q / bSize)
-      }
-    }
-    return packs
-  }, [sortedVariants, quantities])
-
-  const totalEstimatedAmount = useMemo(() => {
-    let sum = 0
-    let currency = "INR"
-    for (const v of sortedVariants) {
-      const q = quantities[v.id] || 0
-      if (q > 0) {
-        const prices = getPricesForVariant(v)
-        if (prices) {
-          sum += (prices.calculated_price_number || 0) * q
-          currency = prices.currency_code || "INR"
-        }
-      }
-    }
-    return { sum, currency }
-  }, [sortedVariants, quantities])
-
   if (sortedVariants.length === 0) {
-    return null
+    return (
+      <div className="bg-sand-50 border border-stone-200 rounded-xl p-4 text-xs text-stone-600 font-sans">
+        No wholesale packs or bulk variants are currently listed for this product. Use the Request a Quote button to connect directly for custom production inquiries.
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-col gap-y-3 font-sans">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+    <div className="flex flex-col gap-y-4 font-sans">
+      {/* Header with Prominent Quote CTA Banner */}
+      <div className="rounded-2xl border border-stone-200 bg-sand-50/70 p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
         <div>
-          <h2 className="font-serif text-lg font-bold text-charcoal-900">
-            Wholesale Packs & Size Matrix
-          </h2>
-          <p className="text-xs text-stone-500">
-            Select pack quantities for each Color & Size
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-forest-700 inline-block" />
+            <h2 className="font-serif text-lg sm:text-xl font-bold text-charcoal-900">
+              Wholesale Packs & Size Curve Matrix
+            </h2>
+          </div>
+          <p className="text-xs text-stone-600 mt-0.5">
+            Pre-assembled packs, dedicated inventory, and tiered volume pricing.
           </p>
         </div>
-        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sand-100 text-charcoal-900 border border-stone-200">
-          {sortedVariants.length} {sortedVariants.length === 1 ? "Option" : "Options"}
-        </span>
+
+        {/* PROMINENT REQUEST A QUOTE CTA BUTTON */}
+        <button
+          type="button"
+          onClick={() => handleOpenQuoteModal()}
+          className="h-10 px-5 rounded-full border border-stone-300 bg-white hover:bg-stone-50 text-charcoal-900 hover:border-charcoal-900 text-xs font-bold shadow-xs transition flex items-center gap-2 shrink-0 self-stretch sm:self-auto justify-center"
+        >
+          <svg
+            className="w-4 h-4 text-terracotta-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+            />
+          </svg>
+          <span>Request a Quote</span>
+        </button>
       </div>
 
       {feedback && (
         <div
           className={clx(
-            "text-xs p-3 rounded-xl border font-medium transition",
+            "text-xs p-3.5 rounded-xl border font-medium transition",
             feedback.type === "success"
               ? "bg-forest-50 text-forest-700 border-forest-700/20"
               : "bg-rose-50 text-rose-700 border-rose-200"
@@ -267,109 +453,215 @@ export default function QuickVariantGrid({
       )}
 
       {/* MOBILE-FIRST VIEW: Traversal-friendly Compact Variant Cards */}
-      <div className="flex flex-col gap-2.5 sm:hidden">
+      <div className="flex flex-col gap-3 sm:hidden">
         {sortedVariants.map((variant) => {
           const { size, color } = getVariantAttributes(variant)
           const prices = getPricesForVariant(variant)
           const qty = quantities[variant.id] ?? 0
-          const bundleSize =
-            Number((variant as any)?.bundle_size) ||
-            Number((variant as any)?.calculated_price?.bundle_size) ||
-            prices?.bundle_size ||
-            1
 
-          const mrpNum = prices?.mrp_number ?? null
-          const unitPriceNum = prices?.calculated_price_number ?? null
-          const savingsPercent =
-            mrpNum && unitPriceNum && mrpNum > unitPriceNum
-              ? Math.round(((mrpNum - unitPriceNum) / mrpNum) * 100)
-              : 0
+          const breakdown = parsePackBreakdown(
+            (variant as any).metadata?.pack_breakdown ||
+              (variant as any).pack_breakdown
+          )
+          const packDescription = getPackDescription(variant)
+          const formattedBreakdown = formatPackBreakdown(breakdown)
+          const bundleSize = calculateBundleSize(variant, breakdown)
+
+          const currency = prices?.currency_code || "INR"
+          const unitPriceNum = prices?.calculated_price_number ?? 0
+          const packPriceNum =
+            prices?.pack_price_number ?? unitPriceNum * bundleSize
+
+          const unitMsrpNum = getUnitMrp(variant)
+          const packMsrpNum = calculatePackMsrp(variant, bundleSize)
+          const marginPercent = calculateRetailMargin(packMsrpNum, packPriceNum)
+
+          const availability = getVariantAvailability(variant)
+          const volumeTiers = getVolumeTiers(
+            variant,
+            product,
+            packPriceNum,
+            currency
+          )
+
+          const currentPacks = Math.round(qty / bundleSize)
 
           return (
             <div
               key={variant.id}
               className={clx(
-                "p-3 rounded-xl border transition-all duration-150 bg-white",
+                "p-3.5 rounded-2xl border transition-all duration-150 bg-white",
                 qty > 0
                   ? "border-terracotta-600 bg-terracotta-50/20 shadow-xs ring-1 ring-terracotta-600/20"
                   : "border-stone-200 hover:border-stone-300"
               )}
             >
-              {/* Row 1: Distinct Color & Size Badges + Pack Info (Stock Removed) */}
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Distinct Color Column */}
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-stone-100 text-charcoal-900 border border-stone-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-stone-500 inline-block" />
-                    {color}
-                  </span>
+              {/* Row 1: Distinct Color & Size Badges + Pack Name/Curve */}
+              <div className="flex flex-col gap-1.5 mb-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Color Badge */}
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-stone-100 text-charcoal-900 border border-stone-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-stone-500 inline-block" />
+                      {color}
+                    </span>
 
-                  {/* Distinct Size Column */}
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-sand-200/80 text-charcoal-900 border border-sand-300">
-                    Size: {size}
-                  </span>
-                </div>
+                    {/* Size Badge */}
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-sand-200/80 text-charcoal-900 border border-sand-300">
+                      Size: {size}
+                    </span>
+                  </div>
 
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-charcoal-700 bg-sand-100 px-2 py-0.5 rounded-full border border-stone-200">
+                  <span className="text-[10px] font-semibold text-charcoal-800 bg-sand-100 px-2 py-0.5 rounded-full border border-stone-200">
                     {bundleSize} pcs/pack
                   </span>
                 </div>
-              </div>
 
-              {/* Row 2: Price & Margin */}
-              <div className="flex items-baseline justify-between py-1.5 border-t border-stone-100 text-xs">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="font-bold text-sm text-charcoal-900">
-                    {prices ? prices.calculated_price : "Quote"}
-                  </span>
-                  <span className="text-[11px] text-stone-500">/ pc</span>
-                  {prices?.mrp && (
-                    <span className="text-[11px] line-through text-stone-400 ml-1">
-                      MRP {prices.mrp}
-                    </span>
-                  )}
-                </div>
-                {savingsPercent > 0 && (
-                  <span className="text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded-full border border-forest-700/20">
-                    {savingsPercent}% margin
-                  </span>
+                {/* Pack Specification or Curve breakdown */}
+                {(packDescription || formattedBreakdown) && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    {packDescription && (
+                      <span className="text-[11px] font-bold text-charcoal-900">
+                        {packDescription}
+                      </span>
+                    )}
+                    {formattedBreakdown && (
+                      <span className="inline-flex items-center text-[10px] font-semibold text-terracotta-800 bg-terracotta-50/70 border border-terracotta-200/80 px-2 py-0.5 rounded-full">
+                        {formattedBreakdown}
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
 
-              {/* Row 3: Auto-Selecting Quantity Stepper (Active for all items to enable quote request) */}
-              <div className="flex items-center justify-between pt-2 border-t border-stone-100">
+              {/* Row 2: Dedicated Inventory & Availability Messaging Badge */}
+              <div className="mb-2.5">
+                {availability.status === "in_stock" ? (
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-forest-700 bg-forest-50 border border-forest-700/20 px-2.5 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-forest-700 inline-block" />
+                    {availability.badgeText}
+                  </span>
+                ) : availability.status === "backorder" ? (
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-300 px-2.5 py-0.5 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 inline-block" />
+                    {availability.badgeText}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuoteModal(variant)}
+                    className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-stone-700 bg-stone-100 border border-stone-300 hover:border-stone-400 hover:bg-stone-200 px-2.5 py-0.5 rounded-full transition cursor-pointer"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-stone-400 inline-block" />
+                    {availability.badgeText}
+                  </button>
+                )}
+              </div>
+
+              {/* Row 3: Unit MSRP vs Pack Price with Calculated Retail Margin % */}
+              <div className="py-2 border-t border-stone-100 text-xs flex flex-col gap-1">
+                <div className="flex items-baseline justify-between">
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <span className="font-bold text-sm text-charcoal-900">
+                      {prices?.calculated_price ?? "Quote"}
+                    </span>
+                    <span className="text-[11px] text-stone-500">/ pc</span>
+
+                    {prices?.pack_price && bundleSize > 1 && (
+                      <span className="text-[11px] font-semibold text-charcoal-800 ml-1">
+                        ({prices.pack_price} / pack)
+                      </span>
+                    )}
+                  </div>
+
+                  {marginPercent > 0 && (
+                    <span className="text-[10px] font-bold text-forest-700 bg-forest-50 px-2 py-0.5 rounded-full border border-forest-700/20 shrink-0">
+                      {marginPercent}% margin
+                    </span>
+                  )}
+                </div>
+
+                {packMsrpNum && (
+                  <div className="flex items-center gap-2 text-[11px] text-stone-500">
+                    <span>
+                      Pack MSRP:{" "}
+                      <span className="line-through font-medium">
+                        {convertToLocale({
+                          amount: packMsrpNum,
+                          currency_code: currency,
+                        })}
+                      </span>
+                    </span>
+                    {unitMsrpNum && (
+                      <span className="text-stone-400">
+                        ({convertToLocale({
+                          amount: unitMsrpNum,
+                          currency_code: currency,
+                        })} / pc)
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Row 4: Tiered Volume Discount Pricing Table (if applicable) */}
+              {volumeTiers.length > 0 && (
+                <div className="mb-2">
+                  <VolumeDiscountTable
+                    tiers={volumeTiers}
+                    currentPacks={currentPacks}
+                  />
+                </div>
+              )}
+
+              {/* Row 5: Auto-Selecting Quantity Stepper */}
+              <div className="flex items-center justify-between pt-2.5 border-t border-stone-100">
                 <span className="text-[11px] text-stone-500 font-medium">
                   {qty > 0 ? (
                     <strong className="text-terracotta-700 font-semibold">
-                      {Math.round(qty / bundleSize)} pk ({qty} pcs) selected
+                      {currentPacks} pk ({qty} pcs) selected
                     </strong>
                   ) : (
                     "Quantity to order:"
                   )}
                 </span>
 
-                <div className="flex items-center border border-stone-300 rounded-lg bg-white overflow-hidden shadow-xs">
-                  <button
-                    type="button"
-                    onClick={() => handleStep(variant.id, -bundleSize, bundleSize)}
-                    disabled={qty <= 0 || disabled}
-                    className="w-10 h-10 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-lg font-bold select-none"
-                    aria-label="Decrease quantity"
-                  >
-                    −
-                  </button>
-                  <div className="w-14 text-center text-xs font-bold text-charcoal-900">
-                    {qty === 0 ? "0" : `${qty / bundleSize} pk`}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center border border-stone-300 rounded-lg bg-white overflow-hidden shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleStep(variant.id, -bundleSize, bundleSize)
+                      }
+                      disabled={qty <= 0 || disabled}
+                      className="w-9 h-9 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
+                      aria-label="Decrease quantity"
+                    >
+                      −
+                    </button>
+                    <div className="w-14 text-center text-xs font-bold text-charcoal-900">
+                      {qty === 0 ? "0" : `${qty / bundleSize} pk`}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleStep(variant.id, bundleSize, bundleSize)
+                      }
+                      disabled={disabled}
+                      className="w-9 h-9 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
+                      aria-label="Increase quantity"
+                    >
+                      +
+                    </button>
                   </div>
+
                   <button
                     type="button"
-                    onClick={() => handleStep(variant.id, bundleSize, bundleSize)}
-                    disabled={disabled}
-                    className="w-10 h-10 flex items-center justify-center text-charcoal-900 active:bg-sand-100 disabled:opacity-30 text-lg font-bold select-none"
-                    aria-label="Increase quantity"
+                    onClick={() => handleOpenQuoteModal(variant)}
+                    title="Request a quote for this pack"
+                    className="h-9 px-2.5 rounded-lg border border-stone-200 text-stone-600 hover:text-charcoal-900 hover:bg-stone-50 text-[11px] font-semibold"
                   >
-                    +
+                    Quote
                   </button>
                 </div>
               </div>
@@ -378,27 +670,33 @@ export default function QuickVariantGrid({
         })}
       </div>
 
-      {/* DESKTOP VIEW: Structured Tabular Grid with Distinct Color & Size Columns (Stock Removed) */}
-      <div className="hidden sm:block overflow-x-auto border border-stone-200 rounded-xl bg-white shadow-sm">
+      {/* DESKTOP VIEW: Structured Tabular Grid */}
+      <div className="hidden sm:block overflow-x-auto border border-stone-200 rounded-2xl bg-white shadow-sm">
         <table className="w-full text-left text-xs divide-y divide-stone-200">
           <thead className="bg-sand-100/80 text-stone-600 uppercase text-[10px] tracking-wider font-semibold">
             <tr>
-              <th scope="col" className="py-3 px-3.5">
+              <th scope="col" className="py-3.5 px-4">
                 Color
               </th>
-              <th scope="col" className="py-3 px-3.5">
+              <th scope="col" className="py-3.5 px-4">
                 Size
               </th>
-              <th scope="col" className="py-3 px-3.5">
-                Pack & SKU
+              <th scope="col" className="py-3.5 px-4">
+                Pack & Ratio Breakdown
               </th>
-              <th scope="col" className="py-3 px-3.5">
-                Retail MRP
+              <th scope="col" className="py-3.5 px-4">
+                Availability
               </th>
-              <th scope="col" className="py-3 px-3.5">
+              <th scope="col" className="py-3.5 px-4">
+                Retail MSRP
+              </th>
+              <th scope="col" className="py-3.5 px-4">
                 Wholesale Price
               </th>
-              <th scope="col" className="py-3 px-3.5 text-center min-w-[140px]">
+              <th
+                scope="col"
+                className="py-3.5 px-4 text-center min-w-[150px]"
+              >
                 Pack Quantity
               </th>
             </tr>
@@ -408,150 +706,252 @@ export default function QuickVariantGrid({
               const { size, color } = getVariantAttributes(variant)
               const prices = getPricesForVariant(variant)
               const qty = quantities[variant.id] ?? 0
-              const bundleSize =
-                Number((variant as any)?.bundle_size) ||
-                Number((variant as any)?.calculated_price?.bundle_size) ||
-                prices?.bundle_size ||
-                1
 
-              const mrpNum = prices?.mrp_number ?? null
-              const unitPriceNum = prices?.calculated_price_number ?? null
-              const savingsPercent =
-                mrpNum && unitPriceNum && mrpNum > unitPriceNum
-                  ? Math.round(((mrpNum - unitPriceNum) / mrpNum) * 100)
-                  : 0
+              const breakdown = parsePackBreakdown(
+                (variant as any).metadata?.pack_breakdown ||
+                  (variant as any).pack_breakdown
+              )
+              const packDescription = getPackDescription(variant)
+              const formattedBreakdown = formatPackBreakdown(breakdown)
+              const bundleSize = calculateBundleSize(variant, breakdown)
+
+              const currency = prices?.currency_code || "INR"
+              const unitPriceNum = prices?.calculated_price_number ?? 0
+              const packPriceNum =
+                prices?.pack_price_number ?? unitPriceNum * bundleSize
+
+              const unitMsrpNum = getUnitMrp(variant)
+              const packMsrpNum = calculatePackMsrp(variant, bundleSize)
+              const marginPercent = calculateRetailMargin(
+                packMsrpNum,
+                packPriceNum
+              )
+
+              const availability = getVariantAvailability(variant)
+              const volumeTiers = getVolumeTiers(
+                variant,
+                product,
+                packPriceNum,
+                currency
+              )
+              const currentPacks = Math.round(qty / bundleSize)
 
               return (
-                <tr
-                  key={variant.id}
-                  className={clx(
-                    "hover:bg-sand-50/50 transition-colors",
-                    qty > 0 && "bg-terracotta-50/30"
-                  )}
-                >
-                  {/* Distinct Color Column */}
-                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-stone-100 text-charcoal-900 border border-stone-200">
-                      <span className="w-2 h-2 rounded-full bg-stone-500 inline-block" />
-                      {color}
-                    </span>
-                  </td>
-
-                  {/* Distinct Size Column */}
-                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-sand-200/80 text-charcoal-900 border border-sand-300">
-                      {size}
-                    </span>
-                  </td>
-
-                  {/* Pack & SKU Column */}
-                  <td className="py-3 px-3.5 align-middle">
-                    <span className="text-[11px] font-semibold text-charcoal-800 bg-sand-100 border border-stone-200 px-2 py-0.5 rounded-full inline-block">
-                      Pack of {bundleSize} pcs
-                    </span>
-                    {variant.sku && (
-                      <span className="font-mono text-[10px] text-stone-500 block mt-1">
-                        SKU: {variant.sku}
+                <React.Fragment key={variant.id}>
+                  <tr
+                    className={clx(
+                      "hover:bg-sand-50/50 transition-colors",
+                      qty > 0 && "bg-terracotta-50/20"
+                    )}
+                  >
+                    {/* Color Column */}
+                    <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-stone-100 text-charcoal-900 border border-stone-200">
+                        <span className="w-2 h-2 rounded-full bg-stone-500 inline-block" />
+                        {color}
                       </span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* Retail MRP Column */}
-                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
-                    {prices?.mrp ? (
-                      <div className="flex flex-col">
-                        <span className="text-stone-500 line-through font-medium text-xs">
-                          {prices.mrp}
+                    {/* Size Column */}
+                    <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-sand-200/80 text-charcoal-900 border border-sand-300">
+                        {size}
+                      </span>
+                    </td>
+
+                    {/* Pack & Breakdown Column */}
+                    <td className="py-3.5 px-4 align-top">
+                      <div className="flex flex-col gap-1">
+                        {packDescription ? (
+                          <span className="text-xs font-bold text-charcoal-900">
+                            {packDescription}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-semibold text-charcoal-900">
+                            Pack of {bundleSize} pcs
+                          </span>
+                        )}
+
+                        {formattedBreakdown ? (
+                          <span className="inline-flex items-center text-[10px] font-semibold text-terracotta-800 bg-terracotta-50/80 border border-terracotta-200 px-2 py-0.5 rounded-full w-fit">
+                            {formattedBreakdown}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-stone-500 font-medium">
+                            {bundleSize} pcs / pack
+                          </span>
+                        )}
+
+                        {variant.sku && (
+                          <span className="font-mono text-[10px] text-stone-400 mt-0.5 block">
+                            SKU: {variant.sku}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Dedicated Inventory & Availability Messaging */}
+                    <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                      {availability.status === "in_stock" ? (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-forest-700 bg-forest-50 border border-forest-700/20 px-2.5 py-1 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-forest-700 inline-block" />
+                          {availability.badgeText}
                         </span>
-                        {savingsPercent > 0 && (
-                          <span className="text-[10px] font-bold text-forest-700 mt-0.5">
-                            {savingsPercent}% margin
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-stone-400 text-xs">—</span>
-                    )}
-                  </td>
-
-                  {/* Wholesale Price Column */}
-                  <td className="py-3 px-3.5 align-middle whitespace-nowrap">
-                    {prices ? (
-                      <div className="flex flex-col">
-                        <div className="flex items-baseline gap-1">
-                          <span className="font-bold text-sm text-charcoal-900">
-                            {prices.calculated_price}
-                          </span>
-                          <span className="text-[10px] text-stone-500 font-normal">
-                            / pc
-                          </span>
-                        </div>
-                        {bundleSize > 1 && (
-                          <div className="text-[11px] text-stone-600 font-medium mt-0.5">
-                            {prices.pack_price} <span className="text-stone-500 font-normal">/ pack</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-stone-400 text-xs">Quote</span>
-                    )}
-                  </td>
-
-                  {/* Pack Quantity Stepper (Enabled for all variants so zero-stock items can be quoted) */}
-                  <td className="py-3 px-3.5 align-middle">
-                    <div className="flex items-center justify-center border border-stone-300 rounded-lg bg-white shadow-xs overflow-hidden w-28 mx-auto">
-                      <button
-                        type="button"
-                        onClick={() => handleStep(variant.id, -bundleSize, bundleSize)}
-                        disabled={qty <= 0 || disabled}
-                        className="w-8 h-8 flex items-center justify-center text-charcoal-900 hover:bg-sand-50 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        min="0"
-                        step={bundleSize}
-                        value={qty === 0 ? "" : qty}
-                        placeholder="0"
-                        onChange={(e) =>
-                          handleQuantityInputChange(variant.id, e.target.value, bundleSize)
-                        }
-                        onBlur={() => handleBlur(variant.id, bundleSize)}
-                        disabled={disabled}
-                        className="w-12 text-center text-xs py-1 font-bold text-charcoal-900 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleStep(variant.id, bundleSize, bundleSize)}
-                        disabled={disabled}
-                        className="w-8 h-8 flex items-center justify-center text-charcoal-900 hover:bg-sand-50 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div className="text-[10px] text-center text-stone-500 mt-1 font-medium">
-                      {qty > 0 ? (
-                        <span className="text-terracotta-700 font-semibold">
-                          {Math.round(qty / bundleSize)} {Math.round(qty / bundleSize) === 1 ? "pack" : "packs"}
+                      ) : availability.status === "backorder" ? (
+                        <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-900 bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-full">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-600 inline-block" />
+                          {availability.badgeText}
                         </span>
                       ) : (
-                        <span>0 packs</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenQuoteModal(variant)}
+                          className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-stone-700 bg-stone-100 border border-stone-300 hover:border-stone-400 hover:bg-stone-200 px-2.5 py-1 rounded-full transition cursor-pointer"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-stone-400 inline-block" />
+                          {availability.badgeText}
+                        </button>
                       )}
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+
+                    {/* Retail MSRP Column */}
+                    <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                      {packMsrpNum ? (
+                        <div className="flex flex-col">
+                          <span className="text-stone-500 line-through font-medium text-xs">
+                            {convertToLocale({
+                              amount: packMsrpNum,
+                              currency_code: currency,
+                            })}
+                          </span>
+                          <span className="text-[10px] text-stone-400 mt-0.5">
+                            {unitMsrpNum
+                              ? `${convertToLocale({
+                                  amount: unitMsrpNum,
+                                  currency_code: currency,
+                                })} / pc`
+                              : "Pack MSRP"}
+                          </span>
+                          {marginPercent > 0 && (
+                            <span className="text-[10px] font-bold text-forest-700 bg-forest-50 border border-forest-700/20 px-1.5 py-0.5 rounded-full mt-1 w-fit">
+                              {marginPercent}% margin
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-stone-400 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* Wholesale Price Column */}
+                    <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                      {prices ? (
+                        <div className="flex flex-col">
+                          <div className="flex items-baseline gap-1">
+                            <span className="font-bold text-sm text-charcoal-900">
+                              {prices.calculated_price}
+                            </span>
+                            <span className="text-[10px] text-stone-500 font-normal">
+                              / pc
+                            </span>
+                          </div>
+                          {bundleSize > 1 && (
+                            <div className="text-[11px] text-stone-600 font-medium mt-0.5">
+                              {prices.pack_price}{" "}
+                              <span className="text-stone-500 font-normal">
+                                / pack
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-stone-400 text-xs">Quote</span>
+                      )}
+                    </td>
+
+                    {/* Pack Quantity Stepper */}
+                    <td className="py-3.5 px-4 align-top">
+                      <div className="flex flex-col items-center">
+                        <div className="flex items-center justify-center border border-stone-300 rounded-lg bg-white shadow-2xs overflow-hidden w-28">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleStep(variant.id, -bundleSize, bundleSize)
+                            }
+                            disabled={qty <= 0 || disabled}
+                            className="w-8 h-8 flex items-center justify-center text-charcoal-900 hover:bg-sand-50 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            step={bundleSize}
+                            value={qty === 0 ? "" : qty}
+                            placeholder="0"
+                            onChange={(e) =>
+                              handleQuantityInputChange(
+                                variant.id,
+                                e.target.value,
+                                bundleSize
+                              )
+                            }
+                            onBlur={() => handleBlur(variant.id, bundleSize)}
+                            disabled={disabled}
+                            className="w-12 text-center text-xs py-1 font-bold text-charcoal-900 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleStep(variant.id, bundleSize, bundleSize)
+                            }
+                            disabled={disabled}
+                            className="w-8 h-8 flex items-center justify-center text-charcoal-900 hover:bg-sand-50 active:bg-sand-100 disabled:opacity-30 text-base font-bold select-none"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="text-[10px] text-center text-stone-500 mt-1 font-medium">
+                          {qty > 0 ? (
+                            <span className="text-terracotta-700 font-semibold">
+                              {currentPacks}{" "}
+                              {currentPacks === 1 ? "pack" : "packs"}
+                            </span>
+                          ) : (
+                            <span>0 packs</span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Optional Volume Discount Tiers row */}
+                  {volumeTiers.length > 0 && (
+                    <tr className="bg-sand-50/40">
+                      <td colSpan={7} className="py-2 px-4 border-t border-stone-100">
+                        <VolumeDiscountTable
+                          tiers={volumeTiers}
+                          currentPacks={currentPacks}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               )
             })}
           </tbody>
         </table>
       </div>
 
-      {/* DESKTOP Bottom Summary Bar */}
-      <div className="hidden sm:flex border border-stone-200 items-center justify-between gap-3 bg-sand-50 p-4 rounded-xl">
-        <div className="text-xs text-charcoal-900 flex items-center gap-3">
+      {/* DESKTOP Bottom Action Bar */}
+      <div className="hidden sm:flex border border-stone-200 items-center justify-between gap-4 bg-sand-50 p-4 rounded-2xl shadow-2xs">
+        <div className="text-xs text-charcoal-900 flex items-center gap-4 flex-wrap">
           <span>
-            Selected: <strong className="font-bold text-sm text-charcoal-900">{totalUnits}</strong> pcs ({totalPacks} {totalPacks === 1 ? "pack" : "packs"})
+            Selected:{" "}
+            <strong className="font-bold text-sm text-charcoal-900">
+              {totalUnits}
+            </strong>{" "}
+            pcs ({totalPacks} {totalPacks === 1 ? "pack" : "packs"})
           </span>
           {totalUnits > 0 && totalEstimatedAmount.sum > 0 && (
             <span>
@@ -566,23 +966,51 @@ export default function QuickVariantGrid({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleAddAll}
-          disabled={totalUnits === 0 || disabled || isAddingAll}
-          className="h-10 px-6 rounded-full bg-charcoal-900 text-white hover:bg-stone-800 disabled:opacity-40 text-xs font-semibold shadow-xs transition"
-        >
-          {isAddingAll ? "Processing..." : `Add Selected to Order (${totalUnits} pcs)`}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Prominent 'Request a Quote' CTA button alongside Add to Order */}
+          <button
+            type="button"
+            onClick={() => handleOpenQuoteModal()}
+            className="h-10 px-5 rounded-full border border-stone-300 bg-white hover:bg-sand-100 text-charcoal-900 text-xs font-bold shadow-xs transition flex items-center gap-2"
+          >
+            <svg
+              className="w-4 h-4 text-terracotta-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              />
+            </svg>
+            <span>Request a Quote</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAddAll}
+            disabled={totalUnits === 0 || disabled || isAddingAll}
+            className="h-10 px-6 rounded-full bg-charcoal-900 text-white hover:bg-stone-800 disabled:opacity-40 text-xs font-semibold shadow-xs transition"
+          >
+            {isAddingAll
+              ? "Processing..."
+              : `Add Selected to Order (${totalUnits} pcs)`}
+          </button>
+        </div>
       </div>
 
       {/* MOBILE STICKY BOTTOM BAR */}
-      <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-3 sm:hidden shadow-lg flex items-center justify-between gap-3">
-        <div className="flex flex-col">
-          <span className="text-[11px] text-stone-500 font-medium">
-            {totalUnits > 0 ? `${totalPacks} pk (${totalUnits} pcs)` : "Select packs above"}
+      <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-3 sm:hidden shadow-lg flex items-center justify-between gap-2.5">
+        <div className="flex flex-col min-w-0">
+          <span className="text-[11px] text-stone-500 font-medium truncate">
+            {totalUnits > 0
+              ? `${totalPacks} pk (${totalUnits} pcs)`
+              : "Select packs above"}
           </span>
-          <span className="font-bold text-sm text-charcoal-900">
+          <span className="font-bold text-sm text-charcoal-900 truncate">
             {totalUnits > 0 && totalEstimatedAmount.sum > 0
               ? convertToLocale({
                   amount: totalEstimatedAmount.sum,
@@ -592,15 +1020,46 @@ export default function QuickVariantGrid({
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={handleAddAll}
-          disabled={totalUnits === 0 || disabled || isAddingAll}
-          className="h-10 px-6 rounded-full bg-charcoal-900 text-white text-xs font-semibold disabled:opacity-40 shadow-xs transition"
-        >
-          {isAddingAll ? "Adding..." : `Add (${totalUnits} pcs)`}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleOpenQuoteModal()}
+            className="h-10 px-3.5 rounded-full border border-stone-300 bg-white text-charcoal-900 text-xs font-bold shadow-xs active:bg-sand-100"
+          >
+            Quote
+          </button>
+
+          <button
+            type="button"
+            onClick={handleAddAll}
+            disabled={totalUnits === 0 || disabled || isAddingAll}
+            className="h-10 px-4 rounded-full bg-charcoal-900 text-white text-xs font-semibold disabled:opacity-40 shadow-xs transition"
+          >
+            {isAddingAll ? "Adding..." : `Add (${totalUnits} pcs)`}
+          </button>
+        </div>
       </div>
+
+      {/* Wholesale Inquiry / RFQ Modal */}
+      <WholesaleInquiryModal
+        isOpen={quoteModalConfig.isOpen}
+        close={() =>
+          setQuoteModalConfig((prev) => ({ ...prev, isOpen: false }))
+        }
+        productId={product.id}
+        productTitle={product.title}
+        variantId={quoteModalConfig.variantId}
+        sellerId={seller?.id || (product as any).seller?.id || null}
+        sellerName={seller?.name || (product as any).seller?.name || null}
+        isTenant={isTenant}
+        packName={quoteModalConfig.packName}
+        packBreakdown={quoteModalConfig.packBreakdown}
+        bundleSize={quoteModalConfig.bundleSize}
+        selectedPacks={quoteModalConfig.selectedPacks}
+        selectedSummary={quoteModalConfig.selectedSummary}
+        initialQuantity={quoteModalConfig.initialQuantity}
+        initialNotes={quoteModalConfig.initialNotes}
+      />
     </div>
   )
 }

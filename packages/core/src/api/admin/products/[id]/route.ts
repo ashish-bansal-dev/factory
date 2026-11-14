@@ -14,7 +14,9 @@ import { HttpTypes } from "@mercurjs/types"
 
 import { updateProductsWorkflow } from "@medusajs/medusa/core-flows"
 import {
+  categorizeProductVariants,
   enrichProductAttributes,
+  transformProductVariants,
   wrapProductVariantsWithOffers,
 } from "../../../utils"
 import { productEditDeleteProductWorkflow } from "../../../../workflows/product-edit/workflows/product-edit-delete-product"
@@ -61,6 +63,8 @@ export const GET = async (
     )
   }
 
+  categorizeProductVariants(product as any)
+
   res.json({ product })
 }
 
@@ -71,6 +75,7 @@ export const POST = async (
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
   const { additional_data, ...update } = req.validatedBody
+  transformProductVariants(update as any)
 
   const publishing = update.status === ProductStatus.PUBLISHED
   const wasPublished = publishing
@@ -113,6 +118,7 @@ export const POST = async (
   }
 
   await enrichProductAttributes(req.scope, [product])
+  categorizeProductVariants(product as any)
 
   res.json({ product })
 }

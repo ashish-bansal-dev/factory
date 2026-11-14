@@ -983,7 +983,11 @@ export type Routes = {
                 checkDns: typeof import("../src/api/vendor/domains/[domain_id]/check-dns/route");
             };
         };
-        inquiries: typeof import("../src/api/vendor/inquiries/route");
+        inquiries: typeof import("../src/api/vendor/inquiries/route") & {
+            $id: {
+                createDraftOrder: typeof import("../src/api/vendor/inquiries/[id]/create-draft-order/route");
+            };
+        };
         offerConditions: typeof import("../src/api/vendor/offer-conditions/route") & {
             $id: typeof import("../src/api/vendor/offer-conditions/[id]/route");
         };

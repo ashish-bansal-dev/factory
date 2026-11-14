@@ -81,6 +81,9 @@ const Root = () => {
       const haystack = [
         variant.title,
         variant.sku,
+        variant.pack_description,
+        variant.pack_name,
+        variant.variant_type,
         ...Object.values(variant.options ?? {}),
       ]
 
@@ -188,6 +191,85 @@ const useColumns = ({
         type: "text",
         cell: (context) => {
           return <DataGrid.TextCell context={context} />
+        },
+      }),
+      columnHelper.column({
+        id: "variant_type",
+        name: t("products.variants.fields.type", "Type"),
+        header: t("products.variants.fields.type", "Type"),
+        field: (context) =>
+          `variants.${context.row.original.originalIndex}.variant_type`,
+        type: "select",
+        cell: (context) => {
+          return (
+            <DataGrid.SelectCell
+              context={context}
+              options={[
+                {
+                  label: t("products.variants.types.retail", "Retail (Single)"),
+                  value: "retail",
+                },
+                {
+                  label: t(
+                    "products.variants.types.wholesale",
+                    "Wholesale (Pack)"
+                  ),
+                  value: "wholesale",
+                },
+              ]}
+            />
+          )
+        },
+      }),
+      columnHelper.column({
+        id: "pack_description",
+        name: t(
+          "products.variants.fields.packDescription",
+          "Pack Description"
+        ),
+        header: t(
+          "products.variants.fields.packDescription",
+          "Pack Description"
+        ),
+        field: (context) =>
+          `variants.${context.row.original.originalIndex}.pack_description`,
+        type: "text",
+        cell: (context) => {
+          return <DataGrid.TextCell context={context} />
+        },
+      }),
+      columnHelper.column({
+        id: "bundle_size",
+        name: t("products.variants.fields.bundleSize", "Bundle Size"),
+        header: t("products.variants.fields.bundleSize", "Bundle Size"),
+        field: (context) =>
+          `variants.${context.row.original.originalIndex}.bundle_size`,
+        type: "number",
+        cell: (context) => {
+          return (
+            <DataGrid.NumberCell
+              context={context}
+              min={1}
+              placeholder="1"
+            />
+          )
+        },
+      }),
+      columnHelper.column({
+        id: "mrp",
+        name: t("products.variants.fields.mrp", "MRP"),
+        header: t("products.variants.fields.mrp", "MRP"),
+        field: (context) =>
+          `variants.${context.row.original.originalIndex}.mrp`,
+        type: "number",
+        cell: (context) => {
+          return (
+            <DataGrid.NumberCell
+              context={context}
+              min={0}
+              placeholder="0"
+            />
+          )
         },
       }),
     ],

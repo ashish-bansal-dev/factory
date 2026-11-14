@@ -80,7 +80,20 @@ export function getProductPrice({
       return null
     }
 
-    return product.variants
+    const retailVariants = product.variants.filter((v: any) => {
+      if (v.metadata?.variant_type === "wholesale") return false
+      const bundleSize =
+        Number(v.metadata?.bundle_size) ||
+        Number(v.bundle_size) ||
+        Number(v.calculated_price?.bundle_size) ||
+        1
+      return bundleSize <= 1
+    })
+
+    const candidates =
+      retailVariants.length > 0 ? retailVariants : product.variants
+
+    return candidates
       .filter((v: any) => !!v.calculated_price)
       .sort((a: any, b: any) => {
         return a.calculated_price.calculated_amount_with_tax &&

@@ -349,11 +349,11 @@ declare module "@mercurjs/dashboard-sdk" {
     "product": {
       formZones: "create"
       formTabs: { "create": "attributes" | "details" | "organize" | "variants" }
-      formFieldIds: "attributes" | "brand_id" | "category_id" | "collection_id" | "description" | "discountable" | "globally_available" | "handle" | "media" | "seller_ids" | "sku" | "subtitle" | "tags" | "title" | "type_id"
+      formFieldIds: "attributes" | "brand_id" | "bundle_size" | "category_id" | "collection_id" | "description" | "discountable" | "globally_available" | "handle" | "media" | "mrp" | "pack_description" | "seller_ids" | "sku" | "subtitle" | "tags" | "title" | "type_id" | "variant_type"
       displayZones: "general" | "media" | "organize" | "request" | "variants"
       displayFieldIds: "description" | "discountable" | "handle" | "status" | "subtitle" | "title"
       listZones: "list" | "variants"
-      listColumnIds: "categories" | "collection" | "product" | "sku" | "status" | "title" | "variants"
+      listColumnIds: "categories" | "collection" | "mrp" | "product" | "sku" | "status" | "title" | "variants"
     }
     "promotion": {
       formZones: "create" | "edit"

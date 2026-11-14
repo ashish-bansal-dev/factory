@@ -6,13 +6,47 @@ session detail aggressively. The per-spec source of truth lives in
 
 ## Current Verified State
 
-- **Repository root**: `/Users/viktorholik/Desktop/mercur`
-- **Current branch**: `feat/extendable-offer-tables-forms`
+- **Current branch**: `feat/whatsapp-ai-product-creation`
 - **Current version**: `2.2.0-rc.1`
 - **Standard startup path**: `bun install && bun run dev`
-- **Standard verification path**: `bun run build`, `bun run lint` (oxlint),
-  `bun run test:integration:http -- <pattern>`
+- **Standard verification path**: `bun run build`, `bun run lint`
 - **Current blocker**: none
+
+## Session — Retail & Wholesale Variants, Packs, Offers & Inquiry Draft Orders (2026-11-10)
+
+Implemented end-to-end architecture for dual retail & wholesale products, packs, offers, lead generation, admin/vendor dashboards, and storefront isolation:
+1. `packages/core`:
+   - Enriched product creation/update schemas with distinct `retail_variants` and `wholesale_variants` (with `bundle_size`, `pack_description`, and unit `mrp`).
+   - Implemented `transformProductVariants` and `categorizeProductVariants` helpers.
+   - Built vendor inquiry-to-draft-order conversion route (`POST /vendor/inquiries/:id/create-draft-order`) with seller authorization, custom negotiated pricing, and inquiry status transition to `converted`.
+   - Unit tests: 17/17 passing across `product-variants.unit.spec.ts` and `create-draft-order/__tests__/route.unit.spec.ts`.
+2. `apps/storefront-wholesale`:
+   - Filtered variants strictly to Wholesale-only packs.
+   - Displayed `pack_description` (e.g. `"Sizes 28-32, Pack of 6 (1-2-2-1)"`).
+   - Dynamically calculated Total Pack MSRP ($\text{unit MRP} \times \text{bundle\_size}$) and retail profit margin percentage.
+   - Added dedicated variant availability badges (`In Stock (Ships in 24-48h)` vs `Backorder Available (Ships in X days)` vs `Out of Stock — Request Quote`).
+   - Added tiered volume discount schedule component (`VolumeDiscountTable`) dynamically highlighting active discount breaks.
+   - Enhanced `WholesaleInquiryModal` with pre-filled variant/pack details for frictionless RFQ submissions.
+3. `apps/storefront`:
+   - Filtered variants strictly to Retail-only single variants (wholesale packs hidden).
+   - Displayed single-item unit MRP with strikethrough savings.
+4. `packages/vendor` & `apps/vendor`:
+   - Completely removed ERP / ERP ID from `apps/vendor/src/custom-fields/product.tsx` (edit forms, product detail general section, and products table column).
+   - Added `CreateDraftOrderModal` and row action in wholesale inquiries table (`packages/vendor/src/pages/inquiries`).
+   - Added Retail vs. Wholesale Offer Channel switcher in offer creation with strict variant filtering (Retail offers show retail-only; Wholesale offers show wholesale-only).
+   - Removed `pack_mrp` and `pack_lead_time` from offer creation; offer MRP serves as an optional single-item override.
+   - Fixed variant table pagination/truncation (expanded query limit to 200) with watertight `All = Retail + Wholesale` filtering tabs and unit `MRP` column.
+   - Enriched Add Variant form with Channel assignment (`Retail` vs `Wholesale`), `bundle_size` (default 1 for retail), `pack_description` (default "Single pc" for retail), and single-item `MRP`.
+   - Enriched Edit Variant drawer form allowing channel switching, `bundle_size`, `pack_description`, and `mrp` updates.
+5. `packages/admin`:
+   - Added Retail vs. Wholesale variant configuration in product create DataGrid (`variant_type`, `pack_description`, `bundle_size`, and unit `mrp`).
+   - Fixed variant table pagination/truncation (expanded query limit to 200) with watertight `All = Retail + Wholesale` filtering tabs and unit `MRP` column.
+   - Enriched Add Variant form with Channel assignment (`Retail` vs `Wholesale`), `bundle_size` (default 1 for retail), `pack_description` (default "Single pc" for retail), and single-item `MRP`.
+   - Enriched Edit Variant drawer form allowing channel switching, `bundle_size`, `pack_description`, and `mrp` updates.
+   - Added form normalization partitioning variants into `retail_variants` and `wholesale_variants`.
+   - Unit tests: 16/16 passing in `packages/admin/src/pages/products/`.
+   - Verification: All package builds (`core`, `admin`, `vendor`, `storefront`, and `storefront-wholesale`) passed cleanly. Spec tracked in `docs/specs/SPEC-015-retail-wholesale-packs-offers.md`.
+
 
 ## Session — Medusa 2.22.3 upgrade (2026-11-04), branch `chore/medusa-2-22-3`
 

@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Button, Heading, Input, toast } from "@medusajs/ui"
+import { Button, Heading, Input, Select, toast } from "@medusajs/ui"
 import { useForm } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 import { z } from "zod"
@@ -53,14 +53,27 @@ export const CreateProductVariantForm = ({
       title: "",
       sku: "",
       options: defaultOptions,
+      variant_type: "retail",
+      bundle_size: 1,
+      pack_description: "Single pc",
+      mrp: "",
     },
-    resolver: zodResolver(CreateProductVariantSchema),
+    resolver: zodResolver(CreateProductVariantSchema) as any,
   })
 
   const { mutateAsync, isPending } = useCreateProductVariant(product.id)
+  const variantType = form.watch("variant_type")
 
   const handleSubmit = form.handleSubmit(async (data) => {
-    const { title, sku, options } = data
+    const {
+      title,
+      sku,
+      options,
+      variant_type,
+      bundle_size,
+      pack_description,
+      mrp,
+    } = data
 
     // Form keys variant fields by `handle ?? id`; backend keys options
     // by option title (= attribute name). Remap before submitting.
@@ -81,6 +94,12 @@ export const CreateProductVariantForm = ({
         options: Object.keys(cleanedOptions).length
           ? cleanedOptions
           : undefined,
+        metadata: {
+          variant_type,
+          bundle_size: Number(bundle_size) || 1,
+          pack_description: pack_description || "Single pc",
+          mrp: mrp ? Number(mrp) : undefined,
+        },
       },
       {
         onSuccess: () => {
@@ -147,6 +166,156 @@ export const CreateProductVariantForm = ({
                         <Input
                           {...field}
                           data-testid="create-variant-sku-input"
+                        />
+                      </Form.Control>
+                      <Form.ErrorMessage />
+                    </Form.Item>
+                  )
+                }}
+              />
+
+              <Form.Field
+                control={form.control}
+                name="variant_type"
+                render={({ field: { onChange, ref, ...field } }) => {
+                  return (
+                    <Form.Item>
+                      <Form.Label>
+                        {t(
+                          "products.variants.fields.channel.label",
+                          "Sales Channel / Type"
+                        )}
+                      </Form.Label>
+                      <Form.Control>
+                        <Select
+                          {...field}
+                          onValueChange={(val: "retail" | "wholesale") => {
+                            onChange(val)
+                            if (val === "wholesale") {
+                              const currentBundle = form.getValues("bundle_size")
+                              if (
+                                !currentBundle ||
+                                Number(currentBundle) === 1
+                              ) {
+                                form.setValue("bundle_size", 6)
+                              }
+                              const currentDesc =
+                                form.getValues("pack_description")
+                              if (currentDesc === "Single pc") {
+                                form.setValue("pack_description", "")
+                              }
+                            } else if (val === "retail") {
+                              const currentBundle = form.getValues("bundle_size")
+                              if (Number(currentBundle) === 6) {
+                                form.setValue("bundle_size", 1)
+                              }
+                              const currentDesc =
+                                form.getValues("pack_description")
+                              if (!currentDesc) {
+                                form.setValue("pack_description", "Single pc")
+                              }
+                            }
+                          }}
+                        >
+                          <Select.Trigger
+                            ref={ref}
+                            data-testid="create-variant-variant-type-trigger"
+                          >
+                            <Select.Value />
+                          </Select.Trigger>
+                          <Select.Content>
+                            <Select.Item value="retail">
+                              {t(
+                                "products.variants.fields.channel.retail",
+                                "Retail (Single)"
+                              )}
+                            </Select.Item>
+                            <Select.Item value="wholesale">
+                              {t(
+                                "products.variants.fields.channel.wholesale",
+                                "Wholesale (Pack)"
+                              )}
+                            </Select.Item>
+                          </Select.Content>
+                        </Select>
+                      </Form.Control>
+                      <Form.ErrorMessage />
+                    </Form.Item>
+                  )
+                }}
+              />
+
+              <Form.Field
+                control={form.control}
+                name="pack_description"
+                render={({ field }) => {
+                  return (
+                    <Form.Item>
+                      <Form.Label>
+                        {t(
+                          "products.variants.fields.packDescription",
+                          "Pack Description"
+                        )}
+                      </Form.Label>
+                      <Form.Control>
+                        <Input
+                          {...field}
+                          placeholder={
+                            variantType === "wholesale"
+                              ? "Sizes 28-32, Pack of 6 (1-2-2-1)"
+                              : "Single pc"
+                          }
+                          data-testid="create-variant-pack-description-input"
+                        />
+                      </Form.Control>
+                      <Form.ErrorMessage />
+                    </Form.Item>
+                  )
+                }}
+              />
+
+              <Form.Field
+                control={form.control}
+                name="bundle_size"
+                render={({ field }) => {
+                  return (
+                    <Form.Item>
+                      <Form.Label>
+                        {t(
+                          "products.variants.fields.bundleSize",
+                          "Bundle / Pack Size"
+                        )}
+                      </Form.Label>
+                      <Form.Control>
+                        <Input
+                          type="number"
+                          min={1}
+                          {...field}
+                          data-testid="create-variant-bundle-size-input"
+                        />
+                      </Form.Control>
+                      <Form.ErrorMessage />
+                    </Form.Item>
+                  )
+                }}
+              />
+
+              <Form.Field
+                control={form.control}
+                name="mrp"
+                render={({ field }) => {
+                  return (
+                    <Form.Item>
+                      <Form.Label optional>
+                        {t("products.variants.fields.mrp", "MRP")}
+                      </Form.Label>
+                      <Form.Control>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="any"
+                          {...field}
+                          data-testid="create-variant-mrp-input"
                         />
                       </Form.Control>
                       <Form.ErrorMessage />

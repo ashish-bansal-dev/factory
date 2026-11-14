@@ -5,7 +5,7 @@ import {
   useExtension,
 } from "@mercurjs/dashboard-shared";
 import { Button, toast } from "@medusajs/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 
@@ -25,6 +25,7 @@ import {
   CreateOfferFormValues,
   GRID_COLUMN_IDS,
   OfferVariantRow,
+  shouldIncludeVariantForChannel,
   variantRowHasPartialInput,
   variantRowHasPrice,
 } from "./schema";
@@ -115,6 +116,7 @@ export const CreateOfferForm = () => {
   const selectedProductIdsKey = selectedProductIds.join(",");
   const locationsKey = locationIds.join(",");
   const currenciesKey = currencies.join(",");
+  const channel = form.watch("channel") ?? "retail";
 
   // Fetch the selected products with their variants — the stock & prices
   // tab fans each product out to one row per variant (SPEC-009).
@@ -123,10 +125,13 @@ export const CreateOfferForm = () => {
       id: selectedProductIds,
       limit: selectedProductIds.length || 1,
       fields:
-        "id,title,thumbnail,variants.id,variants.title,variants.sku",
+        "id,title,thumbnail,variants.id,variants.title,variants.sku,variants.metadata",
     },
     { enabled: selectedProductIds.length > 0 },
   );
+
+  // Cache user-edited variant inputs across channel switches
+  const editedVariantsRef = useRef<Map<string, OfferVariantRow>>(new Map());
 
   // Hydrate `variants` from the selected products' variants. Keep
   // already-edited rows by indexing the prior array by variant_id.
@@ -147,21 +152,39 @@ export const CreateOfferForm = () => {
     }, {});
 
     const existing = form.getValues("variants") ?? [];
-    const existingByVariantId = new Map(
-      existing.map((row) => [row.variant_id, row]),
-    );
+    for (const row of existing) {
+      if (row.variant_id) {
+        editedVariantsRef.current.set(row.variant_id, row);
+      }
+    }
 
     const currentChannel = form.getValues("channel") ?? "retail";
     const next: OfferVariantRow[] = [];
     for (const product of fetchedProducts ?? []) {
       for (const variant of product.variants ?? []) {
-        const previous = existingByVariantId.get(variant.id);
+        if (!shouldIncludeVariantForChannel(variant, currentChannel)) {
+          continue;
+        }
+
+        const vMeta = (variant.metadata ?? {}) as Record<string, unknown>;
+        const vBundleSize = Number(
+          (variant as any).bundle_size ?? vMeta.bundle_size ?? 1,
+        );
+        const previous = editedVariantsRef.current.get(variant.id);
         if (previous) {
           // Merge in any newly-arrived currencies / locations the row
           // didn't know about (e.g. store data arrived after build).
           next.push({
             ...previous,
             condition_id: previous.condition_id || defaultConditionId,
+            bundle_size:
+              currentChannel === "wholesale"
+                ? previous.bundle_size && Number(previous.bundle_size) > 1
+                  ? previous.bundle_size
+                  : vBundleSize > 1
+                  ? vBundleSize
+                  : 6
+                : 1,
             prices: { ...emptyPrices, ...(previous.prices ?? {}) },
             inventory: { ...emptyInventory, ...(previous.inventory ?? {}) },
           });
@@ -177,8 +200,16 @@ export const CreateOfferForm = () => {
           sku: variant.sku ?? "",
           shipping_profile_id: "",
           condition_id: defaultConditionId,
-          bundle_size: currentChannel === "wholesale" ? 6 : 1,
-          mrp: "",
+          bundle_size:
+            currentChannel === "wholesale"
+              ? vBundleSize > 1
+                ? vBundleSize
+                : 6
+              : 1,
+          mrp:
+            vMeta.mrp !== undefined && vMeta.mrp !== null
+              ? String(vMeta.mrp)
+              : "",
           leadtime_to_ship: "",
           prices: { ...emptyPrices },
           region_prices: {},
@@ -191,6 +222,7 @@ export const CreateOfferForm = () => {
     const prev = form.getValues("variants") ?? [];
     if (JSON.stringify(prev) !== JSON.stringify(next)) {
       form.setValue("variants", next, { shouldDirty: false });
+      form.resetField("variants", { defaultValue: next });
     }
   }, [
     selectedProductIdsKey,
@@ -199,11 +231,22 @@ export const CreateOfferForm = () => {
     locationsKey,
     defaultConditionId,
     rowAdditionalDataDefaults,
+    channel,
     form,
   ]);
 
   const handleSubmit = form.handleSubmit(async (values) => {
-    const variants = values.variants ?? [];
+    const channel = values.channel ?? "retail";
+    if (channel === "wholesale" && seller?.type === "retailer") {
+      toast.error("Retailer accounts can only create retail offers.");
+      return;
+    }
+
+    const variants = (values.variants ?? []).filter(
+      (v) =>
+        Boolean(v && v.variant_id && v.product_id) &&
+        shouldIncludeVariantForChannel(v, channel),
+    );
 
     if (variants.length === 0) {
       return;
@@ -211,12 +254,6 @@ export const CreateOfferForm = () => {
 
     if (!currencies.length) {
       toast.error(t("offers.validation.noCurrencies"));
-      return;
-    }
-
-    const channel = values.channel ?? "retail";
-    if (channel === "wholesale" && seller?.type === "retailer") {
-      toast.error("Retailer accounts can only create retail offers.");
       return;
     }
 

@@ -28,6 +28,44 @@ export const normalizeProductFormValues = (
     })
   }
 
+  const activeVariants = values.variants.filter((variant) => variant.should_create)
+  const normalizedVariants = normalizeVariants(
+    activeVariants,
+    hasAxis,
+  )
+
+  const retailVariants: any[] = []
+  const wholesaleVariants: any[] = []
+
+  for (const v of normalizedVariants) {
+    if (v.variant_type === "wholesale") {
+      wholesaleVariants.push({
+        title: v.title,
+        sku: v.sku,
+        options: v.options,
+        variant_rank: v.variant_rank,
+        pack_description:
+          v.pack_description || v.pack_name || v.title || "Wholesale Pack",
+        bundle_size: v.bundle_size || 1,
+        mrp: v.mrp,
+        unit_msrp: v.mrp,
+        metadata: v.metadata,
+        ...withAdditionalData(v.additional_data),
+      })
+    } else {
+      retailVariants.push({
+        title: v.title,
+        sku: v.sku,
+        options: v.options,
+        variant_rank: v.variant_rank,
+        mrp: v.mrp,
+        unit_msrp: v.mrp,
+        metadata: v.metadata,
+        ...withAdditionalData(v.additional_data),
+      })
+    }
+  }
+
   return {
     is_giftcard: false,
     status: values.status,
@@ -60,10 +98,12 @@ export const normalizeProductFormValues = (
     height: values.height ? parseFloat(values.height) : undefined,
     weight: values.weight ? parseFloat(values.weight) : undefined,
     attributes: attributes.length ? attributes : undefined,
-    variants: normalizeVariants(
-      values.variants.filter((variant) => variant.should_create),
-      hasAxis,
-    ),
+    variants:
+      retailVariants.length || wholesaleVariants.length
+        ? undefined
+        : normalizedVariants,
+    retail_variants: retailVariants.length ? retailVariants : undefined,
+    wholesale_variants: wholesaleVariants.length ? wholesaleVariants : undefined,
     metadata: {
       ...((values as any).metadata || {}),
       listing_scope: (values as any).listing_scope || "store_only",
@@ -79,12 +119,52 @@ export const normalizeVariants = (
   return variants.map((variant) => {
     const opts = variant.options
     const hasOpts = opts && Object.keys(opts).length > 0
+    const isWholesale = variant.variant_type === "wholesale"
+
+    const bundleSize =
+      variant.bundle_size !== undefined && variant.bundle_size !== ""
+        ? Number(variant.bundle_size)
+        : 1
+
+    const mrp =
+      variant.mrp !== undefined && variant.mrp !== null && variant.mrp !== ""
+        ? Number(variant.mrp)
+        : undefined
+
+    const packDescription =
+      variant.pack_description?.trim() || variant.pack_name?.trim() || undefined
+
+    const title =
+      variant.title ||
+      (hasOpts
+        ? Object.values(opts).join(" / ")
+        : isWholesale && packDescription
+          ? packDescription
+          : "Default variant")
+
+    const metadata: Record<string, unknown> = {
+      variant_type: variant.variant_type || "retail",
+    }
+    if (mrp !== undefined) {
+      metadata.mrp = mrp
+    }
+    if (isWholesale) {
+      if (packDescription) {
+        metadata.pack_description = packDescription
+      }
+      metadata.bundle_size = bundleSize
+    }
 
     return {
-      title: variant.title || (hasOpts ? Object.values(opts).join(" / ") : "Default variant"),
+      title,
       options: hasOpts ? opts : hasAxis ? undefined : { "Default Option": "Default" },
       sku: variant.sku || undefined,
       variant_rank: variant.variant_rank,
+      variant_type: variant.variant_type || "retail",
+      pack_description: packDescription,
+      bundle_size: isWholesale ? bundleSize : 1,
+      mrp,
+      metadata,
       ...withAdditionalData(variant.additional_data),
     }
   })
@@ -175,6 +255,13 @@ export const decorateVariantsWithDefaultValues = (
     ...variant,
     title: variant.title || "",
     sku: variant.sku || "",
+    variant_type: variant.variant_type || "retail",
+    bundle_size:
+      variant.bundle_size !== undefined && variant.bundle_size !== ""
+        ? variant.bundle_size
+        : 1,
+    pack_description: variant.pack_description || variant.pack_name || "",
+    mrp: variant.mrp ?? "",
   }))
 }
 
@@ -223,6 +310,8 @@ export const generateVariantsFromAttributes = (
         variant_rank: 0,
         options: {},
         is_default: true,
+        variant_type: "retail",
+        bundle_size: 1,
       },
     ])
   }
@@ -259,6 +348,8 @@ export const generateVariantsFromAttributes = (
         options: perm,
         should_create: true,
         variant_rank: newVariants.length,
+        variant_type: "retail",
+        bundle_size: 1,
       })
     }
   }

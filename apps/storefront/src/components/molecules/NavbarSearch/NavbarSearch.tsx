@@ -31,7 +31,7 @@ interface Props {
 export const NavbarSearch = ({ className, sellerId, sellerName }: Props) => {
   return (
     <div className={clsx("relative w-full", className)}>
-      <InstantSearch searchClient={searchClient} indexName={PRODUCT_INDEX_NAME}>
+      <InstantSearch searchClient={searchClient as any} indexName={PRODUCT_INDEX_NAME}>
         {sellerId && (
           <Configure facetFilters={[`seller_ids:${sellerId}`]} />
         )}

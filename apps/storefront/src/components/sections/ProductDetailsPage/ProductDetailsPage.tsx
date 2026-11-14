@@ -6,6 +6,7 @@ import { listOffers } from "@/lib/data/offers"
 import { retrieveCustomer } from "@/lib/data/customer"
 import { StoreOffer } from "@/lib/helpers/buybox"
 import { HomeProductSection } from "../HomeProductSection/HomeProductSection"
+import { filterRetailProduct } from "@/lib/helpers/variant-filter"
 import NotFound from "@/app/not-found"
 
 import { Product } from "@/types/product"
@@ -37,15 +38,17 @@ export const ProductDetailsPage = async ({
     userPromise,
   ])
 
+  const retailProd = filterRetailProduct(prod)
+
   return (
     <>
       <div className="flex flex-col md:flex-row lg:gap-12" data-testid="product-details-page">
         <div className="md:w-1/2 md:px-2" data-testid="product-gallery-container">
-          <ProductGallery images={prod?.images || []} />
+          <ProductGallery images={retailProd?.images || []} />
         </div>
         <div className="md:w-1/2 md:px-2" data-testid="product-details-container">
           <ProductDetails
-            product={prod}
+            product={retailProd}
             locale={locale}
             offers={offers as StoreOffer[]}
             user={user}

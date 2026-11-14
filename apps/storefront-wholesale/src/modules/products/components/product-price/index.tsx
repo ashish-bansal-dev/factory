@@ -1,6 +1,17 @@
 import { clx } from "@medusajs/ui"
 
 import { getProductPrice } from "@lib/util/get-product-price"
+import {
+  calculateBundleSize,
+  calculatePackMsrp,
+  calculateRetailMargin,
+  formatPackBreakdown,
+  getPackDescription,
+  getUnitMrp,
+  isWholesaleVariant,
+  parsePackBreakdown,
+} from "@lib/util/pack"
+import { convertToLocale } from "@lib/util/money"
 import { HttpTypes } from "@medusajs/types"
 
 export default function ProductPrice({
@@ -21,7 +32,7 @@ export default function ProductPrice({
 
   if (!selectedPrice) {
     return (
-      <div className="flex flex-col text-ui-fg-muted">
+      <div className="flex flex-col text-ui-fg-muted font-sans">
         <span className="text-base font-medium" data-testid="product-price">
           Price unavailable
         </span>
@@ -29,25 +40,36 @@ export default function ProductPrice({
     )
   }
 
-  const bundleSize = (selectedPrice as any).bundle_size ?? 1
-  const mrp = (selectedPrice as any).mrp as string | null
-  const mrpNumber = (selectedPrice as any).mrp_number as number | null
-  const unitPriceNumber = selectedPrice.calculated_price_number
-  const packPrice = (selectedPrice as any).pack_price as string | null
+  const wholesaleVariants = (product.variants || []).filter(isWholesaleVariant)
+  const targetVariant =
+    variant ||
+    (wholesaleVariants.length > 0
+      ? wholesaleVariants[0]
+      : product.variants && product.variants[0])
 
-  const hasMrpSavings =
-    mrpNumber != null && unitPriceNumber != null && mrpNumber > unitPriceNumber
-  const marginPercent =
-    hasMrpSavings && mrpNumber > 0
-      ? Math.round(((mrpNumber - unitPriceNumber) / mrpNumber) * 100)
-      : 0
+  const breakdown = parsePackBreakdown(
+    (targetVariant as any)?.metadata?.pack_breakdown ||
+      (targetVariant as any)?.pack_breakdown
+  )
+  const packDescription = getPackDescription(targetVariant)
+  const formattedBreakdown = formatPackBreakdown(breakdown)
+  const bundleSize = calculateBundleSize(targetVariant, breakdown)
+
+  const currency = selectedPrice.currency_code || "INR"
+  const unitPriceNumber = selectedPrice.calculated_price_number || 0
+  const packPriceNumber =
+    (selectedPrice as any).pack_price_number ?? unitPriceNumber * bundleSize
+
+  const unitMsrpNumber = getUnitMrp(targetVariant)
+  const packMsrpNumber = calculatePackMsrp(targetVariant, bundleSize)
+  const marginPercent = calculateRetailMargin(packMsrpNumber, packPriceNumber)
 
   return (
-    <div className="flex flex-col text-ui-fg-base gap-y-1">
-      <div className="flex items-baseline gap-x-2">
+    <div className="flex flex-col text-charcoal-900 gap-y-1.5 font-sans">
+      <div className="flex items-baseline gap-x-2 flex-wrap">
         <span
-          className={clx("text-2xl font-bold", {
-            "text-ui-fg-interactive": selectedPrice.price_type === "sale",
+          className={clx("text-2xl sm:text-3xl font-bold tracking-tight", {
+            "text-terracotta-600": selectedPrice.price_type === "sale",
           })}
         >
           {!variant && "From "}
@@ -57,55 +79,71 @@ export default function ProductPrice({
           >
             {selectedPrice.calculated_price}
           </span>
-          <span className="text-xs font-normal text-ui-fg-muted ml-1">/ unit</span>
+          <span className="text-xs font-normal text-stone-500 ml-1">/ unit</span>
         </span>
+
         {bundleSize > 1 && (
-          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-100 text-purple-800 border border-purple-200">
-            Pack of {bundleSize}
+          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-sand-200/80 text-charcoal-900 border border-sand-300">
+            Pack of {bundleSize} pcs
+          </span>
+        )}
+
+        {marginPercent > 0 && (
+          <span className="text-xs font-bold text-forest-700 bg-forest-50 border border-forest-700/20 px-2 py-0.5 rounded-full">
+            {marginPercent}% Retail Margin
           </span>
         )}
       </div>
 
-      {bundleSize > 1 && packPrice && (
-        <div className="text-sm font-medium text-ui-fg-subtle">
-          Pack Price ({bundleSize} units): <span className="font-semibold text-ui-fg-base">{packPrice}</span>
-        </div>
-      )}
-
-      {mrp && (
-        <div className="flex items-center gap-x-2 text-xs">
-          <span className="text-ui-fg-muted">MRP:</span>
-          <span className="line-through text-ui-fg-muted font-medium">{mrp}</span>
-          {marginPercent > 0 && (
-            <span className="text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-              {marginPercent}% Margin
+      {/* Pack Breakdown & Specifications */}
+      {(packDescription || formattedBreakdown) && (
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          {packDescription && (
+            <span className="font-semibold text-charcoal-900">{packDescription}</span>
+          )}
+          {formattedBreakdown && (
+            <span className="inline-flex items-center text-[11px] font-semibold text-terracotta-800 bg-terracotta-50/80 border border-terracotta-200 px-2 py-0.5 rounded-full">
+              {formattedBreakdown}
             </span>
           )}
         </div>
       )}
 
-      {selectedPrice.price_type === "sale" && (
-        <div className="flex items-center gap-x-2 text-xs">
-          <span className="text-ui-fg-subtle">Original: </span>
-          <span
-            className="line-through"
-            data-testid="original-product-price"
-            data-value={selectedPrice.original_price_number}
-          >
-            {selectedPrice.original_price}
+      {/* Pack Price vs Pack MSRP */}
+      {bundleSize > 1 && (
+        <div className="text-xs font-medium text-stone-600 flex items-center gap-2 flex-wrap">
+          <span>
+            Pack Price:{" "}
+            <strong className="font-bold text-charcoal-900">
+              {convertToLocale({
+                amount: packPriceNumber,
+                currency_code: currency,
+              })}
+            </strong>
           </span>
-          <span className="text-ui-fg-interactive font-medium">
-            -{selectedPrice.percentage_diff}%
-          </span>
+
+          {packMsrpNumber && (
+            <>
+              <span className="text-stone-300">•</span>
+              <span>
+                Pack MSRP:{" "}
+                <span className="line-through text-stone-500">
+                  {convertToLocale({
+                    amount: packMsrpNumber,
+                    currency_code: currency,
+                  })}
+                </span>
+              </span>
+            </>
+          )}
         </div>
       )}
 
       {!isTenant && (
-        <span className="text-xs text-ui-fg-muted font-normal mt-0.5">
-          Indicative Wholesale (Contact for volume tiering)
+        <span className="text-[11px] text-stone-500 font-normal mt-0.5">
+          Wholesale Trade Pricing • Volume breaks available in grid below
         </span>
       )}
     </div>
   )
 }
-

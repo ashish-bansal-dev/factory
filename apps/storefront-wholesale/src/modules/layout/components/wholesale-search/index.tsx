@@ -29,7 +29,7 @@ export default function WholesaleNavbarSearch({
 }: WholesaleNavbarSearchProps) {
   return (
     <div className="relative w-full">
-      <InstantSearch searchClient={searchClient} indexName={PRODUCT_INDEX_NAME}>
+      <InstantSearch searchClient={searchClient as any} indexName={PRODUCT_INDEX_NAME}>
         {sellerId && (
           <Configure facetFilters={[`seller_ids:${sellerId}`]} />
         )}

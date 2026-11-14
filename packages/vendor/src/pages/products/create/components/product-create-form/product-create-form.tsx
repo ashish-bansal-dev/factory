@@ -101,7 +101,7 @@ export const ProductCreateForm = ({
         variantAdditionalData.defaults
       ),
     } as ProductCreateSchemaType,
-    resolver: zodResolver(resolverSchema),
+    resolver: zodResolver(resolverSchema) as any,
   })
 
   const { mutateAsync, isPending } = useCreateProduct()

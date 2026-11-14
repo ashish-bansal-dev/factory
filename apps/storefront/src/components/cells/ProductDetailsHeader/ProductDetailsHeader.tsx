@@ -21,6 +21,7 @@ import { SellerDTO } from "@mercurjs/types"
 import { toast } from "@/lib/helpers/toast"
 import { useCartContext } from "@/components/providers"
 import { useCartDrawer } from "@/components/providers/Cart/drawer"
+import { filterRetailProduct, getVariantMrp } from "@/lib/helpers/variant-filter"
 import { MinusThinIcon, PlusIcon } from "@/icons"
 
 const optionsAsKeymap = (
@@ -58,8 +59,10 @@ export const ProductDetailsHeader = ({
   const [isCompareOpen, setIsCompareOpen] = useState(false)
   const [quantity, setQuantity] = useState(1)
 
+  const retailProduct = filterRetailProduct(product)
+
   const { cheapestVariant, cheapestPrice } = getProductPrice({
-    product,
+    product: retailProduct,
   })
 
   const hasAnyPrice = cheapestPrice !== null && cheapestVariant !== null
@@ -71,17 +74,18 @@ export const ProductDetailsHeader = ({
       }
     : allSearchParams
 
-  const variantId =
-    product.variants?.find(({ options }: { options?: HttpTypes.StoreProductOptionValue[] | null }) =>
-      options?.every((option: HttpTypes.StoreProductOptionValue) =>
-        selectedVariant[option.option?.title?.toLowerCase() || ""]?.includes(
-          option.value || ""
-        )
+  const currentVariant = retailProduct.variants?.find(({ options }: { options?: HttpTypes.StoreProductOptionValue[] | null }) =>
+    options?.every((option: HttpTypes.StoreProductOptionValue) =>
+      selectedVariant[option.option?.title?.toLowerCase() || ""]?.includes(
+        option.value || ""
       )
-    )?.id || ""
+    )
+  )
+
+  const variantId = currentVariant?.id || ""
 
   const { variantPrice } = getProductPrice({
-    product,
+    product: retailProduct,
     variantId,
   })
 
@@ -104,10 +108,16 @@ export const ProductDetailsHeader = ({
     ? convertToLocale({ amount: offerAmount as number, currency_code: offerCurrency })
     : variantPrice?.calculated_price
 
-  const offerMrp = winnerOffer?.mrp != null ? Number(winnerOffer.mrp) : null
-  const hasSavings = offerMrp !== null && offerAmount !== null && offerMrp > offerAmount
-  const savingsAmount = hasSavings ? offerMrp - offerAmount : 0
-  const savingsPercent = hasSavings && offerMrp > 0 ? Math.round((savingsAmount / offerMrp) * 100) : 0
+  const variantMrp = getVariantMrp(currentVariant)
+  const singleItemMrp =
+    winnerOffer?.mrp != null ? Number(winnerOffer.mrp) : variantMrp
+  const hasSavings =
+    singleItemMrp !== null && offerAmount !== null && singleItemMrp > offerAmount
+  const savingsAmount = hasSavings ? singleItemMrp - (offerAmount as number) : 0
+  const savingsPercent =
+    hasSavings && singleItemMrp > 0
+      ? Math.round((savingsAmount / singleItemMrp) * 100)
+      : 0
 
   const quantityInCart =
     cart?.items?.find((item) => item.metadata?.offer_id === winnerOffer?.id)
@@ -141,7 +151,7 @@ export const ProductDetailsHeader = ({
       tax_total: (total - subtotal) * selectedQuantity,
       variant_id: variantId,
       product_id: product.id,
-      variant: product.variants?.find(({ id }) => id === variantId),
+      variant: retailProduct.variants?.find(({ id }) => id === variantId),
       metadata: { offer_id: winnerOffer.id },
     }
 
@@ -175,12 +185,12 @@ export const ProductDetailsHeader = ({
                   <span className="heading-md text-primary" data-testid="product-price-current">
                     {displayPrice}
                   </span>
-                  {hasSavings && (
+                  {singleItemMrp !== null && (
                     <span
                       className="text-sm text-secondary line-through"
                       data-testid="product-price-mrp"
                     >
-                      {convertToLocale({ amount: offerMrp, currency_code: offerCurrency })}
+                      {convertToLocale({ amount: singleItemMrp, currency_code: offerCurrency })}
                     </span>
                   )}
                 </div>
@@ -196,9 +206,49 @@ export const ProductDetailsHeader = ({
                 )}
               </div>
             ) : hasAnyPrice && variantPrice ? (
-              <span className="heading-md text-primary" data-testid="product-price-current">
-                {variantPrice.calculated_price}
-              </span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-baseline gap-2">
+                  <span className="heading-md text-primary" data-testid="product-price-current">
+                    {variantPrice.calculated_price}
+                  </span>
+                  {variantMrp !== null && (
+                    <span
+                      className="text-sm text-secondary line-through"
+                      data-testid="product-price-mrp"
+                    >
+                      {convertToLocale({
+                        amount: variantMrp,
+                        currency_code: variantPrice.currency_code,
+                      })}
+                    </span>
+                  )}
+                </div>
+                {variantMrp !== null &&
+                  variantPrice.calculated_price_number !== undefined &&
+                  variantMrp > variantPrice.calculated_price_number && (
+                    <span
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded w-fit"
+                      data-testid="product-price-savings"
+                    >
+                      <span>
+                        {Math.round(
+                          ((variantMrp - variantPrice.calculated_price_number) /
+                            variantMrp) *
+                            100
+                        )}
+                        % OFF
+                      </span>
+                      <span className="text-emerald-500 font-normal">·</span>
+                      <span>
+                        Save{" "}
+                        {convertToLocale({
+                          amount: variantMrp - variantPrice.calculated_price_number,
+                          currency_code: variantPrice.currency_code,
+                        })}
+                      </span>
+                    </span>
+                  )}
+              </div>
             ) : (
               <span className="label-md text-secondary pt-2 pb-4" data-testid="product-price-unavailable">
                 Not available in your region
@@ -208,7 +258,7 @@ export const ProductDetailsHeader = ({
         </div>
       </div>
       {hasAnyPrice && (
-        <ProductVariants product={product} selectedVariant={selectedVariant} />
+        <ProductVariants product={retailProduct} selectedVariant={selectedVariant} />
       )}
       <div className="mb-4 flex gap-2">
         <div
