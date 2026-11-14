@@ -14,6 +14,7 @@ import {
   enrichProductAttributes,
   listProducts,
   wrapProductVariantsWithOffers,
+  transformProductVariants,
 } from "../../utils"
 import {
   enrichProductChangeRequests,
@@ -72,6 +73,7 @@ export const POST = async (
   const sellerId = req.seller_context!.seller_id
 
   const { additional_data, ...payload } = req.validatedBody
+  transformProductVariants(payload as any)
 
   const listingScope = (payload.metadata as Record<string, any>)?.listing_scope ?? "store_only"
   const defaultStatus = listingScope === "store_only" ? ProductStatus.PUBLISHED : ProductStatus.PROPOSED

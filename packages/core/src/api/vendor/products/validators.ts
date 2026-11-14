@@ -13,6 +13,10 @@ import {
 import { AdditionalData, OperatorMap } from "@medusajs/framework/types"
 import { FeatureFlag, isPresent } from "@medusajs/framework/utils"
 import { sanitizeNullableRichText } from "../../../utils/sanitize-rich-text"
+import {
+  CreateRetailVariant,
+  CreateWholesaleVariant,
+} from "../../admin/products/validators"
 
 const statusEnum = z.nativeEnum(ProductStatus)
 
@@ -176,6 +180,8 @@ const CreateProduct = z
         })
       )
       .optional(),
+    retail_variants: z.array(CreateRetailVariant).optional(),
+    wholesale_variants: z.array(CreateWholesaleVariant).optional(),
     weight: z.number().optional(),
     length: z.number().optional(),
     height: z.number().optional(),

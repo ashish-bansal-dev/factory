@@ -198,6 +198,21 @@ describe("Product Variants: Retail and Wholesale Schemas & Transformation", () =
       expect(result.variants![0].title).toBe("Black / L")
       expect(result.variants![1].title).toBe("Solid Pack 6xL")
     })
+
+    it("preserves undefined options on wholesale variants without injecting empty objects", () => {
+      const input = {
+        title: "Sneakers",
+        retail_variants: [
+          { options: { Size: "42" }, sku: "SNK-42" },
+        ],
+        wholesale_variants: [
+          { pack_description: "Pack of 6", bundle_size: 6, sku: "SNK-WS-6PK" },
+        ],
+      }
+      const result = transformProductVariants(input)
+      expect(result.variants![0].options).toEqual({ Size: "42" })
+      expect(result.variants![1].options).toBeUndefined()
+    })
   })
 
   describe("categorizeProductVariants and categorizeProductsVariants", () => {

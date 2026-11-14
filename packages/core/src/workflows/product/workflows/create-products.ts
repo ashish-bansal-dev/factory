@@ -183,19 +183,36 @@ export const createProductsWorkflow: ReturnWorkflow<
       ({ input, createdProducts, hasAxisByIndex }) =>
         input.products.flatMap((p, idx) => {
           const product_id = createdProducts[idx]?.id as string
-          const formOptions = (v: unknown) =>
-            (v as { options?: Record<string, string> }).options ?? {}
+          const hasAxis = hasAxisByIndex[idx]
           return (p.variants ?? []).map((v) => {
             const { additional_data: _additional_data, ...variant } =
               v as typeof v & { additional_data?: Record<string, unknown> }
-            return {
+            const rawOpts = (v as { options?: Record<string, string> }).options
+            const hasRawOpts =
+              rawOpts &&
+              typeof rawOpts === "object" &&
+              Object.keys(rawOpts).length > 0
+
+            const variantPayload: any = {
               manage_inventory: false,
               ...variant,
               product_id,
-              options: hasAxisByIndex[idx]
-                ? formOptions(v)
-                : { __default__: "__default__", ...formOptions(v) },
             }
+
+            if (hasAxis) {
+              if (hasRawOpts) {
+                variantPayload.options = rawOpts
+              } else {
+                delete variantPayload.options
+              }
+            } else {
+              variantPayload.options = {
+                __default__: "__default__",
+                ...(hasRawOpts ? rawOpts : {}),
+              }
+            }
+
+            return variantPayload
           })
         }),
     )
