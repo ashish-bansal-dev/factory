@@ -1,4 +1,4 @@
-import { ExtractedProduct } from "./types"
+import { ConversationMessage, ExtractedProduct } from "./types"
 
 export interface ConversationContext {
   isAdmin: boolean
@@ -8,6 +8,7 @@ export interface ConversationContext {
   availableSellers?: Array<{ id: string; name: string; handle: string }>
   hasDraft: boolean
   draftProduct?: ExtractedProduct
+  conversationHistory?: ConversationMessage[]
 }
 
 export interface AssistantResponse {
@@ -44,27 +45,44 @@ export class DraftEditorService {
   }
 
   /**
-   * General conversation and intent processor powered by Gemma 4 31B.
+   * General conversation and intent processor powered by Gemini/Gemma.
    */
   async processConversation(
     context: ConversationContext,
     userMessage: string
   ): Promise<AssistantResponse> {
+    const categoriesDisplay =
+      context.draftProduct?.category_names?.length
+        ? context.draftProduct.category_names.join(", ")
+        : context.draftProduct?.category_name || "General"
+
     const draftTextDossier =
       context.hasDraft && context.draftProduct
         ? `- Active Product Dossier (Step 2 Text Session - Extracted from Image in Step 1):
+  * Article Number: "${context.draftProduct.article_number || context.draftProduct.title}"
   * Title: "${context.draftProduct.title}"
   * Subtitle: "${context.draftProduct.subtitle || "N/A"}"
   * Visual & Detailed Description: "${context.draftProduct.description}"
   * Brand: "${context.draftProduct.brand || "Unbranded / Generic"}"
-  * Category: "${context.draftProduct.category_name || "General"}"
-  * Sizes: "${context.draftProduct.sizes?.join(", ") || "None / One Size"}"
+  * Categories (Multi-select): "${categoriesDisplay}"
+  * Sizes: "${context.draftProduct.sizes?.join(", ") || "None / Free Size"}"
   * Colors: "${context.draftProduct.colors?.join(", ") || "None"}"
   * Material/Fabric: "${context.draftProduct.material || "Unspecified"}"
-  * Current Price: ${context.draftProduct.suggested_price != null ? `₹${context.draftProduct.suggested_price}` : "Not set"} (INR)
-  * Variants: ${context.draftProduct.variants?.map((v) => `${v.title}: ₹${v.price}`).join(", ") || "Default"}
-Note: The image was processed in Step 1. Use the above visual and product description as your authoritative text reference for answering any user questions about the product's appearance, fabric, or features.`
+  * MRP (Max Retail Price): ${context.draftProduct.mrp != null ? `₹${context.draftProduct.mrp}` : "Not set"} (INR)
+  * Retail Selling Price: ${context.draftProduct.suggested_price != null ? `₹${context.draftProduct.suggested_price}` : "Not set"} (INR)
+  * Wholesale Unit Price: ${context.draftProduct.wholesale_price != null ? `₹${context.draftProduct.wholesale_price}` : "Not set"} (INR)
+  * Variants (Retail + Wholesale): ${
+    context.draftProduct.variants?.map((v) => `${v.title}: ₹${v.price}`).join(", ") || "Auto-generated"
+  }
+Note: The image was processed in Step 1. Retain all visual and product details in context for answering any user queries.`
         : "- Active Product Draft: None"
+
+    const historySection =
+      context.conversationHistory && context.conversationHistory.length > 0
+        ? `\nPrior Multi-Turn Conversation History (Context kept until published):\n${context.conversationHistory
+            .map((m) => `[${m.role.toUpperCase()}]: ${m.content}`)
+            .join("\n")}\n`
+        : ""
 
     const prompt = `You are the AI WhatsApp Commerce Assistant **Carbon** for FactoryTribe marketplace.
 You communicate warmly, concisely, and professionally via WhatsApp. Format text with standard WhatsApp conventions (*bold*, bullet points, emojis). All pricing must be in INR (₹).
@@ -74,7 +92,7 @@ Current User Context:
 - Active Vendor Context: ${context.sellerName ? `${context.sellerName} (ID: ${context.sellerId})` : context.isAdmin ? "Marketplace Admin (Global)" : "Own store"}
 ${draftTextDossier}
 - Registered Vendors: ${context.availableSellers?.length ? JSON.stringify(context.availableSellers) : "None"}
-
+${historySection}
 User Message:
 "${userMessage}"
 
@@ -86,14 +104,14 @@ Determine the user's intent and output a strict JSON object with:
    - "SWITCH_VENDOR": Admin wants to switch active vendor context to upload/manage on their behalf.
    - "CLEAR_VENDOR": Admin wants to clear active vendor context and return to general admin.
    - "ASSIGN_SELLER": Admin wants to assign or change the vendor of the current in-progress product draft.
-   - "UPDATE_DRAFT": User wants to change price (in INR ₹), title, description, or attributes of the active product draft.
+   - "UPDATE_DRAFT": User wants to change price (retail or wholesale), MRP, title, article number, categories, description, or attributes of the active product draft.
    - "PUBLISH_DRAFT": User wants to publish/confirm the active product draft (e.g. "yes", "publish it", "looks good").
    - "CANCEL_DRAFT": User wants to discard/cancel the active draft.
    - "HELP": User asks for help, menu, commands, or instructions.
 
 2. "sellerQuery": If the action is SWITCH_VENDOR or ASSIGN_SELLER, extract the target seller's name, handle, or ID. Otherwise null.
 
-3. "updatedProduct": If UPDATE_DRAFT or ASSIGN_SELLER, return the product object with all requested edits applied (ensure suggested_price is in INR and a valid number or null, currency_code: "inr"). If no product edits, return the current product. Otherwise null.
+3. "updatedProduct": If UPDATE_DRAFT or ASSIGN_SELLER, return the product object with all requested edits applied (ensure suggested_price, mrp, and wholesale_price are numbers in INR or null, currency_code: "inr", category_names is string[]). If no product edits, return the current product. Otherwise null.
 
 4. "replyMessage": A helpful, friendly 1-3 sentence WhatsApp response directly answering the user or confirming what was done.
 
@@ -102,12 +120,19 @@ Output ONLY valid JSON matching this schema:
   "action": "CHAT" | "LIST_PRODUCTS" | "LIST_SELLERS" | "SWITCH_VENDOR" | "CLEAR_VENDOR" | "ASSIGN_SELLER" | "UPDATE_DRAFT" | "PUBLISH_DRAFT" | "CANCEL_DRAFT" | "HELP",
   "sellerQuery": string or null,
   "updatedProduct": {
+    "article_number": string or null,
     "title": string,
     "subtitle": string,
     "description": string,
     "category_name": string,
+    "category_names": string[],
+    "brand": string,
     "material": string,
+    "sizes": string[],
+    "colors": string[],
+    "mrp": number | null,
     "suggested_price": number | null,
+    "wholesale_price": number | null,
     "currency_code": "inr",
     "options": [ { "title": string, "values": string[] } ],
     "variants": [ { "title": string, "price": number } ]
@@ -184,7 +209,8 @@ Output ONLY valid JSON matching this schema:
     currentProduct: ExtractedProduct,
     userMessage: string,
     isAdmin?: boolean,
-    availableSellers?: Array<{ id: string; name: string; handle: string }>
+    availableSellers?: Array<{ id: string; name: string; handle: string }>,
+    conversationHistory?: ConversationMessage[]
   ): Promise<DraftEditResult> {
     const res = await this.processConversation(
       {
@@ -192,6 +218,7 @@ Output ONLY valid JSON matching this schema:
         hasDraft: true,
         draftProduct: currentProduct,
         availableSellers,
+        conversationHistory,
       },
       userMessage
     )
@@ -330,9 +357,43 @@ Output ONLY valid JSON matching this schema:
         }
       }
 
-      // Price update
+      // MRP update
+      const mrpMatch = text.match(/^(?:MRP|MAX RETAIL PRICE)\s*[₹$]?([0-9]+(?:\.[0-9]{1,2})?)/i)
+      if (mrpMatch) {
+        const num = parseFloat(mrpMatch[1])
+        if (!isNaN(num) && num > 0) {
+          const updated = {
+            ...context.draftProduct,
+            mrp: num,
+          }
+          return {
+            action: "UPDATE_DRAFT",
+            updatedProduct: updated,
+            replyMessage: `Updated MRP to ₹${num}. Reply YES to publish!`,
+          }
+        }
+      }
+
+      // Wholesale price update
+      const wholesaleMatch = text.match(/^(?:WHOLESALE|WS|WHOLESALE PRICE|PACK PRICE)\s*[₹$]?([0-9]+(?:\.[0-9]{1,2})?)/i)
+      if (wholesaleMatch) {
+        const num = parseFloat(wholesaleMatch[1])
+        if (!isNaN(num) && num > 0) {
+          const updated = {
+            ...context.draftProduct,
+            wholesale_price: num,
+          }
+          return {
+            action: "UPDATE_DRAFT",
+            updatedProduct: updated,
+            replyMessage: `Updated wholesale unit price to ₹${num}. Reply YES to publish!`,
+          }
+        }
+      }
+
+      // Retail Price update
       const priceMatch =
-        text.match(/(?:PRICE|COST|FOR)\s*[₹$]?([0-9]+(?:\.[0-9]{1,2})?)/i) ||
+        text.match(/^(?:RETAIL|PRICE|COST|FOR)\s*[₹$]?([0-9]+(?:\.[0-9]{1,2})?)/i) ||
         text.match(/^[₹$]?([0-9]+(?:\.[0-9]{1,2})?)$/)
       if (priceMatch) {
         const num = parseFloat(priceMatch[1])
@@ -349,20 +410,24 @@ Output ONLY valid JSON matching this schema:
           return {
             action: "UPDATE_DRAFT",
             updatedProduct: updated,
-            replyMessage: `Updated price to ₹${num}. Reply YES to publish!`,
+            replyMessage: `Updated retail price to ₹${num}. Reply YES to publish!`,
           }
         }
       }
 
-      // Title update
-      const titleMatch = text.match(/^(?:TITLE|RENAME TO|SET TITLE TO)\s*(.+)/i)
+      // Title or Article Number update
+      const titleMatch = text.match(/^(?:TITLE|ART|ARTICLE|ARTICLE NO|RENAME TO|SET TITLE TO)\s*(.+)/i)
       if (titleMatch) {
         const newTitle = titleMatch[1].trim()
-        const updated = { ...context.draftProduct, title: newTitle }
+        const updated = {
+          ...context.draftProduct,
+          title: newTitle,
+          article_number: newTitle,
+        }
         return {
           action: "UPDATE_DRAFT",
           updatedProduct: updated,
-          replyMessage: `Updated title to "${newTitle}". Reply YES to publish!`,
+          replyMessage: `Updated article title to "${newTitle}". Reply YES to publish!`,
         }
       }
 
@@ -378,15 +443,23 @@ Output ONLY valid JSON matching this schema:
         }
       }
 
-      // Category update
-      const catMatch = text.match(/^(?:CATEGORY|SET CATEGORY TO)\s*(.+)/i)
+      // Category update (multi-select support)
+      const catMatch = text.match(/^(?:CATEGOR(?:Y|IES)|SET CATEGOR(?:Y|IES) TO)\s*(.+)/i)
       if (catMatch) {
-        const newCat = catMatch[1].trim()
-        const updated = { ...context.draftProduct, category_name: newCat }
+        const rawCats = catMatch[1].trim()
+        const categories = rawCats
+          .split(/[,&]+/)
+          .map((c) => c.trim())
+          .filter(Boolean)
+        const updated = {
+          ...context.draftProduct,
+          category_name: categories[0] || rawCats,
+          category_names: categories.length > 0 ? categories : [rawCats],
+        }
         return {
           action: "UPDATE_DRAFT",
           updatedProduct: updated,
-          replyMessage: `Updated category to "${newCat}". Reply YES to publish!`,
+          replyMessage: `Updated categories to: ${categories.join(", ")}. Reply YES to publish!`,
         }
       }
 

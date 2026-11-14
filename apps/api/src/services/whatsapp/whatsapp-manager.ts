@@ -276,7 +276,7 @@ export class WhatsAppManager {
   }
 
   /**
-   * Text message handler for commands, state updates, and queries.
+   * Text message handler for commands, state updates, accompanying notes, and queries.
    */
   private async handleTextMessage(
     toPhone: string,
@@ -287,6 +287,34 @@ export class WhatsAppManager {
     currentSellerName?: string
   ): Promise<void> {
     const textUpper = rawText.toUpperCase()
+
+    // 5. Additional message sent with images: include in product data extraction pipeline!
+    // If the session is currently collecting images in a batch (within the 4-second window),
+    // buffer the accompanying text message and reset debounce timer.
+    const activeSession = activeSessions.get(cleanPhone)
+    if (activeSession && activeSession.step === "COLLECTING_IMAGES" && activeSession.pendingImages.length > 0) {
+      activeSession.pendingTexts.push(rawText.trim())
+      activeSession.lastUpdated = Date.now()
+
+      if (activeSession.debounceTimer) clearTimeout(activeSession.debounceTimer)
+      activeSession.debounceTimer = setTimeout(async () => {
+        try {
+          await this.finalizeImageCollection(
+            cleanPhone,
+            toPhone,
+            isAdmin,
+            (activeSession as any).targetSellerId || currentSellerId,
+            (activeSession as any).targetSellerName || currentSellerName
+          )
+        } catch (err: any) {
+          console.error("[WhatsAppManager] Debounce processing failed:", err)
+          await this.client.sendMessage(toPhone, `⚠️ Failed to process product images: ${err.message}`)
+        }
+      }, 4000)
+
+      console.log(`[WhatsAppManager] Added accompanying message to pending image batch for ${cleanPhone}: "${rawText}"`)
+      return
+    }
 
     // Command: HELP
     if (textUpper === "HELP" || textUpper === "MENU") {
@@ -351,20 +379,7 @@ export class WhatsAppManager {
     // Check ongoing Draft session
     const session = activeSessions.get(cleanPhone)
     if (!session || !session.draft) {
-      // Check if user replied "DONE" while images are being buffered
-      if (session && session.step === "COLLECTING_IMAGES" && textUpper === "DONE") {
-        if (session.debounceTimer) clearTimeout(session.debounceTimer)
-        await this.finalizeImageCollection(
-          cleanPhone,
-          toPhone,
-          isAdmin,
-          (session as any).targetSellerId || currentSellerId,
-          (session as any).targetSellerName || currentSellerName
-        )
-        return
-      }
-
-      // General conversation and handling with Gemma 4 31B
+      // General conversation and handling with AI
       try {
         const assistantRes = await this.draftEditor.processConversation(
           {
@@ -373,6 +388,7 @@ export class WhatsAppManager {
             sellerName: currentSellerName,
             availableSellers,
             hasDraft: false,
+            conversationHistory: session?.conversationHistory || [],
           },
           rawText
         )
@@ -406,7 +422,6 @@ export class WhatsAppManager {
           return
         }
 
-        // Send friendly conversational response from Gemma 4
         await this.client.sendMessage(toPhone, assistantRes.replyMessage)
         return
       } catch (err: any) {
@@ -419,6 +434,14 @@ export class WhatsAppManager {
       }
     }
 
+    // 3. Keep all data in context of AI until publish is done!
+    // Record incoming user message in conversation history
+    session.conversationHistory.push({
+      role: "user",
+      content: rawText,
+      timestamp: Date.now(),
+    })
+
     // Draft Actions: CANCEL
     if (textUpper === "CANCEL" || textUpper === "DISCARD") {
       activeSessions.delete(cleanPhone)
@@ -426,9 +449,68 @@ export class WhatsAppManager {
       return
     }
 
-    // Draft Actions: PRICE <amount>
-    if (textUpper.startsWith("PRICE ") || /^[₹\$]?\d+(\.\d+)?$/.test(rawText)) {
-      const priceStr = rawText.replace(/[^0-9.]/g, "")
+    // Draft Actions: WHOLESALE <amount>
+    if (textUpper.startsWith("WHOLESALE ") || textUpper.startsWith("WS ")) {
+      const priceStr = rawText.replace(/^(WHOLESALE|WS)\s*[₹$]?/i, "").trim()
+      const newWs = parseFloat(priceStr)
+      if (isNaN(newWs) || newWs <= 0) {
+        await this.client.sendMessage(toPhone, `⚠️ Please enter a valid wholesale unit price in INR, e.g. *WHOLESALE 350*`)
+        return
+      }
+
+      session.draft.product.wholesale_price = newWs
+      const { variants, retailVariants, wholesaleVariants } = await this.buildAttributesAndVariants(
+        session.draft.product,
+        session.draft.product.currency_code || "inr",
+        Math.round((session.draft.product.suggested_price || session.draft.product.mrp || 0) * 100)
+      )
+      session.draft.product.variants = variants
+      session.draft.product.retail_variants = retailVariants
+      session.draft.product.wholesale_variants = wholesaleVariants
+
+      activeSessions.set(cleanPhone, session)
+      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated wholesale unit rate to *₹${newWs}*!`)
+      return
+    }
+
+    // Draft Actions: MRP <amount>
+    if (textUpper.startsWith("MRP ")) {
+      const priceStr = rawText.replace(/^MRP\s*[₹$]?/i, "").trim()
+      const newMrp = parseFloat(priceStr)
+      if (isNaN(newMrp) || newMrp <= 0) {
+        await this.client.sendMessage(toPhone, `⚠️ Please enter a valid MRP in INR, e.g. *MRP 1299*`)
+        return
+      }
+
+      session.draft.product.mrp = newMrp
+      if (session.draft.product.suggested_price == null) {
+        session.draft.product.suggested_price = newMrp
+      }
+      if (session.draft.product.wholesale_price == null) {
+        session.draft.product.wholesale_price = Math.round(newMrp * 0.5)
+      }
+
+      const { variants, retailVariants, wholesaleVariants } = await this.buildAttributesAndVariants(
+        session.draft.product,
+        session.draft.product.currency_code || "inr",
+        Math.round((session.draft.product.suggested_price || newMrp) * 100)
+      )
+      session.draft.product.variants = variants
+      session.draft.product.retail_variants = retailVariants
+      session.draft.product.wholesale_variants = wholesaleVariants
+
+      activeSessions.set(cleanPhone, session)
+      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated MRP to *₹${newMrp}*!`)
+      return
+    }
+
+    // Draft Actions: PRICE <amount> or RETAIL <amount>
+    if (
+      textUpper.startsWith("PRICE ") ||
+      textUpper.startsWith("RETAIL ") ||
+      /^[₹\$]?\d+(\.\d+)?$/.test(rawText)
+    ) {
+      const priceStr = rawText.replace(/^(PRICE|RETAIL)\s*/i, "").replace(/[^0-9.]/g, "")
       const newPrice = parseFloat(priceStr)
       if (isNaN(newPrice) || newPrice <= 0) {
         await this.client.sendMessage(toPhone, `⚠️ Please enter a valid price in INR, e.g. *PRICE 1499*`)
@@ -437,44 +519,79 @@ export class WhatsAppManager {
 
       session.draft.product.suggested_price = newPrice
       session.draft.product.currency_code = "inr"
-      if (session.draft.product.variants?.length) {
-        for (const v of session.draft.product.variants) {
-          v.price = newPrice
-        }
+      if (session.draft.product.mrp == null) {
+        session.draft.product.mrp = newPrice
       }
+      if (session.draft.product.wholesale_price == null) {
+        session.draft.product.wholesale_price = Math.round(newPrice * 0.5)
+      }
+
+      const { variants, retailVariants, wholesaleVariants } = await this.buildAttributesAndVariants(
+        session.draft.product,
+        session.draft.product.currency_code || "inr",
+        Math.round(newPrice * 100)
+      )
+      session.draft.product.variants = variants
+      session.draft.product.retail_variants = retailVariants
+      session.draft.product.wholesale_variants = wholesaleVariants
+
       session.step = "AWAITING_CONFIRMATION"
       activeSessions.set(cleanPhone, session)
 
-      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated price to *₹${newPrice}*!`)
+      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated retail price to *₹${newPrice}*!`)
       return
     }
 
-    // Draft Actions: TITLE <text>
-    if (textUpper.startsWith("TITLE ")) {
-      const newTitle = rawText.replace(/^TITLE\s+/i, "").trim()
+    // Draft Actions: ART <number> or TITLE <text>
+    if (textUpper.startsWith("ART ") || textUpper.startsWith("ARTICLE ") || textUpper.startsWith("TITLE ")) {
+      const newTitle = rawText.replace(/^(ART|ARTICLE|TITLE)\s+/i, "").trim()
       if (!newTitle) {
-        await this.client.sendMessage(toPhone, `⚠️ Please enter a title, e.g. *TITLE Cotton Casual Shirt*`)
+        await this.client.sendMessage(toPhone, `⚠️ Please enter an article number or title, e.g. *ART 502*`)
         return
       }
 
       session.draft.product.title = newTitle
+      session.draft.product.article_number = newTitle
       session.step = "AWAITING_CONFIRMATION"
       activeSessions.set(cleanPhone, session)
 
-      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated title to *${newTitle}*!`)
+      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated article title to *${newTitle}*!`)
       return
     }
 
-    // Draft Actions: YES / CONFIRM
+    // Draft Actions: CATEGORY <categories> (Multi-select)
+    if (textUpper.startsWith("CATEGORY ") || textUpper.startsWith("CATEGORIES ")) {
+      const catStr = rawText.replace(/^(CATEGOR(Y|IES))\s+/i, "").trim()
+      const cats = catStr.split(/[,&]+/).map((c) => c.trim()).filter(Boolean)
+      if (!cats.length) {
+        await this.client.sendMessage(toPhone, `⚠️ Please provide one or more categories separated by commas, e.g. *CATEGORY Footwear, Casual*`)
+        return
+      }
+
+      session.draft.product.category_names = cats
+      session.draft.product.category_name = cats[0]
+
+      const resolved = await this.resolveSystemCategories(cats)
+      if (resolved.length > 0) {
+        session.draft.product.category_ids = resolved.map((r) => r.id)
+        session.draft.product.category_names = resolved.map((r) => r.name)
+        session.draft.product.category_name = resolved[0].name
+      }
+
+      session.step = "AWAITING_CONFIRMATION"
+      activeSessions.set(cleanPhone, session)
+
+      await this.sendDraftPreview(toPhone, session.draft, `✅ Updated categories to: *${session.draft.product.category_names.join(", ")}*!`)
+      return
+    }
+
+    // Draft Actions: YES / CONFIRM / PUBLISH
     if (textUpper === "YES" || textUpper === "CONFIRM" || textUpper === "PUBLISH") {
-      if (
-        session.draft.product.suggested_price == null ||
-        isNaN(session.draft.product.suggested_price) ||
-        session.draft.product.suggested_price <= 0
-      ) {
+      const effectivePrice = session.draft.product.suggested_price || session.draft.product.mrp
+      if (effectivePrice == null || isNaN(effectivePrice) || effectivePrice <= 0) {
         await this.client.sendMessage(
           toPhone,
-          `⚠️ A valid price is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*)`
+          `⚠️ A valid price or MRP is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*) or *MRP <amount>*`
         )
         return
       }
@@ -491,7 +608,7 @@ export class WhatsAppManager {
       return
     }
 
-    // Natural Language Draft Edits via Gemma 4 31B
+    // Natural Language Draft Edits via AI with full multi-turn context
     try {
       const assistantRes = await this.draftEditor.processConversation(
         {
@@ -501,9 +618,16 @@ export class WhatsAppManager {
           availableSellers,
           hasDraft: true,
           draftProduct: session.draft.product,
+          conversationHistory: session.conversationHistory,
         },
         rawText
       )
+
+      session.conversationHistory.push({
+        role: "assistant",
+        content: assistantRes.replyMessage,
+        timestamp: Date.now(),
+      })
 
       // Handle Admin Seller Assignment during Draft
       if (isAdmin && (assistantRes.action === "ASSIGN_SELLER" || assistantRes.action === "SWITCH_VENDOR")) {
@@ -541,14 +665,11 @@ export class WhatsAppManager {
           session.draft.product = assistantRes.updatedProduct
         }
 
-        if (
-          session.draft.product.suggested_price == null ||
-          isNaN(session.draft.product.suggested_price) ||
-          session.draft.product.suggested_price <= 0
-        ) {
+        const effectivePrice = session.draft.product.suggested_price || session.draft.product.mrp
+        if (effectivePrice == null || isNaN(effectivePrice) || effectivePrice <= 0) {
           await this.client.sendMessage(
             toPhone,
-            `⚠️ A valid price is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*)`
+            `⚠️ A valid price or MRP is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*)`
           )
           return
         }
@@ -569,8 +690,21 @@ export class WhatsAppManager {
 
       if (assistantRes.action === "UPDATE_DRAFT" && assistantRes.updatedProduct) {
         session.draft.product = assistantRes.updatedProduct
+
+        // Rebuild retail and wholesale variants if needed
+        const { variants, retailVariants, wholesaleVariants } = await this.buildAttributesAndVariants(
+          session.draft.product,
+          session.draft.product.currency_code || "inr",
+          Math.round((session.draft.product.suggested_price || session.draft.product.mrp || 0) * 100)
+        )
+        session.draft.product.variants = variants
+        session.draft.product.retail_variants = retailVariants
+        session.draft.product.wholesale_variants = wholesaleVariants
+
         session.step =
-          session.draft.product.suggested_price == null ? "AWAITING_PRICE" : "AWAITING_CONFIRMATION"
+          session.draft.product.suggested_price == null && session.draft.product.mrp == null
+            ? "AWAITING_PRICE"
+            : "AWAITING_CONFIRMATION"
         activeSessions.set(cleanPhone, session)
 
         await this.sendDraftPreview(toPhone, session.draft, `✏️ ${assistantRes.replyMessage}`)
@@ -588,7 +722,7 @@ export class WhatsAppManager {
     // Unrecognized text during draft confirmation
     await this.client.sendMessage(
       toPhone,
-      `❓ Unrecognized command. Reply:\n- *YES* to publish\n- *PRICE <amount>* to change price\n- *TITLE <text>* to change title\n- Or simply tell me what to change (e.g. "change price to 45" or "make title Vintage Denim")\n- *CANCEL* to discard`
+      `❓ Unrecognized command. Reply:\n- *YES* to publish\n- *PRICE <amount>* for retail price\n- *WHOLESALE <rate>* for wholesale price\n- *MRP <amount>* for MRP\n- *ART <number>* for article code\n- *CATEGORY <cats>* for multi-select categories\n- Or tell me naturally what to update\n- *CANCEL* to discard`
     )
   }
 
@@ -701,117 +835,123 @@ export class WhatsAppManager {
     toPhone: string,
     cleanPhone: string,
     rawText: string,
-    currentSellerId?: string,
-    currentSellerName?: string
+    sellerId?: string,
+    sellerName?: string
   ): Promise<void> {
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
     const textUpper = rawText.toUpperCase()
 
-    // Handle "PRODUCT <index>"
-    const productMatch = rawText.match(/^PRODUCT\s+(\d+)$/i)
-    if (productMatch) {
-      const targetIndex = parseInt(productMatch[1], 10)
-      const pagination = catalogPagination.get(cleanPhone)
-      const currentOffset = pagination?.offset ?? 0
-      const queryOffset = Math.max(0, currentOffset - 5)
+    // 1. Single product detail inspect: PRODUCT <number>
+    const matchProdIndex = rawText.match(/^PRODUCT\s+(\d+)$/i)
+    if (matchProdIndex) {
+      const index = parseInt(matchProdIndex[1], 10)
+      const currentPagination = catalogPagination.get(cleanPhone)
+      const effectiveSellerId = currentPagination?.sellerId || sellerId
 
-      const filters: any = {}
-      if (currentSellerId) {
-        filters["seller_id"] = currentSellerId
+      try {
+        const filters: any = { status: ProductStatus.PUBLISHED }
+        if (effectiveSellerId) {
+          filters.seller_id = effectiveSellerId
+        }
+
+        const { data: products } = await query.graph({
+          entity: "product",
+          fields: ["id", "title", "handle", "description", "variants.id", "variants.title"],
+          filters,
+          pagination: { skip: index - 1 >= 0 ? index - 1 : 0, take: 1 },
+        })
+
+        if (!products || products.length === 0) {
+          await this.client.sendMessage(toPhone, `❌ Product #${index} not found. Reply *LIST PRODUCTS* to browse your inventory.`)
+          return
+        }
+
+        const p = products[0]
+        const storefrontUrl = `${this.storefrontUrl}/products/${p.handle || p.id}`
+        const dashboardUrl = effectiveSellerId
+          ? `${this.vendorUrl}/products/${p.id}`
+          : `${this.storefrontUrl}/admin/products/${p.id}`
+
+        const detailMsg = [
+          `📦 *Product #${index} Details*`,
+          `• *Title*: ${p.title}`,
+          `• *Variants*: ${p.variants?.map((v: any) => v.title).join(", ") || "Default"}`,
+          p.description ? `• *Description*: ${p.description.slice(0, 200)}` : "",
+          "",
+          `🌐 *Storefront Link*: ${storefrontUrl}`,
+          `🛠️ *Dashboard Edit*: ${dashboardUrl}`,
+        ].filter(Boolean).join("\n")
+
+        await this.client.sendMessage(toPhone, detailMsg)
+        return
+      } catch (err: any) {
+        await this.client.sendMessage(toPhone, `⚠️ Error retrieving product details: ${err.message}`)
+        return
+      }
+    }
+
+    // 2. Paginated List Products
+    let paginationState = catalogPagination.get(cleanPhone)
+    let offset = 0
+
+    if (textUpper === "NEXT" && paginationState) {
+      offset = paginationState.offset + 5
+    } else {
+      offset = 0
+    }
+
+    try {
+      const filters: any = { status: ProductStatus.PUBLISHED }
+      if (sellerId) {
+        filters.seller_id = sellerId
       }
 
-      const { data: products } = await query.graph({
+      const { data: products, metadata } = await query.graph({
         entity: "product",
-        fields: ["id", "title", "handle", "description", "status", "variants.*"],
+        fields: ["id", "title", "handle", "variants.id"],
         filters,
-        pagination: { skip: queryOffset, take: 5 },
+        pagination: { skip: offset, take: 5 },
       })
 
-      if (!products || !products[targetIndex - 1]) {
-        await this.client.sendMessage(toPhone, `⚠️ Product #${targetIndex} not found in current page.`)
+      if (!products || products.length === 0) {
+        if (offset > 0) {
+          catalogPagination.delete(cleanPhone)
+          await this.client.sendMessage(
+            toPhone,
+            `🏁 You have reached the end of the product catalog. Reply *LIST PRODUCTS* to start from the beginning.`
+          )
+          return
+        }
+        await this.client.sendMessage(
+          toPhone,
+          `ℹ️ No published products found${sellerName ? ` for *${sellerName}*` : ""}. Send 1 or more photos to create your first product!`
+        )
         return
       }
 
-      const p = products[targetIndex - 1]
-      const firstVariantPrices = (p.variants?.[0] as any)?.prices
-      const price = firstVariantPrices?.[0]?.amount
-        ? `₹${(firstVariantPrices[0].amount / 100).toFixed(0)}`
-        : "N/A"
+      catalogPagination.set(cleanPhone, { offset, sellerId })
 
-      const storefrontLink = `${this.storefrontUrl}/products/${p.handle}`
-      const dashboardLink = currentSellerId
-        ? `${this.vendorUrl}/products/${p.id}`
-        : `${this.storefrontUrl}/admin/products/${p.id}`
+      const totalCount = metadata?.count ?? "several"
+      const titleLine = sellerName
+        ? `📦 *Products for ${sellerName}* (${offset + 1}-${offset + products.length} of ${totalCount}):\n`
+        : `📦 *Product Inventory* (${offset + 1}-${offset + products.length} of ${totalCount}):\n`
+      const lines = [titleLine]
 
-      await this.client.sendMessage(
-        toPhone,
-        `📦 *${p.title}*\n• *Status*: ${p.status}\n• *Price*: ${price}\n• *Variants*: ${p.variants?.length || 1}\n\n📝 *Description*:\n${p.description || "No description."}\n\n🌐 *Storefront*: ${storefrontLink}\n🛠️ *Dashboard Edit*: ${dashboardLink}`
-      )
-      return
+      products.forEach((p, idx) => {
+        const itemNumber = offset + idx + 1
+        lines.push(`${itemNumber}. *${p.title}*`)
+      })
+
+      lines.push(`\n👉 Reply:\n• *PRODUCT <number>* for direct product links and variant details.\n• *NEXT* for the next 5 products.`)
+      await this.client.sendMessage(toPhone, lines.join("\n"))
+    } catch (err: any) {
+      await this.client.sendMessage(toPhone, `⚠️ Error listing products: ${err.message}`)
     }
-
-    // Determine pagination offset
-    let offset = 0
-    if (textUpper === "NEXT") {
-      const existing = catalogPagination.get(cleanPhone)
-      offset = (existing?.offset ?? 0) + 5
-    }
-
-    const filters: any = {}
-    if (currentSellerId) {
-      filters["seller_id"] = currentSellerId
-    }
-
-    const { data: products, metadata } = await query.graph({
-      entity: "product",
-      fields: [
-        "id",
-        "title",
-        "status",
-        "variants.id",
-        "variants.title",
-        "variants.prices.*",
-        "variants.inventory_quantity",
-      ],
-      filters,
-      pagination: { skip: offset, take: 5 },
-    })
-
-    const totalCount = metadata?.count ?? products.length
-
-    if (!products || products.length === 0) {
-      await this.client.sendMessage(
-        toPhone,
-        offset > 0
-          ? `🏁 Reached end of catalog for *${currentSellerName || "store"}*.`
-          : `📭 No products found for *${currentSellerName || "store"}*.`
-      )
-      catalogPagination.delete(cleanPhone)
-      return
-    }
-
-    catalogPagination.set(cleanPhone, { offset, sellerId: currentSellerId })
-
-    const lines: string[] = []
-    lines.push(`📋 *Products for ${currentSellerName || "Marketplace"}* (Showing ${offset + 1}-${offset + products.length} of ${totalCount}):\n`)
-
-    products.forEach((p, idx) => {
-      const firstVariantPrices = (p.variants?.[0] as any)?.prices
-      const firstPrice = firstVariantPrices?.[0]?.amount
-      const priceStr = firstPrice ? `₹${(firstPrice / 100).toFixed(0)}` : "No price"
-      lines.push(`${idx + 1}. *${p.title}* - ${priceStr} (${p.status})`)
-    })
-
-    lines.push(`\n👉 Reply:\n- *PRODUCT <1-5>* to view details and links`)
-    if (offset + products.length < totalCount) {
-      lines.push(`- *NEXT* to view the next 5 products`)
-    }
-
-    await this.client.sendMessage(toPhone, lines.join("\n"))
   }
 
   /**
-   * Handles incoming photo uploads with 30-second album debounce.
+   * Handles incoming image messages: treats images sent together as a single batch
+   * with a 4-second debounce timer, without asking for 'DONE'.
    */
   private async handleImageMessage(
     toPhone: string,
@@ -830,15 +970,20 @@ export class WhatsAppManager {
         step: "COLLECTING_IMAGES",
         phone: cleanPhone,
         pendingImages: [],
+        pendingTexts: [],
+        captions: [],
+        conversationHistory: [],
         lastUpdated: Date.now(),
       }
       activeSessions.set(cleanPhone, session)
     }
 
-    // Reset step if previous was already finalized
+    // Reset step if previous draft was finalized/cancelled
     if (session.step === "AWAITING_CONFIRMATION" || session.step === "AWAITING_PRICE") {
       session.step = "COLLECTING_IMAGES"
       session.pendingImages = []
+      session.pendingTexts = []
+      session.captions = []
       session.draft = undefined
     }
 
@@ -847,8 +992,8 @@ export class WhatsAppManager {
     session.lastUpdated = Date.now()
 
     // Store caption on session if provided
-    if (caption) {
-      (session as any).caption = caption
+    if (caption && caption.trim()) {
+      session.captions.push(caption.trim())
     }
 
     // Clear previous debounce timer if active
@@ -856,15 +1001,7 @@ export class WhatsAppManager {
       clearTimeout(session.debounceTimer)
     }
 
-    // Acknowledge receipt if first image
-    if (session.pendingImages.length === 1) {
-      await this.client.sendMessage(
-        toPhone,
-        `📸 Received image! Send additional photos if needed, or wait 30 seconds for AI processing (or reply *DONE* to process immediately).`
-      )
-    }
-
-    // If admin and caption mentions a vendor (e.g. "for Bhawani" or "vendor: Bhawani")
+    // Check if admin caption mentions a vendor (e.g. "for Bhawani" or "vendor: Bhawani")
     let targetSellerId = sellerId
     let targetSellerName = sellerName
 
@@ -899,7 +1036,7 @@ export class WhatsAppManager {
       ;(session as any).targetSellerName = targetSellerName
     }
 
-    // Set 30-second debounce timer
+    // 4-second debounce timer: treats images sent together as a single batch without asking for 'DONE'
     session.debounceTimer = setTimeout(async () => {
       try {
         await this.finalizeImageCollection(
@@ -913,11 +1050,13 @@ export class WhatsAppManager {
         console.error("[WhatsAppManager] Debounce processing failed:", err)
         await this.client.sendMessage(toPhone, `⚠️ Failed to process product images: ${err.message}`)
       }
-    }, 30000)
+    }, 4000)
   }
 
   /**
-   * Downloads buffered images, uploads to Medusa File Service, runs Gemini Vision, and sends preview.
+   * Downloads buffered batch of images, uploads to Medusa File Service, runs Gemini Vision,
+   * extracts article number, MRP, wholesale/retail variants, multi-select categories,
+   * and retains all context.
    */
   private async finalizeImageCollection(
     cleanPhone: string,
@@ -956,6 +1095,8 @@ export class WhatsAppManager {
         `⚠️ Failed to download the attached image(s) from WhatsApp. Please try sending the photo again.`
       )
       session.pendingImages = []
+      session.pendingTexts = []
+      session.captions = []
       activeSessions.set(cleanPhone, session)
       return
     }
@@ -987,21 +1128,35 @@ export class WhatsAppManager {
       })
     }
 
-    // 3. Multimodal Analysis with Gemini 3.5 Flash Lite
+    // 3. Combine captions and additional accompanying text messages into pipeline
+    const combinedNotes: string[] = [
+      ...session.captions,
+      ...session.pendingTexts,
+    ].filter(Boolean)
+
+    // 4. Multimodal Analysis with Gemini Vision
     let extracted: ExtractedProduct
     try {
-      const caption = (session as any).caption as string | undefined
       const systemCategories = await this.getSystemCategories()
       const categoryNames = systemCategories.map((c) => c.name)
-      extracted = await this.vision.extractProductDetails(downloadedImages, caption, categoryNames)
-      console.log(`[WhatsAppManager] Successfully extracted: "${extracted.title}"`)
+      extracted = await this.vision.extractProductDetails(downloadedImages, combinedNotes, categoryNames)
+      console.log(`[WhatsAppManager] Successfully extracted Article/Title: "${extracted.title}"`)
 
-      // Match and resolve against system category
-      if (extracted.category_name) {
-        const resolvedCategory = await this.resolveSystemCategory(extracted.category_name, systemCategories)
-        if (resolvedCategory) {
-          extracted.category_id = resolvedCategory.id
-          extracted.category_name = resolvedCategory.name
+      // Resolve multiple categories (multi-select)
+      const categoriesToResolve =
+        extracted.category_names && extracted.category_names.length > 0
+          ? extracted.category_names
+          : extracted.category_name
+          ? [extracted.category_name]
+          : []
+
+      if (categoriesToResolve.length > 0) {
+        const resolvedCats = await this.resolveSystemCategories(categoriesToResolve, systemCategories)
+        if (resolvedCats.length > 0) {
+          extracted.category_ids = resolvedCats.map((c) => c.id)
+          extracted.category_names = resolvedCats.map((c) => c.name)
+          extracted.category_id = resolvedCats[0].id
+          extracted.category_name = resolvedCats[0].name
         }
       }
     } catch (aiErr: any) {
@@ -1011,14 +1166,30 @@ export class WhatsAppManager {
         `⚠️ AI analysis failed: ${aiErr.message || "Unknown error"}. Please try again.`
       )
       session.pendingImages = []
+      session.pendingTexts = []
+      session.captions = []
       activeSessions.set(cleanPhone, session)
       return
     }
 
+    // 5. Build Retail and Wholesale variants
+    const currencyCode = extracted.currency_code || "inr"
+    const effectivePriceAmount = Math.round(
+      (extracted.suggested_price || extracted.mrp || 0) * 100
+    )
+    const { variants, retailVariants, wholesaleVariants } = await this.buildAttributesAndVariants(
+      extracted,
+      currencyCode,
+      effectivePriceAmount
+    )
+    extracted.variants = variants
+    extracted.retail_variants = retailVariants
+    extracted.wholesale_variants = wholesaleVariants
+
     const effectiveSellerId = (session as any).targetSellerId || sellerId || ""
     const effectiveSellerName = (session as any).targetSellerName || sellerName
 
-    // 4. Save Draft
+    // 6. Save Draft and maintain full conversational context
     const draft: ProductDraft = {
       product: extracted,
       imageUrls,
@@ -1026,29 +1197,49 @@ export class WhatsAppManager {
       targetSellerId: effectiveSellerId,
       targetSellerName: effectiveSellerName,
       isAdmin: Boolean(isAdmin),
+      rawCaptionsAndMessages: combinedNotes,
     }
 
     session.draft = draft
-    session.step = extracted.suggested_price == null ? "AWAITING_PRICE" : "AWAITING_CONFIRMATION"
+    session.step =
+      extracted.suggested_price == null && extracted.mrp == null
+        ? "AWAITING_PRICE"
+        : "AWAITING_CONFIRMATION"
 
-    // Step 1 complete: release raw image buffers from session.
-    // Step 2 conversational editing uses the extracted text description and metadata.
+    // Multi-turn context retained until published completely
+    session.conversationHistory.push({
+      role: "user",
+      content: `Sent ${downloadedImages.length} photo(s)${
+        combinedNotes.length ? ` with note: "${combinedNotes.join("; ")}"` : ""
+      }`,
+      timestamp: Date.now(),
+    })
+    session.conversationHistory.push({
+      role: "assistant",
+      content: `Extracted Article "${extracted.title}", MRP: ${
+        extracted.mrp ? `₹${extracted.mrp}` : "N/A"
+      }, Retail: ${
+        extracted.suggested_price ? `₹${extracted.suggested_price}` : "N/A"
+      }, Wholesale: ${
+        extracted.wholesale_price ? `₹${extracted.wholesale_price}` : "N/A"
+      }, Categories: ${extracted.category_names?.join(", ") || "General"}.`,
+      timestamp: Date.now(),
+    })
+
+    // Reset media buffer for next operations while keeping conversation history & draft
     session.pendingImages = []
-    delete (session as any).caption
+    session.pendingTexts = []
+    session.captions = []
     if (session.debounceTimer) clearTimeout(session.debounceTimer)
-
-    console.log(
-      `[WhatsAppManager] Image context released after Step 1. Transitioning to Step 2 text-only chat with description for "${extracted.title}".`
-    )
 
     activeSessions.set(cleanPhone, session)
 
-    // 5. Send Preview
+    // 7. Send Preview
     await this.sendDraftPreview(toPhone, draft)
   }
 
   /**
-   * Formats and sends the product preview message to WhatsApp.
+   * Formats and sends the product preview message to WhatsApp with MRP, Retail, Wholesale, and Categories.
    */
   private async sendDraftPreview(
     toPhone: string,
@@ -1056,11 +1247,27 @@ export class WhatsAppManager {
     prefixMessage?: string
   ): Promise<void> {
     const p = draft.product
-    const priceDisplay =
-      p.suggested_price != null ? `₹${p.suggested_price.toFixed(0)}` : "⚠️ *NOT SET*"
+    const mrpDisplay = p.mrp != null ? `₹${p.mrp.toFixed(0)}` : "⚠️ *Not Set*"
+    const retailDisplay =
+      p.suggested_price != null ? `₹${p.suggested_price.toFixed(0)}` : "⚠️ *Not Set*"
+    const wholesaleUnitDisplay =
+      p.wholesale_price != null ? `₹${p.wholesale_price.toFixed(0)}/pair` : "⚠️ *Not Set*"
 
-    const variantsText =
-      p.variants?.map((v) => v.title).join(", ") || "Default"
+    const categoriesDisplay = p.category_names?.length
+      ? p.category_names.join(", ")
+      : p.category_name || "General"
+
+    const retailVariantsCount = p.retail_variants?.length || p.sizes?.length || 1
+    const wholesaleVariant = p.wholesale_variants?.[0]
+    const wholesalePackPrice =
+      wholesaleVariant?.prices?.[0]?.amount != null
+        ? (wholesaleVariant.prices[0].amount / 100).toFixed(0)
+        : wholesaleVariant?.price != null
+        ? wholesaleVariant.price.toFixed(0)
+        : null
+    const wholesalePackDisplay = wholesaleVariant
+      ? `• *Wholesale Pack*: ₹${wholesalePackPrice} (${wholesaleVariant.bundle_size || p.sizes?.length || 1} pcs @ ${wholesaleUnitDisplay})`
+      : wholesaleUnitDisplay
 
     const vendorDisplay = draft.targetSellerName
       ? `• *Vendor*: ${draft.targetSellerName}`
@@ -1068,21 +1275,24 @@ export class WhatsAppManager {
       ? `• *Vendor*: ⚠️ *Not Assigned* (Reply *VENDOR <name>* or *SELLERS*)`
       : ""
 
-    const sizesText = p.sizes?.length ? p.sizes.join(", ") : ""
+    const sizesText = p.sizes?.length ? p.sizes.join(", ") : "Free Size"
     const colorsText = p.colors?.length ? p.colors.join(", ") : ""
 
     const messageLines = [
       prefixMessage ? `${prefixMessage}\n` : "",
       `📦 *Product Preview*`,
-      `• *Title*: ${p.title}`,
+      `• *Article No / Title*: *${p.title}*`,
       p.subtitle ? `• *Subtitle*: ${p.subtitle}` : "",
       `• *Brand*: ${p.brand || "Unbranded / Generic"}`,
-      `• *Category*: ${p.category_name || "General"}`,
-      sizesText ? `• *Sizes*: ${sizesText}` : "",
+      `• *Categories*: ${categoriesDisplay}`,
+      `• *Sizes*: ${sizesText}`,
       colorsText ? `• *Colors*: ${colorsText}` : "",
       p.material ? `• *Material*: ${p.material}` : "",
-      `• *Price*: ${priceDisplay} (INR)`,
-      `• *Variants*: ${variantsText}`,
+      `• *MRP*: ${mrpDisplay}`,
+      `• *Retail Price*: ${retailDisplay}`,
+      `• *Wholesale Rate*: ${wholesaleUnitDisplay}`,
+      wholesalePackDisplay,
+      `• *Retail Variants*: ${retailVariantsCount} size variant(s)`,
       `• *Images*: ${draft.imageUrls.length} attached`,
       vendorDisplay,
       "",
@@ -1090,18 +1300,20 @@ export class WhatsAppManager {
       "",
     ].filter(Boolean)
 
-    if (p.suggested_price == null) {
-      messageLines.push(`👉 *Please reply with the price in INR (₹) to continue* (e.g. *PRICE 999*):`)
+    if (p.suggested_price == null && p.mrp == null) {
+      messageLines.push(`👉 *Please reply with the price or MRP in INR (₹) to continue* (e.g. *PRICE 999* or *MRP 1299*):`)
     } else {
       messageLines.push(`👉 Reply:`)
-      messageLines.push(`- *YES* to publish globally to store`)
-      messageLines.push(`- *PRICE <amount>* to change price (e.g. PRICE 1299)`)
-      messageLines.push(`- *TITLE <text>* to change title`)
-      messageLines.push(`- *BRAND <name>* to set brand (auto-created if new)`)
-      messageLines.push(`- *CATEGORY <name>* to change category`)
+      messageLines.push(`- *YES* to publish to store`)
+      messageLines.push(`- *PRICE <amount>* to set retail price`)
+      messageLines.push(`- *WHOLESALE <amount>* to set wholesale unit rate`)
+      messageLines.push(`- *MRP <amount>* to set MRP`)
+      messageLines.push(`- *ART <number>* to change article title`)
+      messageLines.push(`- *CATEGORY <name, ...>* to set categories (multi-select)`)
+      messageLines.push(`- *BRAND <name>* to set brand`)
       messageLines.push(`- *SIZE <sizes>* / *COLOR <colors>* to set attributes`)
       if (draft.isAdmin) {
-        messageLines.push(`- *VENDOR <name or number>* to assign to a vendor (or *SELLERS* to view all)`)
+        messageLines.push(`- *VENDOR <name or number>* to assign to a vendor`)
       }
       messageLines.push(`- *CANCEL* to discard`)
     }
@@ -1110,7 +1322,7 @@ export class WhatsAppManager {
   }
 
   /**
-   * Publishes the confirmed product globally with INR pricing using Mercur's createProductsWorkflow.
+   * Publishes the confirmed product globally with retail and wholesale variants.
    */
   private async publishDraft(
     toPhone: string,
@@ -1118,8 +1330,7 @@ export class WhatsAppManager {
     draft: ProductDraft
   ): Promise<void> {
     const p = draft.product
-    const priceAmount = Math.round((p.suggested_price || 0) * 100)
-    const currencyCode = "inr"
+    const currencyCode = (p.currency_code || "inr").toLowerCase()
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
 
     // For Admin: require vendor assignment so product belongs to a valid seller
@@ -1144,12 +1355,15 @@ export class WhatsAppManager {
       console.warn("[WhatsAppManager] Warning fetching sales channels:", scErr.message)
     }
 
-    // 2. Resolve Category from the system (or auto-create if not in system)
-    const resolvedCategory = await this.resolveSystemCategory(p.category_name)
-    if (resolvedCategory) {
-      p.category_id = resolvedCategory.id
-      p.category_name = resolvedCategory.name
-    }
+    // 2. Resolve Multi-select Categories from the system
+    const categoriesToResolve =
+      p.category_names && p.category_names.length > 0
+        ? p.category_names
+        : p.category_name
+        ? [p.category_name]
+        : []
+    const resolvedCategories = await this.resolveSystemCategories(categoriesToResolve)
+    const resolvedCategoryIds = resolvedCategories.map((c) => c.id)
 
     // 3. Resolve Brand from system or auto-create if not in system
     let brandId = p.brand_id
@@ -1158,8 +1372,9 @@ export class WhatsAppManager {
       if (brandId) p.brand_id = brandId
     }
 
-    // 4. Build Attributes and Variants for Size and Color
-    const { attributes, variants } = await this.buildAttributesAndVariants(p, currencyCode, priceAmount)
+    // 4. Build Attributes, Retail Variants, and Wholesale Variants
+    const effectivePriceAmount = Math.round((p.suggested_price || p.mrp || 0) * 100)
+    const { attributes, variants } = await this.buildAttributesAndVariants(p, currencyCode, effectivePriceAmount)
 
     const productPayload: any = {
       title: p.title,
@@ -1173,14 +1388,19 @@ export class WhatsAppManager {
       metadata: {
         listing_scope: "global",
         created_via: "whatsapp",
+        article_number: p.article_number || p.title,
+        mrp: p.mrp,
+        suggested_retail_price: p.suggested_price,
+        wholesale_unit_price: p.wholesale_price,
         material: p.material,
         brand_name: p.brand || undefined,
         category_name: p.category_name || undefined,
+        category_names: p.category_names || undefined,
       },
     }
 
-    if (resolvedCategory) {
-      productPayload.category_ids = [resolvedCategory.id]
+    if (resolvedCategoryIds.length > 0) {
+      productPayload.category_ids = resolvedCategoryIds
     }
 
     if (brandId) {
@@ -1250,14 +1470,20 @@ export class WhatsAppManager {
       : `${this.storefrontUrl}/admin/products/${createdId}`
 
     const brandDisplay = p.brand ? `\n• *Brand*: ${p.brand}` : ""
-    const categoryDisplay = p.category_name ? `\n• *Category*: ${p.category_name}` : ""
+    const categoryDisplay = p.category_names?.length
+      ? `\n• *Categories*: ${p.category_names.join(", ")}`
+      : p.category_name
+      ? `\n• *Category*: ${p.category_name}`
+      : ""
     const sizesDisplay = p.sizes?.length ? `\n• *Sizes*: ${p.sizes.join(", ")}` : ""
-    const colorsDisplay = p.colors?.length ? `\n• *Colors*: ${p.colors.join(", ")}` : ""
-    const variantsCount = variants.length > 1 ? ` (${variants.length} variants)` : ""
+    const mrpDisplay = p.mrp ? `\n• *MRP*: ₹${p.mrp.toFixed(0)}` : ""
+    const retailDisplay = p.suggested_price ? `\n• *Retail Price*: ₹${p.suggested_price.toFixed(0)}` : ""
+    const wholesaleDisplay = p.wholesale_price ? `\n• *Wholesale Rate*: ₹${p.wholesale_price.toFixed(0)}/pair` : ""
+    const variantsCount = variants.length > 1 ? ` (${variants.length} variants: retail & wholesale)` : ""
 
     await this.client.sendMessage(
       toPhone,
-      `🎉 *Product Published Successfully!*\n\n• *Title*: ${p.title}${brandDisplay}${categoryDisplay}\n• *Price*: ₹${(p.suggested_price || 0).toFixed(0)}${variantsCount}${sizesDisplay}${colorsDisplay}\n• *Scope*: 🌐 Globally Available (Marketplace & All Channels)\n• *Seller*: ${draft.targetSellerName || "Marketplace"}\n\n🌐 *View Live on Store*: ${storefrontLink}\n🛠️ *Edit in Dashboard*: ${dashboardLink}`
+      `🎉 *Product Published Successfully!*\n\n• *Article / Title*: ${p.title}${brandDisplay}${categoryDisplay}${mrpDisplay}${retailDisplay}${wholesaleDisplay}${variantsCount}${sizesDisplay}\n• *Scope*: 🌐 Globally Available (Marketplace & All Channels)\n• *Seller*: ${draft.targetSellerName || "Marketplace"}\n\n🌐 *View Live on Store*: ${storefrontLink}\n🛠️ *Edit in Dashboard*: ${dashboardLink}`
     )
   }
 
@@ -1277,6 +1503,29 @@ export class WhatsAppManager {
       console.warn("[WhatsAppManager] Failed to fetch system categories:", err.message)
       return []
     }
+  }
+
+  /**
+   * Resolves multiple category names to system categories (multi-select).
+   */
+  async resolveSystemCategories(
+    categoryNames: string[],
+    prefetchedCategories?: Array<{ id: string; name: string; handle: string }>
+  ): Promise<Array<{ id: string; name: string }>> {
+    const categories = prefetchedCategories || (await this.getSystemCategories())
+    const results: Array<{ id: string; name: string }> = []
+    const seenIds = new Set<string>()
+
+    for (const name of categoryNames) {
+      if (!name || !name.trim()) continue
+      const resolved = await this.resolveSystemCategory(name, categories)
+      if (resolved && !seenIds.has(resolved.id)) {
+        seenIds.add(resolved.id)
+        results.push(resolved)
+      }
+    }
+
+    return results
   }
 
   /**
@@ -1306,7 +1555,7 @@ export class WhatsAppManager {
     )
     if (subMatch) return { id: subMatch.id, name: subMatch.name }
 
-    // 3. If no matching system category found, create it in the system so it's a real system category
+    // 3. If no matching system category found, create it in the system
     try {
       console.log(`[WhatsAppManager] Category "${clean}" not in system. Auto-creating product category...`)
       const handle = slugify(clean)
@@ -1384,7 +1633,9 @@ export class WhatsAppManager {
   }
 
   /**
-   * Builds product attributes and variants using provided size and color attributes.
+   * Builds product attributes, retail variants, and wholesale variants.
+   * Retail variants are created individually for each size/color with MRP and retail price.
+   * Wholesale pack variant is created as an assorted bundle with pack breakdown and wholesale price.
    */
   async buildAttributesAndVariants(
     product: ExtractedProduct,
@@ -1393,6 +1644,8 @@ export class WhatsAppManager {
   ): Promise<{
     attributes: any[]
     variants: any[]
+    retailVariants: any[]
+    wholesaleVariants: any[]
   }> {
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
 
@@ -1400,7 +1653,6 @@ export class WhatsAppManager {
     let sizes = product.sizes && product.sizes.length > 0 ? product.sizes : []
     let colors = product.colors && product.colors.length > 0 ? product.colors : []
 
-    // If empty, inspect product.options for "Size" or "Color"
     if (!sizes.length && product.options) {
       const sizeOpt = product.options.find((o) => /size/i.test(o.title))
       if (sizeOpt && sizeOpt.values?.length) {
@@ -1532,14 +1784,27 @@ export class WhatsAppManager {
       }
     }
 
-    // 3. Build Variants
-    const skuBase = slugify(product.title).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "PROD"
-    const variants: any[] = []
+    // 3. Pricing calculations
+    const mrp = product.mrp ?? product.suggested_price ?? null
+    const retailUnitPrice = product.suggested_price ?? mrp ?? 0
+    const retailPriceAmount = Math.round(retailUnitPrice * 100)
+    const wholesaleUnitPrice =
+      product.wholesale_price ??
+      (mrp != null ? Math.round(mrp * 0.5) : Math.round(retailUnitPrice * 0.5))
 
+    const skuBase =
+      slugify(product.article_number || product.title)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 10) || "PROD"
+
+    const retailVariants: any[] = []
+
+    // Build Retail Variants
     if (sizes.length > 0 && colors.length > 0) {
       for (const size of sizes) {
         for (const color of colors) {
-          variants.push({
+          retailVariants.push({
             title: `${size} / ${color}`,
             sku: `${skuBase}-${slugify(size).toUpperCase()}-${slugify(color).toUpperCase().slice(0, 4)}`,
             options: {
@@ -1549,15 +1814,19 @@ export class WhatsAppManager {
             prices: [
               {
                 currency_code: currencyCode,
-                amount: priceAmount,
+                amount: retailPriceAmount,
               },
             ],
+            metadata: {
+              variant_type: "retail",
+              ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+            },
           })
         }
       }
     } else if (sizes.length > 0) {
       for (const size of sizes) {
-        variants.push({
+        retailVariants.push({
           title: size,
           sku: `${skuBase}-${slugify(size).toUpperCase()}`,
           options: {
@@ -1566,14 +1835,18 @@ export class WhatsAppManager {
           prices: [
             {
               currency_code: currencyCode,
-              amount: priceAmount,
+              amount: retailPriceAmount,
             },
           ],
+          metadata: {
+            variant_type: "retail",
+            ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+          },
         })
       }
     } else if (colors.length > 0) {
       for (const color of colors) {
-        variants.push({
+        retailVariants.push({
           title: color,
           sku: `${skuBase}-${slugify(color).toUpperCase().slice(0, 4)}`,
           options: {
@@ -1582,32 +1855,88 @@ export class WhatsAppManager {
           prices: [
             {
               currency_code: currencyCode,
-              amount: priceAmount,
+              amount: retailPriceAmount,
             },
           ],
+          metadata: {
+            variant_type: "retail",
+            ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+          },
         })
       }
     } else {
-      // Default single variant with no axis attributes
-      variants.push({
-        title: "Default",
+      retailVariants.push({
+        title: "Default Retail",
+        sku: `${skuBase}-RET-DEFAULT`,
         prices: [
           {
             currency_code: currencyCode,
-            amount: priceAmount,
+            amount: retailPriceAmount,
           },
         ],
+        metadata: {
+          variant_type: "retail",
+          ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+        },
       })
     }
 
-    return { attributes, variants }
+    // 4. Build Wholesale Variants (Pack bundle of detected sizes)
+    const wholesaleVariants: any[] = []
+    const bundleSize = sizes.length > 0 ? sizes.length : 6
+    const packDescription =
+      sizes.length > 0
+        ? `Pack of ${bundleSize} (Sizes: ${sizes.join(", ")})`
+        : `Wholesale Pack of ${bundleSize}`
+
+    const packBreakdown: Record<string, number> = {}
+    if (sizes.length > 0) {
+      for (const s of sizes) {
+        packBreakdown[s] = 1
+      }
+    } else {
+      packBreakdown["Standard"] = bundleSize
+    }
+
+    const wholesalePackPriceAmount = Math.round(wholesaleUnitPrice * bundleSize * 100)
+
+    wholesaleVariants.push({
+      title: `Wholesale ${packDescription}`,
+      sku: `${skuBase}-WS-${bundleSize}PK`,
+      pack_description: packDescription,
+      bundle_size: bundleSize,
+      pack_breakdown: packBreakdown,
+      prices: [
+        {
+          currency_code: currencyCode,
+          amount: wholesalePackPriceAmount,
+        },
+      ],
+      metadata: {
+        variant_type: "wholesale",
+        bundle_size: bundleSize,
+        pack_description: packDescription,
+        pack_breakdown: packBreakdown,
+        wholesale_unit_price: wholesaleUnitPrice,
+        ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+      },
+    })
+
+    const allVariants = [...retailVariants, ...wholesaleVariants]
+
+    return {
+      attributes,
+      variants: allVariants,
+      retailVariants,
+      wholesaleVariants,
+    }
   }
 
   private async sendHelpMessage(toPhone: string, isAdmin: boolean): Promise<void> {
     const lines = [
       `🤖 *WhatsApp Product Assistant*`,
       `Commands:`,
-      `• *Upload Product*: Send 1-4 photos with an optional caption.`,
+      `• *Upload Product*: Send 1-4 photos with an optional caption. Accompanying text with images is automatically included in product extraction.`,
       `• *LIST PRODUCTS*: Show recent store products.`,
       `• *PRODUCT <number>*: View details and edit link for a product.`,
     ]
@@ -1622,11 +1951,20 @@ export class WhatsAppManager {
     }
 
     lines.push(
-      `\n💬 *Gemma 4 AI Assistant*:`,
-      `You can chat naturally anytime! Ask questions, say "who are my sellers?", "list products for Bhawani", or "assign this draft to Nike".`
+      `\n💬 *AI Commerce Assistant*:`,
+      `You can chat naturally anytime! Ask questions or tell me what to change on your active draft.`
     )
 
-    lines.push(`\nDuring draft confirmation:`, `• *YES* | *PRICE <amount>* | *TITLE <text>* | *BRAND <name>* | *CATEGORY <name>* | *SIZE <sizes>* | *COLOR <colors>* | *VENDOR <name>* | *CANCEL*`)
+    lines.push(
+      `\nDuring draft confirmation:`,
+      `• *YES* to publish`,
+      `• *PRICE <amount>* to set retail price`,
+      `• *WHOLESALE <rate>* to set wholesale unit rate`,
+      `• *MRP <amount>* to set MRP`,
+      `• *ART <number>* to change article title`,
+      `• *CATEGORY <cats>* to set multiple categories (multi-select)`,
+      `• *CANCEL* to discard`
+    )
     await this.client.sendMessage(toPhone, lines.join("\n"))
   }
 }

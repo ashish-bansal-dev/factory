@@ -1,15 +1,29 @@
+export interface WholesalePackDetails {
+  bundle_size: number
+  pack_description: string
+  pack_breakdown?: Record<string, number>
+  pack_price: number
+  unit_price: number
+}
+
 export interface ExtractedProduct {
+  article_number?: string
   title: string
   subtitle?: string
   description: string
   category_name?: string
+  category_names?: string[]
   category_id?: string
+  category_ids?: string[]
   brand?: string
   brand_id?: string
   sizes?: string[]
   colors?: string[]
   material?: string
-  suggested_price: number | null
+  mrp?: number | null
+  suggested_price?: number | null
+  wholesale_price?: number | null
+  wholesale_pack?: WholesalePackDetails
   currency_code: string
   options?: Array<{
     title: string
@@ -17,9 +31,42 @@ export interface ExtractedProduct {
   }>
   variants?: Array<{
     title: string
-    price: number
+    price?: number
     sku?: string
     options?: Record<string, string>
+    prices?: Array<{
+      currency_code?: string
+      amount?: number
+    }>
+    metadata?: Record<string, any>
+  }>
+  retail_variants?: Array<{
+    title?: string
+    sku?: string
+    mrp?: number
+    unit_msrp?: number
+    price?: number
+    options?: Record<string, string>
+    prices?: Array<{
+      currency_code?: string
+      amount?: number
+    }>
+    metadata?: Record<string, any>
+  }>
+  wholesale_variants?: Array<{
+    title?: string
+    sku?: string
+    pack_description?: string
+    bundle_size: number
+    pack_breakdown?: Record<string, number>
+    mrp?: number
+    unit_msrp?: number
+    price?: number
+    prices?: Array<{
+      currency_code?: string
+      amount?: number
+    }>
+    metadata?: Record<string, any>
   }>
 }
 
@@ -28,6 +75,12 @@ export type WhatsAppSessionStep =
   | "AWAITING_PRICE"
   | "AWAITING_CONFIRMATION"
 
+export interface ConversationMessage {
+  role: "user" | "assistant" | "system"
+  content: string
+  timestamp: number
+}
+
 export interface ProductDraft {
   product: ExtractedProduct
   imageUrls: string[]
@@ -35,6 +88,7 @@ export interface ProductDraft {
   targetSellerId: string
   targetSellerName?: string
   isAdmin: boolean
+  rawCaptionsAndMessages?: string[]
 }
 
 export interface WhatsAppSession {
@@ -44,7 +98,10 @@ export interface WhatsAppSession {
     mediaId: string
     mimeType?: string
   }>
+  pendingTexts: string[]
+  captions: string[]
   draft?: ProductDraft
+  conversationHistory: ConversationMessage[]
   debounceTimer?: ReturnType<typeof setTimeout>
   lastUpdated: number
 }

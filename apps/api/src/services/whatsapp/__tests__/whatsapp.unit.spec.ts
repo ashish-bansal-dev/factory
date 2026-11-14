@@ -616,12 +616,23 @@ describe("WhatsAppManager", () => {
     expect(colorAttr).toBeDefined()
     expect(colorAttr.value_ids).toContain("val_blue")
 
-    // Check variants matrix (2 sizes * 1 color = 2 variants)
-    expect(res.variants.length).toBe(2)
-    expect(res.variants[0].title).toBe("S / Blue")
-    expect(res.variants[0].options).toEqual({ Size: "S", Color: "Blue" })
-    expect(res.variants[1].title).toBe("M / Blue")
-    expect(res.variants[1].options).toEqual({ Size: "M", Color: "Blue" })
+    // Check retail variants (2 sizes * 1 color = 2 variants)
+    expect(res.retailVariants.length).toBe(2)
+    expect(res.retailVariants[0].title).toBe("S / Blue")
+    expect(res.retailVariants[0].options).toEqual({ Size: "S", Color: "Blue" })
+    expect(res.retailVariants[0].metadata.variant_type).toBe("retail")
+    expect(res.retailVariants[1].title).toBe("M / Blue")
+    expect(res.retailVariants[1].options).toEqual({ Size: "M", Color: "Blue" })
+    expect(res.retailVariants[1].metadata.variant_type).toBe("retail")
+
+    // Check wholesale pack variant (1 pack variant with bundle_size 2)
+    expect(res.wholesaleVariants.length).toBe(1)
+    expect(res.wholesaleVariants[0].metadata.variant_type).toBe("wholesale")
+    expect(res.wholesaleVariants[0].bundle_size).toBe(2)
+    expect(res.wholesaleVariants[0].pack_breakdown).toEqual({ S: 1, M: 1 })
+
+    // Total variants = retail + wholesale
+    expect(res.variants.length).toBe(3)
   })
 
   it("builds single default variant when no size/color attributes provided", async () => {
@@ -638,9 +649,112 @@ describe("WhatsAppManager", () => {
     )
 
     expect(res.attributes.length).toBe(0)
-    expect(res.variants.length).toBe(1)
-    expect(res.variants[0].title).toBe("Default")
-    expect(res.variants[0].prices[0].amount).toBe(299900)
-    expect(res.variants[0].prices[0].currency_code).toBe("inr")
+    // 1 default retail variant + 1 default wholesale pack variant
+    expect(res.retailVariants.length).toBe(1)
+    expect(res.retailVariants[0].title).toBe("Default Retail")
+    expect(res.retailVariants[0].prices[0].amount).toBe(299900)
+    expect(res.retailVariants[0].prices[0].currency_code).toBe("inr")
+
+    expect(res.wholesaleVariants.length).toBe(1)
+    expect(res.wholesaleVariants[0].metadata.variant_type).toBe("wholesale")
+    expect(res.variants.length).toBe(2)
+  })
+
+  it("resolves multi-select categories and creates retail and wholesale variants with MRP", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const resolvedCats = await manager.resolveSystemCategories(["Topwear", "Bottomwear"])
+    expect(resolvedCats.length).toBe(2)
+    expect(resolvedCats.map((c) => c.name)).toEqual(["Topwear", "Bottomwear"])
+
+    const res = await manager.buildAttributesAndVariants(
+      {
+        article_number: "ART-905",
+        title: "ART-905",
+        description: "Running shoes",
+        mrp: 1499,
+        suggested_price: 1299,
+        wholesale_price: 450,
+        currency_code: "inr",
+        sizes: ["7", "8", "9", "10"],
+      },
+      "inr",
+      129900
+    )
+
+    // Retail variants
+    expect(res.retailVariants.length).toBe(4)
+    expect(res.retailVariants[0].title).toBe("7")
+    expect(res.retailVariants[0].metadata.mrp).toBe(1499)
+    expect(res.retailVariants[0].prices[0].amount).toBe(129900)
+
+    // Wholesale pack variant
+    expect(res.wholesaleVariants.length).toBe(1)
+    expect(res.wholesaleVariants[0].bundle_size).toBe(4)
+    expect(res.wholesaleVariants[0].pack_breakdown).toEqual({ "7": 1, "8": 1, "9": 1, "10": 1 })
+    expect(res.wholesaleVariants[0].metadata.wholesale_unit_price).toBe(450)
+    expect(res.wholesaleVariants[0].prices[0].amount).toBe(450 * 4 * 100) // ₹1800 pack price
+  })
+
+  it("treats images sent together as single batch without asking for DONE and incorporates accompanying text", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    // Send image 1
+    const imgPayload1 = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "918888888888",
+                    id: "msg_img_1",
+                    timestamp: "123456",
+                    type: "image",
+                    image: { id: "media_img_1", mime_type: "image/jpeg" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+    await manager.handleWebhookPayload(imgPayload1)
+    // No "DONE" or prompt should be sent back immediately
+    expect(sentMessages.length).toBe(0)
+
+    // Send accompanying text message right with the image batch
+    const textPayload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "918888888888",
+                    id: "msg_text_1",
+                    timestamp: "123457",
+                    type: "text",
+                    text: { body: "Art 402, sizes 6 to 10, MRP 1299 wholesale 350" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+    await manager.handleWebhookPayload(textPayload)
+    // Still buffering together in single batch, no premature response
+    expect(sentMessages.length).toBe(0)
   })
 })
