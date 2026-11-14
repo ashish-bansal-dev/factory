@@ -757,4 +757,31 @@ describe("WhatsAppManager", () => {
     // Still buffering together in single batch, no premature response
     expect(sentMessages.length).toBe(0)
   })
+
+  it("keeps mrp and sale price as optional when missing and builds variants cleanly", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const res = await manager.buildAttributesAndVariants(
+      {
+        article_number: "ART-100",
+        title: "ART-100",
+        description: "Product with no price set",
+        currency_code: "inr",
+        sizes: ["S", "M"],
+      },
+      "inr",
+      0
+    )
+
+    // Retail variants exist with empty prices and no mrp in metadata
+    expect(res.retailVariants.length).toBe(2)
+    expect(res.retailVariants[0].prices.length).toBe(0)
+    expect(res.retailVariants[0].metadata.mrp).toBeUndefined()
+    expect(res.retailVariants[0].metadata.sale_price).toBeUndefined()
+
+    // Wholesale variant exists with empty prices and no mrp
+    expect(res.wholesaleVariants.length).toBe(1)
+    expect(res.wholesaleVariants[0].prices.length).toBe(0)
+    expect(res.wholesaleVariants[0].metadata.mrp).toBeUndefined()
+    expect(res.wholesaleVariants[0].metadata.wholesale_unit_price).toBeUndefined()
+  })
 })

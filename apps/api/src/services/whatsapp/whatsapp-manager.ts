@@ -587,15 +587,6 @@ export class WhatsAppManager {
 
     // Draft Actions: YES / CONFIRM / PUBLISH
     if (textUpper === "YES" || textUpper === "CONFIRM" || textUpper === "PUBLISH") {
-      const effectivePrice = session.draft.product.suggested_price || session.draft.product.mrp
-      if (effectivePrice == null || isNaN(effectivePrice) || effectivePrice <= 0) {
-        await this.client.sendMessage(
-          toPhone,
-          `⚠️ A valid price or MRP is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*) or *MRP <amount>*`
-        )
-        return
-      }
-
       await this.publishDraft(toPhone, cleanPhone, session.draft)
       activeSessions.delete(cleanPhone)
       return
@@ -665,15 +656,6 @@ export class WhatsAppManager {
           session.draft.product = assistantRes.updatedProduct
         }
 
-        const effectivePrice = session.draft.product.suggested_price || session.draft.product.mrp
-        if (effectivePrice == null || isNaN(effectivePrice) || effectivePrice <= 0) {
-          await this.client.sendMessage(
-            toPhone,
-            `⚠️ A valid price or MRP is required before publishing. Please reply with: *PRICE <amount>* (e.g. *PRICE 999*)`
-          )
-          return
-        }
-
         await this.publishDraft(toPhone, cleanPhone, session.draft)
         activeSessions.delete(cleanPhone)
         return
@@ -701,10 +683,7 @@ export class WhatsAppManager {
         session.draft.product.retail_variants = retailVariants
         session.draft.product.wholesale_variants = wholesaleVariants
 
-        session.step =
-          session.draft.product.suggested_price == null && session.draft.product.mrp == null
-            ? "AWAITING_PRICE"
-            : "AWAITING_CONFIRMATION"
+        session.step = "AWAITING_CONFIRMATION"
         activeSessions.set(cleanPhone, session)
 
         await this.sendDraftPreview(toPhone, session.draft, `✏️ ${assistantRes.replyMessage}`)
@@ -1201,10 +1180,7 @@ export class WhatsAppManager {
     }
 
     session.draft = draft
-    session.step =
-      extracted.suggested_price == null && extracted.mrp == null
-        ? "AWAITING_PRICE"
-        : "AWAITING_CONFIRMATION"
+    session.step = "AWAITING_CONFIRMATION"
 
     // Multi-turn context retained until published completely
     session.conversationHistory.push({
@@ -1247,11 +1223,11 @@ export class WhatsAppManager {
     prefixMessage?: string
   ): Promise<void> {
     const p = draft.product
-    const mrpDisplay = p.mrp != null ? `₹${p.mrp.toFixed(0)}` : "⚠️ *Not Set*"
+    const mrpDisplay = p.mrp != null ? `₹${p.mrp.toFixed(0)}` : "Optional (Not set)"
     const retailDisplay =
-      p.suggested_price != null ? `₹${p.suggested_price.toFixed(0)}` : "⚠️ *Not Set*"
+      p.suggested_price != null ? `₹${p.suggested_price.toFixed(0)}` : "Optional (Not set)"
     const wholesaleUnitDisplay =
-      p.wholesale_price != null ? `₹${p.wholesale_price.toFixed(0)}/pair` : "⚠️ *Not Set*"
+      p.wholesale_price != null ? `₹${p.wholesale_price.toFixed(0)}/pair` : "Optional (Not set)"
 
     const categoriesDisplay = p.category_names?.length
       ? p.category_names.join(", ")
@@ -1261,13 +1237,13 @@ export class WhatsAppManager {
     const wholesaleVariant = p.wholesale_variants?.[0]
     const wholesalePackPrice =
       wholesaleVariant?.prices?.[0]?.amount != null
-        ? (wholesaleVariant.prices[0].amount / 100).toFixed(0)
+        ? `₹${(wholesaleVariant.prices[0].amount / 100).toFixed(0)}`
         : wholesaleVariant?.price != null
-        ? wholesaleVariant.price.toFixed(0)
-        : null
+        ? `₹${wholesaleVariant.price.toFixed(0)}`
+        : "Optional (Not set)"
     const wholesalePackDisplay = wholesaleVariant
-      ? `• *Wholesale Pack*: ₹${wholesalePackPrice} (${wholesaleVariant.bundle_size || p.sizes?.length || 1} pcs @ ${wholesaleUnitDisplay})`
-      : wholesaleUnitDisplay
+      ? `• *Wholesale Pack*: ${wholesalePackPrice} (${wholesaleVariant.bundle_size || p.sizes?.length || 1} pcs${p.wholesale_price != null ? ` @ ${wholesaleUnitDisplay}` : ""})`
+      : `• *Wholesale Rate*: ${wholesaleUnitDisplay}`
 
     const vendorDisplay = draft.targetSellerName
       ? `• *Vendor*: ${draft.targetSellerName}`
@@ -1289,7 +1265,7 @@ export class WhatsAppManager {
       colorsText ? `• *Colors*: ${colorsText}` : "",
       p.material ? `• *Material*: ${p.material}` : "",
       `• *MRP*: ${mrpDisplay}`,
-      `• *Retail Price*: ${retailDisplay}`,
+      `• *Sale Price*: ${retailDisplay}`,
       `• *Wholesale Rate*: ${wholesaleUnitDisplay}`,
       wholesalePackDisplay,
       `• *Retail Variants*: ${retailVariantsCount} size variant(s)`,
@@ -1298,25 +1274,18 @@ export class WhatsAppManager {
       "",
       `📝 *Description*:\n${p.description.slice(0, 300)}${p.description.length > 300 ? "..." : ""}`,
       "",
+      `👉 Reply:`,
+      `- *YES* to publish to store`,
+      `- *PRICE <amount>* to set sale price`,
+      `- *WHOLESALE <amount>* to set wholesale unit rate`,
+      `- *MRP <amount>* to set MRP`,
+      `- *ART <number>* to change article title`,
+      `- *CATEGORY <name, ...>* to set categories (multi-select)`,
+      `- *BRAND <name>* to set brand`,
+      `- *SIZE <sizes>* / *COLOR <colors>* to set attributes`,
+      ...(draft.isAdmin ? [`- *VENDOR <name or number>* to assign to a vendor`] : []),
+      `- *CANCEL* to discard`,
     ].filter(Boolean)
-
-    if (p.suggested_price == null && p.mrp == null) {
-      messageLines.push(`👉 *Please reply with the price or MRP in INR (₹) to continue* (e.g. *PRICE 999* or *MRP 1299*):`)
-    } else {
-      messageLines.push(`👉 Reply:`)
-      messageLines.push(`- *YES* to publish to store`)
-      messageLines.push(`- *PRICE <amount>* to set retail price`)
-      messageLines.push(`- *WHOLESALE <amount>* to set wholesale unit rate`)
-      messageLines.push(`- *MRP <amount>* to set MRP`)
-      messageLines.push(`- *ART <number>* to change article title`)
-      messageLines.push(`- *CATEGORY <name, ...>* to set categories (multi-select)`)
-      messageLines.push(`- *BRAND <name>* to set brand`)
-      messageLines.push(`- *SIZE <sizes>* / *COLOR <colors>* to set attributes`)
-      if (draft.isAdmin) {
-        messageLines.push(`- *VENDOR <name or number>* to assign to a vendor`)
-      }
-      messageLines.push(`- *CANCEL* to discard`)
-    }
 
     await this.client.sendMessage(toPhone, messageLines.join("\n"))
   }
@@ -1784,13 +1753,30 @@ export class WhatsAppManager {
       }
     }
 
-    // 3. Pricing calculations
-    const mrp = product.mrp ?? product.suggested_price ?? null
-    const retailUnitPrice = product.suggested_price ?? mrp ?? 0
-    const retailPriceAmount = Math.round(retailUnitPrice * 100)
+    // 3. Pricing calculations (strictly optional if missing)
+    const mrp =
+      product.mrp != null && !isNaN(product.mrp) && product.mrp > 0
+        ? product.mrp
+        : null
+    const retailUnitPrice =
+      product.suggested_price != null && !isNaN(product.suggested_price) && product.suggested_price > 0
+        ? product.suggested_price
+        : null
     const wholesaleUnitPrice =
-      product.wholesale_price ??
-      (mrp != null ? Math.round(mrp * 0.5) : Math.round(retailUnitPrice * 0.5))
+      product.wholesale_price != null && !isNaN(product.wholesale_price) && product.wholesale_price > 0
+        ? product.wholesale_price
+        : null
+
+    const retailPriceAmount = retailUnitPrice != null ? Math.round(retailUnitPrice * 100) : null
+    const retailPrices =
+      retailPriceAmount != null
+        ? [
+            {
+              currency_code: currencyCode,
+              amount: retailPriceAmount,
+            },
+          ]
+        : []
 
     const skuBase =
       slugify(product.article_number || product.title)
@@ -1811,15 +1797,11 @@ export class WhatsAppManager {
               Size: size,
               Color: color,
             },
-            prices: [
-              {
-                currency_code: currencyCode,
-                amount: retailPriceAmount,
-              },
-            ],
+            prices: retailPrices,
             metadata: {
               variant_type: "retail",
               ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+              ...(retailUnitPrice != null ? { sale_price: retailUnitPrice } : {}),
             },
           })
         }
@@ -1832,15 +1814,11 @@ export class WhatsAppManager {
           options: {
             Size: size,
           },
-          prices: [
-            {
-              currency_code: currencyCode,
-              amount: retailPriceAmount,
-            },
-          ],
+          prices: retailPrices,
           metadata: {
             variant_type: "retail",
             ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+            ...(retailUnitPrice != null ? { sale_price: retailUnitPrice } : {}),
           },
         })
       }
@@ -1852,15 +1830,11 @@ export class WhatsAppManager {
           options: {
             Color: color,
           },
-          prices: [
-            {
-              currency_code: currencyCode,
-              amount: retailPriceAmount,
-            },
-          ],
+          prices: retailPrices,
           metadata: {
             variant_type: "retail",
             ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+            ...(retailUnitPrice != null ? { sale_price: retailUnitPrice } : {}),
           },
         })
       }
@@ -1868,15 +1842,11 @@ export class WhatsAppManager {
       retailVariants.push({
         title: "Default Retail",
         sku: `${skuBase}-RET-DEFAULT`,
-        prices: [
-          {
-            currency_code: currencyCode,
-            amount: retailPriceAmount,
-          },
-        ],
+        prices: retailPrices,
         metadata: {
           variant_type: "retail",
           ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+          ...(retailUnitPrice != null ? { sale_price: retailUnitPrice } : {}),
         },
       })
     }
@@ -1898,7 +1868,17 @@ export class WhatsAppManager {
       packBreakdown["Standard"] = bundleSize
     }
 
-    const wholesalePackPriceAmount = Math.round(wholesaleUnitPrice * bundleSize * 100)
+    const wholesalePackPriceAmount =
+      wholesaleUnitPrice != null ? Math.round(wholesaleUnitPrice * bundleSize * 100) : null
+    const wholesalePrices =
+      wholesalePackPriceAmount != null
+        ? [
+            {
+              currency_code: currencyCode,
+              amount: wholesalePackPriceAmount,
+            },
+          ]
+        : []
 
     wholesaleVariants.push({
       title: `Wholesale ${packDescription}`,
@@ -1906,19 +1886,14 @@ export class WhatsAppManager {
       pack_description: packDescription,
       bundle_size: bundleSize,
       pack_breakdown: packBreakdown,
-      prices: [
-        {
-          currency_code: currencyCode,
-          amount: wholesalePackPriceAmount,
-        },
-      ],
+      prices: wholesalePrices,
       metadata: {
         variant_type: "wholesale",
         bundle_size: bundleSize,
         pack_description: packDescription,
         pack_breakdown: packBreakdown,
-        wholesale_unit_price: wholesaleUnitPrice,
         ...(mrp != null ? { mrp, unit_msrp: mrp } : {}),
+        ...(wholesaleUnitPrice != null ? { wholesale_unit_price: wholesaleUnitPrice } : {}),
       },
     })
 

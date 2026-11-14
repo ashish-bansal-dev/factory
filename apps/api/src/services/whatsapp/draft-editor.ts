@@ -68,13 +68,13 @@ export class DraftEditorService {
   * Sizes: "${context.draftProduct.sizes?.join(", ") || "None / Free Size"}"
   * Colors: "${context.draftProduct.colors?.join(", ") || "None"}"
   * Material/Fabric: "${context.draftProduct.material || "Unspecified"}"
-  * MRP (Max Retail Price): ${context.draftProduct.mrp != null ? `₹${context.draftProduct.mrp}` : "Not set"} (INR)
-  * Retail Selling Price: ${context.draftProduct.suggested_price != null ? `₹${context.draftProduct.suggested_price}` : "Not set"} (INR)
-  * Wholesale Unit Price: ${context.draftProduct.wholesale_price != null ? `₹${context.draftProduct.wholesale_price}` : "Not set"} (INR)
+  * MRP (Max Retail Price): ${context.draftProduct.mrp != null ? `₹${context.draftProduct.mrp}` : "Optional / Not set"} (INR)
+  * Sale Price: ${context.draftProduct.suggested_price != null ? `₹${context.draftProduct.suggested_price}` : "Optional / Not set"} (INR)
+  * Wholesale Unit Price: ${context.draftProduct.wholesale_price != null ? `₹${context.draftProduct.wholesale_price}` : "Optional / Not set"} (INR)
   * Variants (Retail + Wholesale): ${
     context.draftProduct.variants?.map((v) => `${v.title}: ₹${v.price}`).join(", ") || "Auto-generated"
   }
-Note: The image was processed in Step 1. Retain all visual and product details in context for answering any user queries.`
+Note: Pricing fields (MRP, sale price, wholesale price) are strictly optional if missing. The vendor/admin can publish anytime without setting prices.`
         : "- Active Product Draft: None"
 
     const historySection =

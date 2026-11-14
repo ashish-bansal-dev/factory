@@ -54,13 +54,14 @@ CRITICAL RULES:
    - Set "title" ALWAYS to this clean article number/code.
    - If no article number is found anywhere, fall back to a crisp descriptive title (e.g. 'Pure Linen Casual Shirt') and set article_number to null.
 
-2. ASSIGN MRP FROM PHOTOS:
+2. ASSIGN MRP FROM PHOTOS (OPTIONAL):
    - Carefully look at price tags, shoe box labels, barcodes, and MRP stickers for "M.R.P.", "MRP Rs.", "MRP: ₹...".
-   - Extract the numerical MRP value into "mrp". If not detected on the photos or in text, set null.
+   - Extract the numerical MRP value into "mrp". If not detected on the photos or in text, return null.
 
-3. RETAIL & WHOLESALE PRICING:
-   - "suggested_price": Retail selling price. If a retail selling price or discount is mentioned in vendor notes, use it; otherwise if MRP is present, default to MRP.
-   - "wholesale_price": Wholesale unit price. If a wholesale rate is mentioned in notes (e.g. "Wholesale 350", "WS 350", "Wholesale rate 400"), extract that number. If not mentioned but MRP is known, default wholesale unit price to 50% of MRP.
+3. SALE & WHOLESALE PRICING (OPTIONAL IF MISSING):
+   - "suggested_price": Sale price / retail selling price if specifically stated in vendor notes or tags. Return null if not stated (do NOT default to MRP; keep it optional).
+   - "wholesale_price": Wholesale unit price if mentioned in notes/caption. Return null if not mentioned (do NOT auto-calculate; keep it optional).
+   All price fields (MRP, sale price, wholesale price) are strictly optional if missing.
 
 4. MULTI-SELECT CATEGORIES:
    - Extract "category_names" as an ARRAY of ALL relevant categories that apply (multi-select), choosing from the available store categories if provided (e.g. ["Footwear", "Men", "Casual Shoes"]).
@@ -81,9 +82,9 @@ Extract the following JSON structure:
   "material": string or null ("Material or fabric if visible or mentioned, e.g. 'Genuine Leather', 'EVA Sole', '100% Cotton'"),
   "sizes": ["Array of detected sizes, e.g. ['6', '7', '8', '9', '10'] or ['S', 'M', 'L']. Empty array if none"],
   "colors": ["Array of detected colors, e.g. ['Black', 'Tan']. Empty array if none"],
-  "mrp": number or null (Numerical MRP from tag, sticker, shoe box, or note),
-  "suggested_price": number or null (Retail selling price, defaults to MRP if not specified),
-  "wholesale_price": number or null (Wholesale unit price, from note or 50% of MRP),
+  "mrp": number or null (Numerical MRP from tag, sticker, shoe box, or note. Return null if missing),
+  "suggested_price": number or null (Sale price if specified in notes/tag. Return null if missing),
+  "wholesale_price": number or null (Wholesale unit price if specified. Return null if missing),
   "currency_code": "3-letter currency code in lowercase (default 'inr')",
   "options": [
     {
@@ -134,16 +135,14 @@ Always output strict, valid JSON matching the schema.`
           ? parsed.mrp
           : null
 
-      let suggestedPrice =
+      const suggestedPrice =
         typeof parsed.suggested_price === "number" && !isNaN(parsed.suggested_price)
           ? parsed.suggested_price
-          : mrp
+          : null
 
-      let wholesalePrice =
+      const wholesalePrice =
         typeof parsed.wholesale_price === "number" && !isNaN(parsed.wholesale_price)
           ? parsed.wholesale_price
-          : mrp != null
-          ? Math.round(mrp * 0.5)
           : null
 
       const categoryNames: string[] = Array.isArray(parsed.category_names)
