@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { PencilSquare, Trash } from "@medusajs/icons";
 import { HttpTypes } from "@medusajs/types";
@@ -42,36 +42,69 @@ export const ProductVariantSection = ({
   product: HttpTypes.AdminProduct;
 }) => {
   const { t } = useTranslation();
+  const [, setSearchParams] = useSearchParams();
+  const [variantTab, setVariantTab] = useState<"all" | "retail" | "wholesale">("all");
 
   const { q, order, offset, created_at, updated_at } = useQueryParams(
     ["q", "order", "offset", "created_at", "updated_at"],
     PREFIX,
   );
 
-  const { variants, count, isLoading, isError, error } = useProductVariants(
+  const isWholesale = (v: any) => {
+    const meta = (v.metadata ?? {}) as any;
+    return meta.variant_type === "wholesale" || Number(meta.bundle_size) > 1;
+  };
+  const isRetail = (v: any) => !isWholesale(v);
+
+  const { variants, isLoading, isError, error } = useProductVariants(
     product.id,
     {
       q,
       order: order ? order : "variant_rank",
-      offset: offset ? parseInt(offset) : undefined,
-      limit: PAGE_SIZE,
+      limit: 200,
       created_at: created_at ? JSON.parse(created_at) : undefined,
       updated_at: updated_at ? JSON.parse(updated_at) : undefined,
-      fields: "title,sku,created_at,updated_at,*options,*options.option",
+      fields: "title,sku,created_at,updated_at,*options,*options.option,metadata",
     },
     {
       placeholderData: keepPreviousData,
     },
   );
 
+  const filteredVariants = useMemo(() => {
+    const list = variants ?? [];
+    if (variantTab === "all") return list;
+    if (variantTab === "retail") {
+      return list.filter(isRetail);
+    }
+    return list.filter(isWholesale);
+  }, [variants, variantTab]);
+
+  const currentOffset = offset ? parseInt(offset, 10) : 0;
+  const effectiveOffset =
+    currentOffset >= filteredVariants.length ? 0 : currentOffset;
+
+  const paginatedVariants = useMemo(() => {
+    return filteredVariants.slice(effectiveOffset, effectiveOffset + PAGE_SIZE);
+  }, [filteredVariants, effectiveOffset]);
+
+  const handleTabChange = (tab: "all" | "retail" | "wholesale") => {
+    setVariantTab(tab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete(`${PREFIX}_offset`);
+      return next;
+    });
+  };
+
   const columns = useColumns(product);
   const filters = useFilters();
   const orderBy = useOrderBy();
 
   const { table } = useDataTable({
-    data: variants ?? [],
+    data: paginatedVariants,
     columns,
-    count,
+    count: filteredVariants.length,
     pageSize: PAGE_SIZE,
     getRowId: (row) => row.id,
     prefix: PREFIX,
@@ -84,7 +117,44 @@ export const ProductVariantSection = ({
   return (
     <Container className="divide-y p-0" data-testid="product-variant-section">
       <div className="flex items-center justify-between px-6 py-4">
-        <Heading level="h2">{t("products.variants.header")}</Heading>
+        <div className="flex items-center gap-x-4">
+          <Heading level="h2">{t("products.variants.header")}</Heading>
+          <div className="inline-flex rounded-lg border border-ui-border-base bg-ui-bg-base p-0.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => handleTabChange("all")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                variantTab === "all"
+                  ? "bg-ui-bg-interactive text-ui-fg-on-color"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              }`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange("retail")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                variantTab === "retail"
+                  ? "bg-ui-bg-interactive text-ui-fg-on-color"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              }`}
+            >
+              Retail Only
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTabChange("wholesale")}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                variantTab === "wholesale"
+                  ? "bg-ui-bg-interactive text-ui-fg-on-color"
+                  : "text-ui-fg-muted hover:text-ui-fg-base"
+              }`}
+            >
+              Wholesale Only
+            </button>
+          </div>
+        </div>
         <PermissionAction permission="products:edit">
           <Button
             size="small"
@@ -99,7 +169,7 @@ export const ProductVariantSection = ({
       <_DataTable
         table={table}
         columns={columns}
-        count={count}
+        count={filteredVariants.length}
         pageSize={PAGE_SIZE}
         filters={filters}
         search
@@ -243,6 +313,27 @@ const useColumns = (product: HttpTypes.AdminProduct) => {
         cell: ({ getValue }) => {
           const value = getValue();
           return value ? value : <span className="text-ui-fg-muted">-</span>;
+        },
+      }),
+      columnHelper.display({
+        id: "mrp",
+        header: "MRP",
+        cell: ({ row }) => {
+          const meta = (row.original.metadata ?? {}) as Record<string, unknown>;
+          const mrp = meta.mrp ?? (row.original as any).mrp;
+          return (
+            <span
+              className={
+                mrp !== undefined && mrp !== null && mrp !== ""
+                  ? ""
+                  : "text-ui-fg-muted"
+              }
+            >
+              {mrp !== undefined && mrp !== null && mrp !== ""
+                ? String(mrp)
+                : "-"}
+            </span>
+          );
         },
       }),
       ...attributeColumns,

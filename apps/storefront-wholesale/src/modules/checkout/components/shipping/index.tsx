@@ -81,18 +81,18 @@ const Shipping: React.FC<ShippingProps> = ({
     }
   }
 
-  const safeMethods = Array.isArray(availableShippingMethods)
+  const safeMethods: any[] = Array.isArray(availableShippingMethods)
     ? availableShippingMethods
     : Array.isArray((availableShippingMethods as any)?.shipping_options)
     ? (availableShippingMethods as any).shipping_options
     : []
 
   const _shippingMethods = safeMethods.filter(
-    (sm) => (sm as ShippingOptionWithServiceZone).service_zone?.fulfillment_set?.type !== "pickup"
+    (sm: any) => (sm as ShippingOptionWithServiceZone).service_zone?.fulfillment_set?.type !== "pickup"
   )
 
   const _pickupMethods = safeMethods.filter(
-    (sm) => (sm as ShippingOptionWithServiceZone).service_zone?.fulfillment_set?.type === "pickup"
+    (sm: any) => (sm as ShippingOptionWithServiceZone).service_zone?.fulfillment_set?.type === "pickup"
   )
 
   const hasPickupOptions = !!_pickupMethods?.length
@@ -102,15 +102,15 @@ const Shipping: React.FC<ShippingProps> = ({
 
     if (_shippingMethods?.length) {
       const promises = _shippingMethods
-        .filter((sm) => sm.price_type === "calculated")
-        .map((sm) => calculatePriceForShippingOption(sm.id, cart.id))
+        .filter((sm: any) => sm.price_type === "calculated")
+        .map((sm: any) => calculatePriceForShippingOption(sm.id, cart.id))
 
       if (promises.length) {
         Promise.allSettled(promises).then((res) => {
           const pricesMap: Record<string, number> = {}
           res
             .filter((r) => r.status === "fulfilled")
-            .forEach((p) => (pricesMap[p.value?.id || ""] = p.value?.amount!))
+            .forEach((p) => (pricesMap[(p as any).value?.id || ""] = (p as any).value?.amount!))
 
           setCalculatedPricesMap(pricesMap)
           setIsLoadingPrices(false)
@@ -118,7 +118,7 @@ const Shipping: React.FC<ShippingProps> = ({
       }
     }
 
-    if (_pickupMethods?.find((m) => m.id === shippingMethodId)) {
+    if (_pickupMethods?.find((m: any) => m.id === shippingMethodId)) {
       setShowPickupOptions(PICKUP_OPTION_ON)
     }
   }, [availableShippingMethods])
@@ -216,7 +216,7 @@ const Shipping: React.FC<ShippingProps> = ({
                     value={showPickupOptions}
                     onChange={(value) => {
                       const id = _pickupMethods.find(
-                        (option) => !option.insufficient_inventory
+                        (option: any) => !option.insufficient_inventory
                       )?.id
 
                       if (id) {
@@ -257,7 +257,7 @@ const Shipping: React.FC<ShippingProps> = ({
                     }
                   }}
                 >
-                  {_shippingMethods?.map((option) => {
+                  {_shippingMethods?.map((option: any) => {
                     const isDisabled =
                       option.price_type === "calculated" &&
                       !isLoadingPrices &&
@@ -332,7 +332,7 @@ const Shipping: React.FC<ShippingProps> = ({
                       }
                     }}
                   >
-                    {_pickupMethods?.map((option) => {
+                    {_pickupMethods?.map((option: any) => {
                       return (
                         <Radio
                           key={option.id}

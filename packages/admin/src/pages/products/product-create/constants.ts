@@ -10,7 +10,7 @@ export const MediaSchema = z.object({
   file: z.any().nullable(), // File
 })
 
-const ProductCreateVariantSchema = z.object({
+export const ProductCreateVariantSchema = z.object({
   should_create: z.boolean(),
   is_default: z.boolean().optional(),
   title: z.string(),
@@ -28,6 +28,11 @@ const ProductCreateVariantSchema = z.object({
   sku: z.string().optional(),
   options: z.record(z.string(), z.string()).optional(),
   variant_rank: z.number(),
+  variant_type: z.enum(["retail", "wholesale"]).default("retail"),
+  pack_description: z.string().optional(),
+  pack_name: z.string().optional(),
+  bundle_size: optionalInt,
+  mrp: optionalInt,
   additional_data: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -135,6 +140,24 @@ export const ProductCreateSchema = z
 
         skus.add(v.sku)
       }
+
+      if (v.variant_type === "wholesale" && v.should_create) {
+        if (v.bundle_size !== undefined && v.bundle_size !== "") {
+          const size =
+            typeof v.bundle_size === "string"
+              ? parseInt(v.bundle_size, 10)
+              : v.bundle_size
+          if (isNaN(size) || size < 1) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [`variants.${index}.bundle_size`],
+              message: i18n.t("products.create.errors.invalidBundleSize", {
+                defaultValue: "Bundle size must be at least 1 for wholesale variants",
+              }),
+            })
+          }
+        }
+      }
     })
   })
 
@@ -155,7 +178,15 @@ export const PRODUCT_CREATE_FIELD_IDS = [
 ]
 
 /** Columns of the variants grid, overridable through the `variants` tab. */
-export const PRODUCT_CREATE_VARIANT_COLUMN_IDS = ["attributes", "title", "sku"]
+export const PRODUCT_CREATE_VARIANT_COLUMN_IDS = [
+  "attributes",
+  "title",
+  "sku",
+  "variant_type",
+  "pack_description",
+  "bundle_size",
+  "mrp",
+]
 
 export const EditProductMediaSchema = z.object({
   media: z.array(MediaSchema),
@@ -175,6 +206,8 @@ export const PRODUCT_CREATE_FORM_DEFAULTS: Partial<
       variant_rank: 0,
       options: {},
       is_default: true,
+      variant_type: "retail",
+      bundle_size: 1,
     },
   ]),
   attributes: [],

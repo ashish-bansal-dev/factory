@@ -31,7 +31,7 @@ interface Props {
 export const NavbarSearch = ({ className, sellerId, sellerName }: Props) => {
   return (
     <div className={clsx("relative w-full", className)}>
-      <InstantSearch searchClient={searchClient} indexName={PRODUCT_INDEX_NAME}>
+      <InstantSearch searchClient={searchClient as any} indexName={PRODUCT_INDEX_NAME}>
         {sellerId && (
           <Configure facetFilters={[`seller_ids:${sellerId}`]} />
         )}
@@ -102,7 +102,7 @@ const NavbarSearchInner = ({ sellerName }: { sellerName?: string | null }) => {
 
       {isOpen && (
         <div
-          className="absolute left-0 right-0 top-full mt-2 z-50 bg-white border border-stone-200 rounded-md shadow-lg max-h-96 overflow-y-auto"
+          className="absolute left-0 right-0 top-full mt-2 z-50 bg-white border border-stone-200 rounded-md shadow-lg max-h-[75vh] sm:max-h-96 overflow-y-auto"
           data-testid="search-results-dropdown"
         >
           {error ? (

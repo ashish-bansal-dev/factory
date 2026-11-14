@@ -25,7 +25,11 @@ import { useShippingProfiles } from "../../../../hooks/api/shipping-profiles";
 import { useStockLocations } from "../../../../hooks/api/stock-locations";
 import { useCurrentSeller } from "../../../../hooks/api/sellers";
 import { useSellerCurrencies } from "../../common/use-seller-currencies";
-import { CreateOfferFormValues, OfferVariantRow } from "./schema";
+import {
+  CreateOfferFormValues,
+  OfferVariantRow,
+  shouldIncludeVariantForChannel,
+} from "./schema";
 
 type ShippingProfileLite = {
   id: string;
@@ -109,32 +113,31 @@ const Root = () => {
       return;
     }
     form.setValue("channel", newChannel);
-    if (newChannel === "wholesale") {
-      const current = form.getValues("variants") ?? [];
-      const updated = current.map((v) => ({
-        ...v,
-        bundle_size: (!v.bundle_size || v.bundle_size === 1) ? 6 : v.bundle_size,
-      }));
-      form.setValue("variants", updated);
-    }
   };
 
   const gridData = useMemo<GridRow[]>(() => {
     const rows: GridRow[] = [];
     let lastProductId: string | undefined;
-    (variants ?? []).forEach((variant, index) => {
-      if (variant.product_id !== lastProductId) {
-        rows.push({
-          __group: true,
-          id: `group-${variant.product_id}`,
-          product_title: variant.product_title,
-        });
-        lastProductId = variant.product_id;
-      }
-      rows.push({ ...variant, __group: false, __formIndex: index });
-    });
+    (variants ?? [])
+      .map((variant, formIndex) => ({ variant, formIndex }))
+      .filter(
+        ({ variant }) =>
+          Boolean(variant && variant.variant_id && variant.product_id) &&
+          shouldIncludeVariantForChannel(variant, channel),
+      )
+      .forEach(({ variant, formIndex }) => {
+        if (variant.product_id !== lastProductId) {
+          rows.push({
+            __group: true,
+            id: `group-${variant.product_id}`,
+            product_title: variant.product_title,
+          });
+          lastProductId = variant.product_id;
+        }
+        rows.push({ ...variant, __group: false, __formIndex: formIndex });
+      });
     return rows;
-  }, [variants]);
+  }, [variants, channel]);
 
   const baseColumns = useColumns({
     currencyCode: currency_code,
@@ -172,7 +175,7 @@ const Root = () => {
       {/* Channel selector toolbar */}
       <div className="flex items-center justify-between border-b border-ui-border-base px-6 py-2.5 bg-ui-bg-subtle/50">
         <div className="flex items-center gap-x-3">
-          <span className="text-xs font-medium text-ui-fg-subtle">Channel:</span>
+          <span className="text-xs font-medium text-ui-fg-subtle">Offer Type:</span>
           <div className="inline-flex rounded-lg border border-ui-border-base bg-ui-bg-base p-0.5 shadow-2xs">
             <button
               type="button"
@@ -183,7 +186,7 @@ const Root = () => {
                   : "text-ui-fg-muted hover:text-ui-fg-base"
               }`}
             >
-              Retail (ThreadBuy)
+              Retail Offer (Single Units)
             </button>
             <button
               type="button"
@@ -198,7 +201,7 @@ const Root = () => {
                   : "text-ui-fg-muted hover:text-ui-fg-base"
               }`}
             >
-              Wholesale (FactoryTribe)
+              Wholesale Offer (Packs & Tiered Pricing)
             </button>
           </div>
           {isRetailer && (
@@ -210,7 +213,7 @@ const Root = () => {
         {channel === "wholesale" && (
           <div className="flex items-center gap-2">
             <Badge color="purple" size="2xsmall">
-              Wholesale: Pack Size &ge; 1 + Freight Shipping
+              Wholesale: Pack Configurations Active (Pack Size &ge; 1, Freight)
             </Badge>
           </div>
         )}
@@ -313,6 +316,32 @@ const useColumns = ({
             <DataGrid.TextCell context={context} />
           ),
       }),
+      ...(channel === "wholesale"
+        ? [
+            columnHelper.column({
+              id: "bundle_size",
+              name: "Pack Size (Units/Pack)",
+              header: "Pack Size (Units/Pack)",
+              field: (context) => {
+                const row = context.row.original;
+                return isGroup(row)
+                  ? null
+                  : `variants.${row.__formIndex}.bundle_size`;
+              },
+              type: "number",
+              cell: (context) =>
+                isGroup(context.row.original) ? (
+                  <DataGrid.ReadonlyCell context={context} />
+                ) : (
+                  <DataGrid.NumberCell
+                    context={context}
+                    min={1}
+                    placeholder="6"
+                  />
+                ),
+            }),
+          ]
+        : []),
       columnHelper.column({
         id: "mrp",
         name: "MRP",
@@ -335,6 +364,28 @@ const useColumns = ({
               context={context}
               min={0}
               placeholder="Optional"
+            />
+          ),
+      }),
+      columnHelper.column({
+        id: "leadtime_to_ship",
+        name: t("offers.fields.leadtime"),
+        header: t("offers.fields.leadtime"),
+        field: (context) => {
+          const row = context.row.original;
+          return isGroup(row)
+            ? null
+            : `variants.${row.__formIndex}.leadtime_to_ship`;
+        },
+        type: "number",
+        cell: (context) =>
+          isGroup(context.row.original) ? (
+            <DataGrid.ReadonlyCell context={context} />
+          ) : (
+            <DataGrid.NumberCell
+              context={context}
+              min={0}
+              placeholder={t("offers.fields.storeDefault")}
             />
           ),
       }),
@@ -380,28 +431,6 @@ const useColumns = ({
             />
           ),
       }),
-      columnHelper.column({
-        id: "leadtime_to_ship",
-        name: t("offers.fields.leadtime"),
-        header: t("offers.fields.leadtime"),
-        field: (context) => {
-          const row = context.row.original;
-          return isGroup(row)
-            ? null
-            : `variants.${row.__formIndex}.leadtime_to_ship`;
-        },
-        type: "number",
-        cell: (context) =>
-          isGroup(context.row.original) ? (
-            <DataGrid.ReadonlyCell context={context} />
-          ) : (
-            <DataGrid.NumberCell
-              context={context}
-              min={0}
-              placeholder={t("offers.fields.storeDefault")}
-            />
-          ),
-      }),
       ...createDataGridLocationStockColumns<GridRow, CreateOfferFormValues>({
         stockLocations,
         isReadyOnly: (context) => isGroup(context.row.original),
@@ -437,32 +466,6 @@ const useColumns = ({
         },
         t,
       }).filter((column) => column.id?.startsWith("region_prices")),
-      ...(channel === "wholesale"
-        ? [
-            columnHelper.column({
-              id: "bundle_size",
-              name: "Pack Size",
-              header: "Pack Size",
-              field: (context) => {
-                const row = context.row.original;
-                return isGroup(row)
-                  ? null
-                  : `variants.${row.__formIndex}.bundle_size`;
-              },
-              type: "number",
-              cell: (context) =>
-                isGroup(context.row.original) ? (
-                  <DataGrid.ReadonlyCell context={context} />
-                ) : (
-                  <DataGrid.NumberCell
-                    context={context}
-                    min={1}
-                    placeholder="4"
-                  />
-                ),
-            }),
-          ]
-        : []),
     ];
   }, [
     t,

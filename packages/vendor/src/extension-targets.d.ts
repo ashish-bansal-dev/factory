@@ -301,11 +301,11 @@ declare module "@mercurjs/dashboard-sdk" {
     "product": {
       formZones: "create" | "edit"
       formTabs: { "create": "attributes" | "details" | "organize" | "variants" }
-      formFieldIds: "attributes" | "brand_id" | "category_id" | "collection_id" | "description" | "discountable" | "handle" | "media" | "sku" | "subtitle" | "tags" | "title" | "type_id"
+      formFieldIds: "attributes" | "brand_id" | "bundle_size" | "category_id" | "collection_id" | "description" | "discountable" | "handle" | "media" | "mrp" | "pack_description" | "sku" | "subtitle" | "tags" | "title" | "type_id" | "variant_type"
       displayZones: "general" | "media" | "organize" | "sales-channels" | "shipping-profile" | "variants"
       displayFieldIds: "description" | "discountable" | "handle" | "status" | "subtitle" | "title"
       listZones: "list" | "variants"
-      listColumnIds: "categories" | "collection" | "product" | "sku" | "status" | "title" | "variants"
+      listColumnIds: "categories" | "collection" | "mrp" | "product" | "sku" | "status" | "title" | "variants"
     }
     "promotion": {
       formZones: "edit"

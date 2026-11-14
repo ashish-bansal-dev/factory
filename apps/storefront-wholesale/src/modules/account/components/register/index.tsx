@@ -75,19 +75,16 @@ const Register = ({ setCurrentView }: Props) => {
             label="Business / Store Name"
             name="company_name"
             autoComplete="organization"
-            placeholder="e.g. Amber Boutique or Fab Retail Ltd."
           />
 
           <div className="grid grid-cols-2 gap-2">
             <Input
               label="GSTIN (Optional)"
               name="tax_id"
-              placeholder="22AAAAA0000A1Z5"
             />
             <Input
               label="City / Pincode"
               name="city"
-              placeholder="e.g. Mumbai, 400001"
             />
           </div>
 
@@ -106,7 +103,6 @@ const Register = ({ setCurrentView }: Props) => {
             type="tel"
             autoComplete="tel"
             data-testid="phone-input"
-            placeholder="e.g. 98765 43210"
           />
 
           <Input

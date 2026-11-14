@@ -1,6 +1,12 @@
-import { validateAndTransformQuery } from "@medusajs/framework"
+import {
+  validateAndTransformBody,
+  validateAndTransformQuery,
+} from "@medusajs/framework"
 import { MiddlewareRoute } from "@medusajs/medusa"
-import { VendorGetInquiriesParams } from "./validators"
+import {
+  VendorCreateDraftOrderFromInquiry,
+  VendorGetInquiriesParams,
+} from "./validators"
 
 export const vendorInquiriesMiddlewares: MiddlewareRoute[] = [
   {
@@ -23,6 +29,13 @@ export const vendorInquiriesMiddlewares: MiddlewareRoute[] = [
         ],
         isList: true,
       }),
+    ],
+  },
+  {
+    method: ["POST"],
+    matcher: "/vendor/inquiries/:id/create-draft-order",
+    middlewares: [
+      validateAndTransformBody(VendorCreateDraftOrderFromInquiry),
     ],
   },
 ]

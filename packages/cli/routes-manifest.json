@@ -470,6 +470,7 @@
   "/vendor/fulfillment-sets/:id/service-zones": "typeof import(\"@mercurjs/core/api/vendor/fulfillment-sets/[id]/service-zones/route\")",
   "/vendor/fulfillment-sets/:id/service-zones/:zone_id": "typeof import(\"@mercurjs/core/api/vendor/fulfillment-sets/[id]/service-zones/[zone_id]/route\")",
   "/vendor/inquiries": "typeof import(\"@mercurjs/core/api/vendor/inquiries/route\")",
+  "/vendor/inquiries/:id/create-draft-order": "typeof import(\"@mercurjs/core/api/vendor/inquiries/[id]/create-draft-order/route\")",
   "/vendor/inventory-items": "typeof import(\"@mercurjs/core/api/vendor/inventory-items/route\")",
   "/vendor/inventory-items/:id": "typeof import(\"@mercurjs/core/api/vendor/inventory-items/[id]/route\")",
   "/vendor/inventory-items/:id/location-levels": "typeof import(\"@mercurjs/core/api/vendor/inventory-items/[id]/location-levels/route\")",

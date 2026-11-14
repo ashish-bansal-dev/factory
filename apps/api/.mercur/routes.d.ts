@@ -510,6 +510,8 @@ export type Routes = {
             };
         };
         custom: typeof import("../src/api/admin/custom/route");
+        mcp: typeof import("../src/api/admin/mcp/route");
+        whatsappConfig: typeof import("../src/api/admin/whatsapp-config/route");
     };
     auth: {
         $actorType: {
@@ -552,6 +554,7 @@ export type Routes = {
             $provider: typeof import("@medusajs/medusa/api/hooks/payment/[provider]/route");
         };
         payout: typeof import("@mercurjs/core/api/hooks/payout/route");
+        whatsapp: typeof import("../src/api/hooks/whatsapp/route");
     };
     store: {
         carts: typeof import("@medusajs/medusa/api/store/carts/route") & {

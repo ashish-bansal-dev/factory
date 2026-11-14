@@ -2292,6 +2292,19 @@ export function getRouteMap({
                 ],
               },
               {
+                path: "whatsapp-ai",
+                element: <Outlet />,
+                handle: {
+                  breadcrumb: () => "WhatsApp & AI",
+                },
+                children: [
+                  {
+                    path: "",
+                    lazy: () => import("./pages/whatsapp-ai"),
+                  },
+                ],
+              },
+              {
                 path: "tax-regions",
                 element: <Outlet />,
                 handle: {

@@ -38,7 +38,7 @@ export default async function ProductActionsWrapper({
       product={product}
       region={region}
       isTenant={isTenant}
-      seller={tenantSeller ?? undefined}
+      seller={tenantSeller ?? (product as any).seller ?? undefined}
     />
   )
 }

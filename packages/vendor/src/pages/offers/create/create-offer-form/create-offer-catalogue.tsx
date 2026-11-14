@@ -1,5 +1,5 @@
 import { HttpTypes } from "@medusajs/types"
-import { Checkbox, Text } from "@medusajs/ui"
+import { Badge, Checkbox, Text, toast } from "@medusajs/ui"
 import { keepPreviousData } from "@tanstack/react-query"
 import {
   ColumnDef,
@@ -8,7 +8,7 @@ import {
   createColumnHelper,
 } from "@tanstack/react-table"
 import { useMemo, useState } from "react"
-import { useFormContext } from "react-hook-form"
+import { useFormContext, useWatch } from "react-hook-form"
 import { useTranslation } from "react-i18next"
 import {
   isForbidden,
@@ -33,6 +33,7 @@ import { PlaceholderCell } from "../../../../components/table/table-cells/common
 import { _DataTable } from "../../../../components/table/data-table"
 import { defineTabMeta } from "../../../../components/tabbed-form/types"
 import { useProducts } from "../../../../hooks/api/products"
+import { useCurrentSeller } from "../../../../hooks/api/sellers"
 import { useProductTableFilters } from "../../../../hooks/table/filters/use-product-table-filters"
 import { useProductTableQuery } from "../../../../hooks/table/query/use-product-table-query"
 import { useDataTable } from "../../../../hooks/use-data-table"
@@ -57,6 +58,24 @@ type ProductRow = HttpTypes.AdminProduct
 const Root = () => {
   const { t } = useTranslation()
   const form = useFormContext<CreateOfferFormValues>()
+  const { seller } = useCurrentSeller()
+  const isRetailer = seller?.type === "retailer"
+
+  const channel = (useWatch({
+    control: form.control,
+    name: "channel",
+  }) ?? "retail") as "retail" | "wholesale"
+
+  const handleChannelChange = (newChannel: "retail" | "wholesale") => {
+    if (newChannel === "wholesale" && isRetailer) {
+      toast.error("Retailer accounts can only create retail offers.")
+      return
+    }
+    form.setValue("channel", newChannel, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+  }
 
   const initialSelection = (form.getValues("selected_product_ids") ?? []).reduce(
     (acc, id) => {
@@ -128,6 +147,65 @@ const Root = () => {
       className="flex size-full flex-col"
       data-testid="offer-create-tab-catalogue"
     >
+      <div className="flex flex-col gap-2 border-b border-ui-border-base bg-ui-bg-subtle/50 px-6 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-x-3">
+            <span className="text-xs font-semibold text-ui-fg-subtle uppercase tracking-wider">
+              Offer Type:
+            </span>
+            <div className="inline-flex rounded-lg border border-ui-border-base bg-ui-bg-base p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleChannelChange("retail")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  channel === "retail"
+                    ? "bg-ui-bg-interactive text-ui-fg-on-color shadow-xs"
+                    : "text-ui-fg-muted hover:text-ui-fg-base"
+                }`}
+                data-testid="offer-channel-retail-btn"
+              >
+                Retail Offer (Single Units)
+              </button>
+              <button
+                type="button"
+                disabled={isRetailer}
+                onClick={() => handleChannelChange("wholesale")}
+                title={isRetailer ? "Retailer accounts can only create retail offers." : undefined}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  channel === "wholesale"
+                    ? "bg-ui-bg-interactive text-ui-fg-on-color shadow-xs"
+                    : isRetailer
+                    ? "text-ui-fg-disabled cursor-not-allowed opacity-50"
+                    : "text-ui-fg-muted hover:text-ui-fg-base"
+                }`}
+                data-testid="offer-channel-wholesale-btn"
+              >
+                Wholesale Offer (Packs &amp; Tiered Pricing)
+              </button>
+            </div>
+            {isRetailer && (
+              <span className="text-[11px] text-ui-fg-muted italic">
+                Retailer accounts can only create retail offers
+              </span>
+            )}
+          </div>
+          {channel === "wholesale" ? (
+            <Badge color="purple" size="small">
+              B2B Wholesale &bull; Pack Configuration Active
+            </Badge>
+          ) : (
+            <Badge color="grey" size="small">
+              B2C Retail &bull; Single Unit Sales Active
+            </Badge>
+          )}
+        </div>
+        <Text size="xsmall" className="text-ui-fg-muted">
+          {channel === "wholesale"
+            ? "Wholesale offers target B2B buyers with pack sizes, bulk pricing, and freight logistics."
+            : "Retail offers target direct consumers on the marketplace with individual units."}
+        </Text>
+      </div>
+
       <_DataTable
         table={table}
         count={count}

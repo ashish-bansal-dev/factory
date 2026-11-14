@@ -131,6 +131,96 @@ const UpdateProductVariant = z
   })
   .strict()
 
+export const CreateRetailVariant = z
+  .object({
+    id: z.string().optional(),
+    title: z.string().optional(),
+    sku: z.string().nullish(),
+    ean: z.string().nullish(),
+    upc: z.string().nullish(),
+    isbn: z.string().nullish(),
+    asin: z.string().nullish(),
+    gtin: z.string().nullish(),
+    barcode: z.string().nullish(),
+    hs_code: z.string().nullish(),
+    mid_code: z.string().nullish(),
+    thumbnail: z.string().nullish(),
+    variant_rank: z.number().optional(),
+    weight: z.number().nullish(),
+    length: z.number().nullish(),
+    height: z.number().nullish(),
+    width: z.number().nullish(),
+    origin_country: z.string().nullish(),
+    material: z.string().nullish(),
+    metadata: z.record(z.string(), z.unknown()).nullish(),
+    options: z.record(z.string(), z.string()).optional(),
+    mrp: z.number().nullish(),
+    unit_msrp: z.number().nullish(),
+    prices: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          currency_code: z.string().optional(),
+          amount: z.number().optional(),
+          min_quantity: z.number().nullish(),
+          max_quantity: z.number().nullish(),
+          rules: z.record(z.string(), z.string()).optional(),
+        })
+      )
+      .optional(),
+    additional_data: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+
+export type CreateRetailVariantType = z.infer<typeof CreateRetailVariant>
+
+export const CreateWholesaleVariant = z
+  .object({
+    id: z.string().optional(),
+    title: z.string().optional(),
+    pack_description: z.string().optional(),
+    pack_name: z.string().optional(),
+    bundle_size: z.number().int().min(1),
+    pack_breakdown: z.record(z.string(), z.number()).nullish(),
+    mrp: z.number().nullish(),
+    unit_msrp: z.number().nullish(),
+    sku: z.string().nullish(),
+    ean: z.string().nullish(),
+    upc: z.string().nullish(),
+    isbn: z.string().nullish(),
+    asin: z.string().nullish(),
+    gtin: z.string().nullish(),
+    barcode: z.string().nullish(),
+    hs_code: z.string().nullish(),
+    mid_code: z.string().nullish(),
+    thumbnail: z.string().nullish(),
+    variant_rank: z.number().optional(),
+    weight: z.number().nullish(),
+    length: z.number().nullish(),
+    height: z.number().nullish(),
+    width: z.number().nullish(),
+    origin_country: z.string().nullish(),
+    material: z.string().nullish(),
+    metadata: z.record(z.string(), z.unknown()).nullish(),
+    options: z.record(z.string(), z.string()).optional(),
+    prices: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          currency_code: z.string().optional(),
+          amount: z.number().optional(),
+          min_quantity: z.number().nullish(),
+          max_quantity: z.number().nullish(),
+          rules: z.record(z.string(), z.string()).optional(),
+        })
+      )
+      .optional(),
+    additional_data: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+
+export type CreateWholesaleVariantType = z.infer<typeof CreateWholesaleVariant>
+
 const AttributeTypeEnum = z.enum([
   "single_select",
   "multi_select",
@@ -232,6 +322,8 @@ const CreateProduct = z
         })
       )
       .optional(),
+    retail_variants: z.array(CreateRetailVariant).optional(),
+    wholesale_variants: z.array(CreateWholesaleVariant).optional(),
     weight: z.number().nullish(),
     length: z.number().nullish(),
     height: z.number().nullish(),
@@ -269,6 +361,8 @@ export const UpdateProduct = z
       .array(z.object({ title: z.string(), values: z.array(z.string()) }))
       .optional(),
     variants: z.array(UpdateProductVariant).optional(),
+    retail_variants: z.array(CreateRetailVariant).optional(),
+    wholesale_variants: z.array(CreateWholesaleVariant).optional(),
     weight: z.number().nullish(),
     length: z.number().nullish(),
     height: z.number().nullish(),

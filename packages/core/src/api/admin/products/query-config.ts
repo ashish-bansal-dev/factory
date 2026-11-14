@@ -46,6 +46,7 @@ export const adminProductFields = [
   "variants.manage_inventory",
   "variants.allow_backorder",
   "variants.variant_rank",
+  "variants.metadata",
   "product_attribute_values.id",
   "product_attribute_values.name",
   "product_attribute_values.rank",

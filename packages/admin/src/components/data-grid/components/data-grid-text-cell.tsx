@@ -9,7 +9,8 @@ import { DataGridCellContainer } from "./data-grid-cell-container"
 
 export const DataGridTextCell = <TData, TValue = any>({
   context,
-}: DataGridCellProps<TData, TValue>) => {
+  placeholder,
+}: DataGridCellProps<TData, TValue> & { placeholder?: string }) => {
   const { field, control, renderProps } = useDataGridCell({
     context,
   })
@@ -24,7 +25,7 @@ export const DataGridTextCell = <TData, TValue = any>({
       render={({ field }) => {
         return (
           <DataGridCellContainer {...container} {...errorProps}>
-            <Inner field={field} inputProps={input} />
+            <Inner field={field} inputProps={input} placeholder={placeholder} />
           </DataGridCellContainer>
         )
       }}
@@ -35,9 +36,11 @@ export const DataGridTextCell = <TData, TValue = any>({
 const Inner = ({
   field,
   inputProps,
+  placeholder,
 }: {
   field: ControllerRenderProps<any, string>
   inputProps: InputProps
+  placeholder?: string
 }) => {
   const { onChange: _, onBlur, ref, value, ...rest } = field
   const { ref: inputRef, onBlur: onInputBlur, onChange, ...input } = inputProps
@@ -58,6 +61,7 @@ const Inner = ({
         "focus:cursor-text",
         "items-center justify-center"
       )}
+      placeholder={placeholder}
       autoComplete="off"
       tabIndex={-1}
       value={localValue ?? ""}

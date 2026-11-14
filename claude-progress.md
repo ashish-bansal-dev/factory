@@ -6,13 +6,47 @@ session detail aggressively. The per-spec source of truth lives in
 
 ## Current Verified State
 
-- **Repository root**: `/Users/viktorholik/Desktop/mercur`
-- **Current branch**: `feat/extendable-offer-tables-forms`
+- **Current branch**: `feat/whatsapp-ai-product-creation`
 - **Current version**: `2.2.0-rc.1`
 - **Standard startup path**: `bun install && bun run dev`
-- **Standard verification path**: `bun run build`, `bun run lint` (oxlint),
-  `bun run test:integration:http -- <pattern>`
+- **Standard verification path**: `bun run build`, `bun run lint`
 - **Current blocker**: none
+
+## Session — Retail & Wholesale Variants, Packs, Offers & Inquiry Draft Orders (2026-11-10)
+
+Implemented end-to-end architecture for dual retail & wholesale products, packs, offers, lead generation, admin/vendor dashboards, and storefront isolation:
+1. `packages/core`:
+   - Enriched product creation/update schemas with distinct `retail_variants` and `wholesale_variants` (with `bundle_size`, `pack_description`, and unit `mrp`).
+   - Implemented `transformProductVariants` and `categorizeProductVariants` helpers.
+   - Built vendor inquiry-to-draft-order conversion route (`POST /vendor/inquiries/:id/create-draft-order`) with seller authorization, custom negotiated pricing, and inquiry status transition to `converted`.
+   - Unit tests: 17/17 passing across `product-variants.unit.spec.ts` and `create-draft-order/__tests__/route.unit.spec.ts`.
+2. `apps/storefront-wholesale`:
+   - Filtered variants strictly to Wholesale-only packs.
+   - Displayed `pack_description` (e.g. `"Sizes 28-32, Pack of 6 (1-2-2-1)"`).
+   - Dynamically calculated Total Pack MSRP ($\text{unit MRP} \times \text{bundle\_size}$) and retail profit margin percentage.
+   - Added dedicated variant availability badges (`In Stock (Ships in 24-48h)` vs `Backorder Available (Ships in X days)` vs `Out of Stock — Request Quote`).
+   - Added tiered volume discount schedule component (`VolumeDiscountTable`) dynamically highlighting active discount breaks.
+   - Enhanced `WholesaleInquiryModal` with pre-filled variant/pack details for frictionless RFQ submissions.
+3. `apps/storefront`:
+   - Filtered variants strictly to Retail-only single variants (wholesale packs hidden).
+   - Displayed single-item unit MRP with strikethrough savings.
+4. `packages/vendor` & `apps/vendor`:
+   - Completely removed ERP / ERP ID from `apps/vendor/src/custom-fields/product.tsx` (edit forms, product detail general section, and products table column).
+   - Added `CreateDraftOrderModal` and row action in wholesale inquiries table (`packages/vendor/src/pages/inquiries`).
+   - Added Retail vs. Wholesale Offer Channel switcher in offer creation with strict variant filtering (Retail offers show retail-only; Wholesale offers show wholesale-only).
+   - Removed `pack_mrp` and `pack_lead_time` from offer creation; offer MRP serves as an optional single-item override.
+   - Fixed variant table pagination/truncation (expanded query limit to 200) with watertight `All = Retail + Wholesale` filtering tabs and unit `MRP` column.
+   - Enriched Add Variant form with Channel assignment (`Retail` vs `Wholesale`), `bundle_size` (default 1 for retail), `pack_description` (default "Single pc" for retail), and single-item `MRP`.
+   - Enriched Edit Variant drawer form allowing channel switching, `bundle_size`, `pack_description`, and `mrp` updates.
+5. `packages/admin`:
+   - Added Retail vs. Wholesale variant configuration in product create DataGrid (`variant_type`, `pack_description`, `bundle_size`, and unit `mrp`).
+   - Fixed variant table pagination/truncation (expanded query limit to 200) with watertight `All = Retail + Wholesale` filtering tabs and unit `MRP` column.
+   - Enriched Add Variant form with Channel assignment (`Retail` vs `Wholesale`), `bundle_size` (default 1 for retail), `pack_description` (default "Single pc" for retail), and single-item `MRP`.
+   - Enriched Edit Variant drawer form allowing channel switching, `bundle_size`, `pack_description`, and `mrp` updates.
+   - Added form normalization partitioning variants into `retail_variants` and `wholesale_variants`.
+   - Unit tests: 16/16 passing in `packages/admin/src/pages/products/`.
+   - Verification: All package builds (`core`, `admin`, `vendor`, `storefront`, and `storefront-wholesale`) passed cleanly. Spec tracked in `docs/specs/SPEC-015-retail-wholesale-packs-offers.md`.
+
 
 ## Session — Medusa 2.22.3 upgrade (2026-11-04), branch `chore/medusa-2-22-3`
 
@@ -403,6 +437,20 @@ checkout / CI (fresh worktree has no install).
   `docs/specs/SPEC-*.md`)_
 
 ## Session Log
+
+### Session: 2026-11-09 -- Mobile Responsive Search Bar & Cloudflare Worker Deployment
+
+- **Goal.** Fix mobile view search bar out-of-bounds overflow by relocating it below the top nav as a dedicated responsive full-width row, and deploy the updated storefront to the Cloudflare Worker.
+- **Landed.**
+  - `apps/storefront-wholesale/src/modules/layout/templates/nav/index.tsx`: Repositioned search bar on mobile screens into a dedicated full-width container underneath the top navigation row (`md:hidden content-container pb-3 pt-0.5`), keeping the desktop search bar centered in the top header (`hidden md:flex`).
+  - `apps/storefront-wholesale/src/modules/layout/components/wholesale-search/index.tsx`: Updated dropdown max-height to `max-h-[75vh] sm:max-h-96` to ensure responsive vertical constraints on mobile viewports.
+  - `apps/storefront/src/components/cells/Navbar/Navbar.tsx` & `NavbarSearch.tsx`: Removed rigid 296px constraint on mobile search to allow 100% width responsiveness.
+  - `apps/storefront-wholesale/src/lib/search-client.ts`: Added dynamic backend resolution for client-side fetches targeting `https://api.factorytribe.com` in production environments.
+  - `apps/api/src/services/whatsapp`: Added image compression with sharp, interactive draft editing, and fixed test timeout and mock handlers.
+- **Verified.**
+  - Local tests: All 20 WhatsApp unit tests pass. Storefront Next.js and OpenNext builds compile with 0 errors.
+  - Cloudflare Worker: Deployed `factorytribe` worker via `opennextjs-cloudflare build && wrangler deploy` (`fd649dbf-51c5-485f-888b-9b97ad3ce6fc`). Verified live deployment at `https://factorytribe.ashish-bansal-dev.workers.dev/in` returns HTTP 200 with `data-testid="mobile-search-container"`.
+- **Next.** Monitor analytics and search latency on production worker.
 
 ### Session: 2026-11-06 -- Medusa Search Setup & InstantSearch Integration (Storefront & Wholesale)
 

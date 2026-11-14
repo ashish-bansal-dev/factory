@@ -69,16 +69,27 @@ const OuterComponent = ({
   const { value } = field
   const { onChange } = inputProps
 
-  const [localValue, setLocalValue] = useState(value)
+  const [localValue, setLocalValue] = useState(
+    value || { checked: false, quantity: "", disabledToggle: false }
+  )
 
   useEffect(() => {
-    setLocalValue(value)
+    setLocalValue(
+      value || { checked: false, quantity: "", disabledToggle: false }
+    )
   }, [value])
 
   const handleCheckedChange = (update: boolean) => {
-    const newValue = { ...localValue, checked: update }
+    const current =
+      localValue || { checked: false, quantity: "", disabledToggle: false }
+    const newValue = { ...current, checked: update }
 
-    if (update && (newValue.quantity === "" || newValue.quantity === null || newValue.quantity === undefined)) {
+    if (
+      update &&
+      (newValue.quantity === "" ||
+        newValue.quantity === null ||
+        newValue.quantity === undefined)
+    ) {
       newValue.quantity = 0
     }
 
@@ -104,7 +115,7 @@ const OuterComponent = ({
 
   return (
     <ConditionalTooltip
-      showTooltip={localValue.disabledToggle && tooltip}
+      showTooltip={Boolean(localValue?.disabledToggle && tooltip)}
       content={tooltip}
     >
       <div className="absolute inset-y-0 left-4 z-[3] flex w-fit items-center justify-center">
@@ -113,8 +124,8 @@ const OuterComponent = ({
           ref={buttonRef}
           size="small"
           className="shrink-0 rtl:rotate-180"
-          checked={localValue.checked}
-          disabled={localValue.disabledToggle}
+          checked={Boolean(localValue?.checked)}
+          disabled={Boolean(localValue?.disabledToggle)}
           onCheckedChange={handleCheckedChange}
         />
       </div>
@@ -176,7 +187,7 @@ const Inner = ({
   }
 
   const handleOnChange = () => {
-    if (localValue.disabledToggle && localValue.quantity === "") {
+    if (localValue?.disabledToggle && localValue?.quantity === "") {
       localValue.quantity = 0
     }
 

@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, Divider, Heading, Input, toast } from "@medusajs/ui";
+import { Button, Divider, Heading, Input, Select, toast } from "@medusajs/ui";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
@@ -38,6 +38,10 @@ const ProductEditVariantSchema = z.object({
   hs_code: z.string().optional(),
   origin_country: z.string().optional(),
   options: z.record(z.string(), z.string()).optional(),
+  variant_type: z.enum(["retail", "wholesale"]).default("retail"),
+  bundle_size: z.union([z.coerce.number().int().min(1), z.literal("")]).default(1),
+  pack_description: z.string().optional(),
+  mrp: z.union([z.coerce.number().min(0), z.literal("")]).optional(),
 });
 
 export const ProductEditVariantForm = ({
@@ -68,6 +72,15 @@ export const ProductEditVariantForm = ({
     {},
   );
 
+  const initialVariantType =
+    (variant.metadata?.variant_type as "retail" | "wholesale" | undefined) ??
+    (Number(variant.metadata?.bundle_size) > 1 ? "wholesale" : "retail");
+  const initialBundleSize = (variant.metadata?.bundle_size as number | string | undefined) ?? 1;
+  const initialPackDescription =
+    (variant.metadata?.pack_description as string | undefined) ??
+    (variant.metadata?.variant_type === "wholesale" ? "" : "Single pc");
+  const initialMrp = variant.metadata?.mrp ?? (variant as any).mrp ?? "";
+
   const form = useForm<z.infer<typeof ProductEditVariantSchema>>({
     defaultValues: {
       title: variant.title || "",
@@ -84,9 +97,15 @@ export const ProductEditVariantForm = ({
       hs_code: variant.hs_code || "",
       origin_country: variant.origin_country || "",
       options: defaultOptions,
+      variant_type: initialVariantType,
+      bundle_size: initialBundleSize,
+      pack_description: initialPackDescription,
+      mrp: initialMrp,
     },
     resolver: zodResolver(ProductEditVariantSchema),
   });
+
+  const variantType = form.watch("variant_type");
 
   const { mutateAsync, isPending } = useUpdateProductVariant(
     variant.product_id!,
@@ -101,6 +120,10 @@ export const ProductEditVariantForm = ({
       width,
       length,
       options,
+      variant_type,
+      bundle_size,
+      pack_description,
+      mrp,
       ...optional
     } = data;
 
@@ -130,6 +153,13 @@ export const ProductEditVariantForm = ({
           ? cleanedOptions
           : undefined,
         ...nullableData,
+        metadata: {
+          ...variant.metadata,
+          variant_type,
+          bundle_size: Number(bundle_size) || 1,
+          pack_description,
+          mrp: mrp ? Number(mrp) : undefined,
+        },
       },
       {
         onSuccess: () => {
@@ -246,6 +276,148 @@ export const ProductEditVariantForm = ({
                 />
               );
             })}
+          </div>
+          <Divider data-testid="product-variant-edit-form-divider-channel" />
+          <div
+            className="flex flex-col gap-y-4"
+            data-testid="product-variant-edit-form-channel-section"
+          >
+            <Heading
+              level="h2"
+              data-testid="product-variant-edit-form-channel-header"
+            >
+              {t("products.variant.channel.header", "Channel & Packaging")}
+            </Heading>
+            <Form.Field
+              control={form.control}
+              name="variant_type"
+              render={({ field: { onChange, ref, ...field } }) => {
+                return (
+                  <Form.Item data-testid="product-variant-edit-form-variant-type-item">
+                    <Form.Label data-testid="product-variant-edit-form-variant-type-label">
+                      {t("products.variants.fields.channel.label", "Sales Channel / Type")}
+                    </Form.Label>
+                    <Form.Control data-testid="product-variant-edit-form-variant-type-control">
+                      <Select
+                        {...field}
+                        onValueChange={(val: "retail" | "wholesale") => {
+                          onChange(val);
+                          if (val === "wholesale") {
+                            const currentBundle = form.getValues("bundle_size");
+                            if (!currentBundle || Number(currentBundle) === 1) {
+                              form.setValue("bundle_size", 6);
+                            }
+                            const currentDesc = form.getValues("pack_description");
+                            if (currentDesc === "Single pc") {
+                              form.setValue("pack_description", "");
+                            }
+                          } else if (val === "retail") {
+                            const currentBundle = form.getValues("bundle_size");
+                            if (Number(currentBundle) === 6) {
+                              form.setValue("bundle_size", 1);
+                            }
+                            const currentDesc = form.getValues("pack_description");
+                            if (!currentDesc) {
+                              form.setValue("pack_description", "Single pc");
+                            }
+                          }
+                        }}
+                        data-testid="product-variant-edit-form-variant-type-select"
+                      >
+                        <Select.Trigger ref={ref} data-testid="product-variant-edit-form-variant-type-trigger">
+                          <Select.Value data-testid="product-variant-edit-form-variant-type-value" />
+                        </Select.Trigger>
+                        <Select.Content data-testid="product-variant-edit-form-variant-type-content">
+                          <Select.Item value="retail" data-testid="product-variant-edit-form-variant-type-retail">
+                            {t("products.variants.fields.channel.retail", "Retail (Single)")}
+                          </Select.Item>
+                          <Select.Item value="wholesale" data-testid="product-variant-edit-form-variant-type-wholesale">
+                            {t("products.variants.fields.channel.wholesale", "Wholesale (Pack)")}
+                          </Select.Item>
+                        </Select.Content>
+                      </Select>
+                    </Form.Control>
+                    <Form.ErrorMessage data-testid="product-variant-edit-form-variant-type-error" />
+                  </Form.Item>
+                );
+              }}
+            />
+            <Form.Field
+              control={form.control}
+              name="pack_description"
+              render={({ field }) => {
+                return (
+                  <Form.Item data-testid="product-variant-edit-form-pack-description-item">
+                    <Form.Label data-testid="product-variant-edit-form-pack-description-label">
+                      {t("products.variants.fields.packDescription", "Pack Description")}
+                    </Form.Label>
+                    <Form.Control data-testid="product-variant-edit-form-pack-description-control">
+                      <div data-testid="product-variant-edit-form-pack-description-input-wrapper">
+                        <Input
+                          {...field}
+                          placeholder={
+                            variantType === "wholesale"
+                              ? "Sizes 28-32, Pack of 6 (1-2-2-1)"
+                              : "Single pc"
+                          }
+                          data-testid="product-variant-edit-form-pack-description-input"
+                        />
+                      </div>
+                    </Form.Control>
+                    <Form.ErrorMessage data-testid="product-variant-edit-form-pack-description-error" />
+                  </Form.Item>
+                );
+              }}
+            />
+            <Form.Field
+              control={form.control}
+              name="bundle_size"
+              render={({ field }) => {
+                return (
+                  <Form.Item data-testid="product-variant-edit-form-bundle-size-item">
+                    <Form.Label data-testid="product-variant-edit-form-bundle-size-label">
+                      {t("products.variants.fields.bundleSize", "Bundle / Pack Size")}
+                    </Form.Label>
+                    <Form.Control data-testid="product-variant-edit-form-bundle-size-control">
+                      <div data-testid="product-variant-edit-form-bundle-size-input-wrapper">
+                        <Input
+                          type="number"
+                          min={1}
+                          {...field}
+                          data-testid="product-variant-edit-form-bundle-size-input"
+                        />
+                      </div>
+                    </Form.Control>
+                    <Form.ErrorMessage data-testid="product-variant-edit-form-bundle-size-error" />
+                  </Form.Item>
+                );
+              }}
+            />
+            <Form.Field
+              control={form.control}
+              name="mrp"
+              render={({ field }) => {
+                return (
+                  <Form.Item data-testid="product-variant-edit-form-mrp-item">
+                    <Form.Label optional data-testid="product-variant-edit-form-mrp-label">
+                      {t("products.variants.fields.mrp", "MRP")}
+                    </Form.Label>
+                    <Form.Control data-testid="product-variant-edit-form-mrp-control">
+                      <div data-testid="product-variant-edit-form-mrp-input-wrapper">
+                        <Input
+                          type="number"
+                          min={0}
+                          step="any"
+                          {...field}
+                          data-testid="product-variant-edit-form-mrp-input"
+                        />
+                      </div>
+                    </Form.Control>
+                    <Form.ErrorMessage data-testid="product-variant-edit-form-mrp-error" />
+                  </Form.Item>
+                );
+              }}
+            />
           </div>
           <Divider data-testid="product-variant-edit-form-divider-1" />
           <div

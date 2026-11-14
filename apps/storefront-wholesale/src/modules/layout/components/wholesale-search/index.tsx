@@ -29,7 +29,7 @@ export default function WholesaleNavbarSearch({
 }: WholesaleNavbarSearchProps) {
   return (
     <div className="relative w-full">
-      <InstantSearch searchClient={searchClient} indexName={PRODUCT_INDEX_NAME}>
+      <InstantSearch searchClient={searchClient as any} indexName={PRODUCT_INDEX_NAME}>
         {sellerId && (
           <Configure facetFilters={[`seller_ids:${sellerId}`]} />
         )}
@@ -121,7 +121,7 @@ function WholesaleNavbarSearchInner({ sellerName }: { sellerName?: string | null
 
       {isOpen && (
         <div
-          className="absolute left-0 right-0 top-full mt-2 z-50 bg-white border border-stone-200/90 rounded-2xl shadow-xl max-h-96 overflow-y-auto"
+          className="absolute left-0 right-0 top-full mt-2 z-50 bg-white border border-stone-200/90 rounded-2xl shadow-xl max-h-[75vh] sm:max-h-96 overflow-y-auto"
           data-testid="wholesale-search-dropdown"
         >
           {error ? (

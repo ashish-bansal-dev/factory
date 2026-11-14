@@ -8,8 +8,11 @@ import { HttpTypes } from "@mercurjs/types"
 
 import { createProductsWorkflow } from "../../../workflows/product/workflows/create-products"
 import {
+  categorizeProductsVariants,
+  categorizeProductVariants,
   enrichProductAttributes,
   listProducts,
+  transformProductVariants,
   wrapProductVariantsWithOffers,
 } from "../../utils"
 import { AdminCreateProductType, AdminGetProductsParamsType } from "./validators"
@@ -54,6 +57,8 @@ export const GET = async (
     )
   }
 
+  categorizeProductsVariants(products as any[])
+
   res.json({ products, count, estimate_count, offset, limit })
 }
 
@@ -64,6 +69,7 @@ export const POST = async (
   const query = req.scope.resolve(ContainerRegistrationKeys.QUERY)
 
   const { additional_data, ...productData } = req.validatedBody
+  transformProductVariants(productData as any)
 
   const { result } = await createProductsWorkflow(req.scope).run({
     input: {
@@ -86,6 +92,7 @@ export const POST = async (
   })
 
   await enrichProductAttributes(req.scope, [product])
+  categorizeProductVariants(product as any)
 
   res.status(200).json({ product })
 }

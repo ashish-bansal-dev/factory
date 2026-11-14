@@ -1,8 +1,8 @@
 import { Phone, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Container, Heading, Text } from "@medusajs/ui"
+import { Badge, Button, Container, Heading, Text } from "@medusajs/ui"
 import { keepPreviousData } from "@tanstack/react-query"
 import { createColumnHelper } from "@tanstack/react-table"
-import { Children, ReactNode, useMemo } from "react"
+import { Children, ReactNode, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 
@@ -10,6 +10,7 @@ import { _DataTable } from "../../../../components/table/data-table"
 import { DateCell } from "../../../../components/table/table-cells/common/date-cell"
 import { useDataTable } from "../../../../hooks/use-data-table"
 import { useVendorInquiries, type VendorInquiryDTO } from "../../../../hooks/api/inquiries"
+import { CreateDraftOrderModal } from "./create-draft-order-modal"
 
 const PAGE_SIZE = 20
 
@@ -34,7 +35,7 @@ export const VendorInquiryListHeader = ({ children }: { children?: ReactNode }) 
 
 const columnHelper = createColumnHelper<VendorInquiryDTO>()
 
-const useColumns = () => {
+const useColumns = (onConvert: (inquiry: VendorInquiryDTO) => void) => {
   const { t } = useTranslation()
 
   return useMemo(
@@ -149,8 +150,31 @@ const useColumns = () => {
       }),
       columnHelper.accessor("status", {
         header: "Status",
-        cell: ({ getValue }) => {
+        cell: ({ getValue, row }) => {
           const status = getValue()
+          const isConverted = status === "converted"
+          const draftOrderId = row.original.metadata?.draft_order_id as string | undefined
+
+          if (isConverted) {
+            return (
+              <div className="flex flex-col gap-1 items-start">
+                <Badge size="small" color="green">
+                  CONVERTED
+                </Badge>
+                {draftOrderId && (
+                  <Link
+                    to={`/orders/${draftOrderId}`}
+                    className="text-ui-fg-interactive hover:underline text-[10px] font-mono flex items-center gap-1"
+                    title="View Draft Order"
+                  >
+                    <span>#{draftOrderId.slice(-7)}</span>
+                    <ArrowUpRightOnBox className="h-2.5 w-2.5" />
+                  </Link>
+                )}
+              </div>
+            )
+          }
+
           const colorMap: Record<string, "green" | "blue" | "grey"> = {
             new: "blue",
             contacted: "green",
@@ -163,8 +187,33 @@ const useColumns = () => {
           )
         },
       }),
+      columnHelper.display({
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => {
+          const isConverted = row.original.status === "converted"
+          if (isConverted) {
+            return (
+              <Text size="xsmall" className="text-ui-fg-muted italic">
+                Converted
+              </Text>
+            )
+          }
+
+          return (
+            <Button
+              size="small"
+              variant="secondary"
+              onClick={() => onConvert(row.original)}
+              data-testid={`inquiry-create-draft-order-btn-${row.original.id}`}
+            >
+              Create Draft Order
+            </Button>
+          )
+        },
+      }),
     ],
-    [t]
+    [t, onConvert]
   )
 }
 
@@ -174,7 +223,8 @@ export const VendorInquiryListDataTable = () => {
     { placeholderData: keepPreviousData }
   )
 
-  const columns = useColumns()
+  const [selectedInquiry, setSelectedInquiry] = useState<VendorInquiryDTO | null>(null)
+  const columns = useColumns(setSelectedInquiry)
 
   const { table } = useDataTable({
     data: inquiries ?? [],
@@ -190,26 +240,37 @@ export const VendorInquiryListDataTable = () => {
   }
 
   return (
-    <_DataTable
-      table={table}
-      columns={columns}
-      count={count ?? 0}
-      pageSize={PAGE_SIZE}
-      pagination
-      search
-      navigateTo={undefined}
-      isLoading={isPending}
-      defaultOrder="-created_at"
-      noRecords={{
-        title: "No Wholesale Inquiries",
-        message: "When buyers submit inquiries for your brand, they will appear here.",
-        icon: <Phone />,
-      }}
-      noResults={{
-        icon: <Phone />,
-      }}
-      data-testid="vendor-inquiry-list-table"
-    />
+    <>
+      <_DataTable
+        table={table}
+        columns={columns}
+        count={count ?? 0}
+        pageSize={PAGE_SIZE}
+        pagination
+        search
+        navigateTo={undefined}
+        isLoading={isPending}
+        defaultOrder="-created_at"
+        noRecords={{
+          title: "No Wholesale Inquiries",
+          message: "When buyers submit inquiries for your brand, they will appear here.",
+          icon: <Phone />,
+        }}
+        noResults={{
+          icon: <Phone />,
+        }}
+        data-testid="vendor-inquiry-list-table"
+      />
+      {selectedInquiry && (
+        <CreateDraftOrderModal
+          inquiry={selectedInquiry}
+          open={!!selectedInquiry}
+          onOpenChange={(open) => {
+            if (!open) setSelectedInquiry(null)
+          }}
+        />
+      )}
+    </>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { PencilSquare, Trash } from "@medusajs/icons";
 import { HttpTypes } from "@medusajs/types";
@@ -13,6 +13,7 @@ import {
   Button,
   Container,
   Heading,
+  Tabs,
   toast,
   Tooltip,
   usePrompt,
@@ -48,30 +49,68 @@ export const ProductVariantSection = ({
     PREFIX,
   );
 
-  const { variants, count, isLoading, isError, error } = useProductVariants(
+  const [, setSearchParams] = useSearchParams();
+  const [variantTab, setVariantTab] = useState<"all" | "retail" | "wholesale">("all");
+
+  const isWholesale = (v: any) =>
+    (v.metadata as any)?.variant_type === "wholesale" ||
+    Number((v.metadata as any)?.bundle_size) > 1;
+  const isRetail = (v: any) => !isWholesale(v);
+
+  const { variants, isLoading, isError, error } = useProductVariants(
     product.id,
     {
       q,
       order: order ? order : "variant_rank",
-      offset: offset ? parseInt(offset) : undefined,
-      limit: PAGE_SIZE,
+      limit: 200,
       created_at: created_at ? JSON.parse(created_at) : undefined,
       updated_at: updated_at ? JSON.parse(updated_at) : undefined,
-      fields: "title,sku,created_at,updated_at,*options,*options.option",
+      fields: "title,sku,created_at,updated_at,*options,*options.option,metadata",
     },
     {
       placeholderData: keepPreviousData,
     },
   );
 
+  const filteredVariants = useMemo(() => {
+    if (!variants) {
+      return [];
+    }
+
+    if (variantTab === "retail") {
+      return variants.filter(isRetail);
+    }
+
+    if (variantTab === "wholesale") {
+      return variants.filter(isWholesale);
+    }
+
+    return variants;
+  }, [variants, variantTab]);
+
+  const currentOffset = offset ? parseInt(offset, 10) : 0;
+
+  const paginatedVariants = useMemo(() => {
+    return filteredVariants.slice(currentOffset, currentOffset + PAGE_SIZE);
+  }, [filteredVariants, currentOffset]);
+
+  const handleTabChange = (val: "all" | "retail" | "wholesale") => {
+    setVariantTab(val);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete(`${PREFIX}_offset`);
+      return next;
+    });
+  };
+
   const columns = useColumns(product);
   const filters = useFilters();
   const orderBy = useOrderBy();
 
   const { table } = useDataTable({
-    data: variants ?? [],
+    data: paginatedVariants,
     columns,
-    count,
+    count: filteredVariants.length,
     pageSize: PAGE_SIZE,
     getRowId: (row) => row.id,
     prefix: PREFIX,
@@ -96,10 +135,30 @@ export const ProductVariantSection = ({
           </Button>
         </PermissionAction>
       </div>
+      <div className="px-6 py-3">
+        <Tabs
+          value={variantTab}
+          onValueChange={(val) =>
+            handleTabChange(val as "all" | "retail" | "wholesale")
+          }
+        >
+          <Tabs.List data-testid="product-variant-filter-tabs">
+            <Tabs.Trigger value="all" data-testid="tab-all">
+              {t("products.variants.filter.all", "All")}
+            </Tabs.Trigger>
+            <Tabs.Trigger value="retail" data-testid="tab-retail">
+              {t("products.variants.filter.retailOnly", "Retail Only")}
+            </Tabs.Trigger>
+            <Tabs.Trigger value="wholesale" data-testid="tab-wholesale">
+              {t("products.variants.filter.wholesaleOnly", "Wholesale Only")}
+            </Tabs.Trigger>
+          </Tabs.List>
+        </Tabs>
+      </div>
       <_DataTable
         table={table}
         columns={columns}
-        count={count}
+        count={filteredVariants.length}
         pageSize={PAGE_SIZE}
         filters={filters}
         search
@@ -245,6 +304,21 @@ const useColumns = (product: HttpTypes.AdminProduct) => {
         },
       }),
       ...attributeColumns,
+      columnHelper.display({
+        id: "mrp",
+        header: t("products.variants.fields.mrp", "MRP"),
+        cell: ({ row }) => {
+          const mrp =
+            (row.original.metadata as Record<string, any> | undefined)?.mrp ??
+            (row.original as any).mrp;
+
+          if (mrp !== undefined && mrp !== null && mrp !== "") {
+            return <span>{String(mrp)}</span>;
+          }
+
+          return <span className="text-ui-fg-muted">-</span>;
+        },
+      }),
       columnHelper.display({
         id: "actions",
         cell: ({ row }) => (

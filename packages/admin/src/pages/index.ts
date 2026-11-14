@@ -30,3 +30,6 @@ export * from "./shipping-option-types"
 export * from "./shipping-profiles"
 export * from "./tax-regions"
 export * from "./users"
+export { WhatsAppAiConfigPage } from "./whatsapp-ai"
+
+
