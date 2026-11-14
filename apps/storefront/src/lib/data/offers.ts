@@ -30,14 +30,6 @@ export const listOffers = async ({
   limit?: number;
   offset?: number;
 }): Promise<{ offers: OfferDTO[]; count: number }> => {
-  'use cache';
-  // Offer price and stock change with every order, which sends no webhook.
-  cacheLife('minutes');
-  cacheTag(CACHE_TAGS.offers);
-  if (productId) {
-    cacheTag(CACHE_TAGS.productOffers(productId));
-  }
-
   const region = regionId
     ? { id: regionId }
     : countryCode
@@ -67,10 +59,6 @@ export const retrieveOffer = async (
   id: string,
   { countryCode, regionId }: { countryCode?: string; regionId?: string } = {}
 ): Promise<OfferDTO | null> => {
-  'use cache';
-  cacheLife('minutes');
-  cacheTag(CACHE_TAGS.offers, CACHE_TAGS.offer(id));
-
   const region = regionId
     ? { id: regionId }
     : countryCode

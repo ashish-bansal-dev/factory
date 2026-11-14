@@ -10,10 +10,6 @@ interface CategoriesProps {
 }
 
 export const listCategories = async ({ query }: Partial<CategoriesProps> = {}) => {
-  'use cache';
-  cacheLife('hours');
-  cacheTag(CACHE_TAGS.categories);
-
   const limit = query?.limit || 100;
 
   const allCategories = await (sdk.store.productCategories
@@ -55,10 +51,6 @@ export const listCategories = async ({ query }: Partial<CategoriesProps> = {}) =
 };
 
 export const getCategoryByHandle = async (categoryHandle: string) => {
-  'use cache';
-  cacheLife('hours');
-  cacheTag(CACHE_TAGS.categories, CACHE_TAGS.category(categoryHandle));
-
   return (sdk.store.productCategories
     .query({
       fields: 'id,name,handle,parent_category_id,*category_children',

@@ -1,9 +1,6 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  cacheComponents: true,
-  partialPrefetching: true,
-  output: "standalone",
   trailingSlash: false,
   reactStrictMode: true,
   logging: {

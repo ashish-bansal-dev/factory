@@ -7,10 +7,6 @@ import { sdk } from '../client';
 import { CACHE_TAGS, cacheFailedRead } from './cache-tags';
 
 export const listRegions = async (): Promise<HttpTypes.StoreRegion[]> => {
-  'use cache';
-  cacheLife('hours');
-  cacheTag(CACHE_TAGS.regions);
-
   return sdk.store.regions
     .query({ fetchOptions: { cache: 'no-store' } })
     .then((res) => (res as { regions: HttpTypes.StoreRegion[] }).regions)
@@ -21,10 +17,6 @@ export const listRegions = async (): Promise<HttpTypes.StoreRegion[]> => {
 };
 
 export const retrieveRegion = async (id: string): Promise<HttpTypes.StoreRegion | undefined> => {
-  'use cache';
-  cacheLife('hours');
-  cacheTag(CACHE_TAGS.regions);
-
   return sdk.store.regions.$id
     .query({ $id: id, fetchOptions: { cache: 'no-store' } })
     .then((res) => (res as { region: HttpTypes.StoreRegion }).region)

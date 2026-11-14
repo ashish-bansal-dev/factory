@@ -1,5 +1,7 @@
 import { Suspense } from "react"
 
+export const dynamic = "force-dynamic"
+
 import { RouteFallback } from "@/components/molecules/RouteFallback/RouteFallback"
 import { CustomerTalkJsProvider } from "@/components/providers/TalkJs/CustomerTalkJsProvider"
 

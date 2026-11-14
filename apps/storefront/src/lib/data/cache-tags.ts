@@ -28,6 +28,4 @@ export const CACHE_TAGS = {
  * backend succeed, and it revalidates a minute later instead of living for the
  * read's normal lifetime.
  */
-export const cacheFailedRead = () => {
-  cacheLife('minutes');
-};
+export const cacheFailedRead = () => {};

@@ -5,10 +5,6 @@ import { sdk } from "../client"
 import { CACHE_TAGS, cacheFailedRead } from "./cache-tags"
 
 export const retrieveCollection = async (id: string) => {
-  "use cache"
-  cacheLife("hours")
-  cacheTag(CACHE_TAGS.collections, CACHE_TAGS.collection(id))
-
   return (sdk.store.collections.$id
     .query({
       $id: id,
@@ -24,10 +20,6 @@ export const retrieveCollection = async (id: string) => {
 export const listCollections = async (
   queryParams: Record<string, string> = {}
 ): Promise<{ collections: HttpTypes.StoreCollection[]; count: number }> => {
-  "use cache"
-  cacheLife("hours")
-  cacheTag(CACHE_TAGS.collections)
-
   return (sdk.store.collections
     .query({
       limit: "100",
@@ -45,10 +37,6 @@ export const listCollections = async (
 export const getCollectionByHandle = async (
   handle: string
 ): Promise<HttpTypes.StoreCollection | null> => {
-  "use cache"
-  cacheLife("hours")
-  cacheTag(CACHE_TAGS.collections, CACHE_TAGS.collection(handle))
-
   return (sdk.store.collections
     .query({
       handle,

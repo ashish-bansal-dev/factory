@@ -11,10 +11,6 @@ const SELLER_FIELDS =
 export const getSellerByHandle = async (
   handle: string
 ): Promise<SellerDTO | null> => {
-  'use cache';
-  cacheLife('minutes');
-  cacheTag(CACHE_TAGS.sellers, CACHE_TAGS.seller(handle));
-
   return (
     sdk.store.sellers.query({
       handle,

@@ -46,10 +46,6 @@ const queryProducts = (query: Record<string, unknown>) =>
   } as never) as unknown as Promise<{ products: HttpTypes.StoreProduct[]; count: number }>;
 
 export const getSearchFacets = async (): Promise<SearchFacets> => {
-  'use cache';
-  cacheLife('hours');
-  cacheTag(CACHE_TAGS.products);
-
   const { product_attributes } = await (
     sdk.store.productAttributes.query({
       is_filterable: true,
@@ -101,10 +97,6 @@ export const listProducts = async ({
   countryCode?: string;
   regionId?: string;
 }): Promise<ProductListResult> => {
-  'use cache';
-  cacheLife('max');
-  cacheTag(CACHE_TAGS.products);
-
   if (!countryCode && !regionId) {
     throw new Error('Country code or region ID is required');
   }
@@ -241,10 +233,6 @@ const fetchProductSearch = async ({
 const getDefaultProductSearch = async (
   params: ProductSearchParams
 ): Promise<ProductSearchResult> => {
-  'use cache';
-  cacheLife('max');
-  cacheTag(CACHE_TAGS.products);
-
   const { failed, ...result } = await fetchProductSearch(params);
   if (failed) {
     cacheFailedRead();
