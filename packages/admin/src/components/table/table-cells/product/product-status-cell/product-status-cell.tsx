@@ -4,18 +4,26 @@ import { StatusCell } from "../../common/status-cell"
 import { ProductStatus } from "@mercurjs/types"
 
 type ProductStatusCellProps = {
-  status: ProductStatus
+  status?: ProductStatus | `${ProductStatus}` | string | null
 }
 
 export const ProductStatusCell = ({ status }: ProductStatusCellProps) => {
   const { t } = useTranslation()
 
-  const [color, text] = {
+  if (!status) {
+    return <StatusCell color="grey">-</StatusCell>
+  }
+
+  const normalizedStatus = String(status).toLowerCase()
+
+  const statusMap: Record<string, ["grey" | "orange" | "green" | "red", string]> = {
     [ProductStatus.DRAFT]: ["grey", t("products.productStatus.draft")],
     [ProductStatus.PROPOSED]: ["orange", t("products.productStatus.proposed")],
     [ProductStatus.PUBLISHED]: ["green", t("products.productStatus.published")],
     [ProductStatus.REJECTED]: ["red", t("products.productStatus.rejected")],
-  }[status] as ["grey" | "orange" | "green" | "red", string]
+  }
+
+  const [color, text] = statusMap[normalizedStatus] || ["grey", status]
 
   return <StatusCell color={color}>{text}</StatusCell>
 }
