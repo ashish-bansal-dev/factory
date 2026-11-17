@@ -46,7 +46,7 @@ export const CreateProductVariantForm = ({
       ...CREATE_VARIANT_DEFAULTS,
       ...extraDefaults,
     } as CreateProductVariantSchemaType,
-    resolver: zodResolver(schema ?? CreateProductVariantSchema),
+    resolver: zodResolver(schema ?? CreateProductVariantSchema) as any,
   });
 
   const { mutateAsync, isPending } = useCreateProductVariant(product.id);
@@ -112,7 +112,7 @@ export const CreateProductVariantForm = ({
   const hasCustomChildren = Children.count(children) > 0;
 
   return (
-    <TabbedForm form={form} onSubmit={handleSubmit} isLoading={isPending}>
+    <TabbedForm form={form as any} onSubmit={handleSubmit} isLoading={isPending}>
       {hasCustomChildren ? children : defaultTabs}
     </TabbedForm>
   );

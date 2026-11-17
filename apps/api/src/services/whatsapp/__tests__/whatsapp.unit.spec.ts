@@ -55,6 +55,12 @@ describe("GeminiVisionService", () => {
     const service = new GeminiVisionService("")
     await expect(service.extractProductDetails([])).rejects.toThrow("GEMINI_API_KEY is not set")
   })
+
+  it("returns empty array for empty images in extractBatchProducts", async () => {
+    const service = new GeminiVisionService("test_key")
+    const res = await service.extractBatchProducts([])
+    expect(res).toEqual([])
+  })
 })
 
 describe("ImageCompressor", () => {
@@ -585,8 +591,45 @@ describe("WhatsAppManager", () => {
 
   it("resolves existing brand from system", async () => {
     const manager = new WhatsAppManager(mockContainer)
-    const brandId = await manager.resolveOrCreateBrand("Nike")
+    const brandId = await manager.resolveExistingBrand("Nike")
     expect(brandId).toBe("brand_nike")
+
+    const missing = await manager.resolveExistingBrand("Unknown Brand")
+    expect(missing).toBeNull()
+  })
+
+  it("handles BRANDS command to list registered marketplace brands", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "919999999999",
+                    id: "msg_brands_1",
+                    timestamp: "123456",
+                    type: "text",
+                    text: { body: "BRANDS" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    await manager.handleWebhookPayload(payload)
+    expect(sentMessages.length).toBe(1)
+    expect(sentMessages[0].text).toContain("Registered Marketplace Brands")
+    expect(sentMessages[0].text).toContain("Nike")
   })
 
   it("builds attributes and variants matrix for sizes and colors", async () => {
@@ -783,5 +826,39 @@ describe("WhatsAppManager", () => {
     expect(res.wholesaleVariants[0].prices.length).toBe(0)
     expect(res.wholesaleVariants[0].metadata.mrp).toBeUndefined()
     expect(res.wholesaleVariants[0].metadata.wholesale_unit_price).toBeUndefined()
+  })
+
+  it("handles BULK <vendor> command and enables bulk AI upload mode", async () => {
+    const manager = new WhatsAppManager(mockContainer)
+    const payload = {
+      object: "whatsapp_business_account",
+      entry: [
+        {
+          id: "waba_1",
+          changes: [
+            {
+              field: "messages",
+              value: {
+                messaging_product: "whatsapp",
+                messages: [
+                  {
+                    from: "919999999999",
+                    id: "msg_bulk_1",
+                    timestamp: "123456",
+                    type: "text",
+                    text: { body: "BULK Nike Store" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    await manager.handleWebhookPayload(payload)
+    expect(sentMessages.length).toBe(1)
+    expect(sentMessages[0].text).toContain("Bulk AI Upload Mode Enabled")
+    expect(sentMessages[0].text).toContain("Nike Store")
   })
 })

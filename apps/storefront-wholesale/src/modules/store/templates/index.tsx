@@ -37,10 +37,11 @@ const StoreTemplate = async ({
 
   return (
     <div
-      className="flex flex-col small:flex-row small:items-start py-8 content-container font-sans"
+      className="flex flex-col py-8 content-container font-sans"
       data-testid="category-container"
     >
-      <RefinementList sortBy={sort} />
+      {/* Sidebar filters commented out for clean browse-first wholesale catalog */}
+      {/* <RefinementList sortBy={sort} /> */}
       <div className="w-full">
         <div className="mb-6 pb-4 border-b border-stone-200">
           <h1 className="font-serif text-3xl font-bold text-charcoal-900 tracking-tight" data-testid="store-page-title">

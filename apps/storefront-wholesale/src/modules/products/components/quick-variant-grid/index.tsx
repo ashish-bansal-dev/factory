@@ -416,27 +416,43 @@ export default function QuickVariantGrid({
           </p>
         </div>
 
-        {/* PROMINENT REQUEST A QUOTE CTA BUTTON */}
-        <button
-          type="button"
-          onClick={() => handleOpenQuoteModal()}
-          className="h-10 px-5 rounded-full border border-stone-300 bg-white hover:bg-stone-50 text-charcoal-900 hover:border-charcoal-900 text-xs font-bold shadow-xs transition flex items-center gap-2 shrink-0 self-stretch sm:self-auto justify-center"
-        >
-          <svg
-            className="w-4 h-4 text-terracotta-600"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
+        {/* PROMINENT INQUIRY & WHATSAPP ACTIONS */}
+        <div className="flex items-center gap-2.5 shrink-0 self-stretch sm:self-auto justify-end flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => handleOpenQuoteModal()}
+            className="h-10 px-5 rounded-full border border-stone-300 bg-white hover:bg-stone-50 text-charcoal-900 hover:border-charcoal-900 text-xs font-bold shadow-xs transition flex items-center gap-2 flex-1 sm:flex-none justify-center"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-            />
-          </svg>
-          <span>Request a Quote</span>
-        </button>
+            <svg
+              className="w-4 h-4 text-terracotta-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              />
+            </svg>
+            <span>Request a Quote</span>
+          </button>
+
+          <a
+            href={`https://wa.me/${((seller as any)?.phone || "919782077711").replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+              `Hello! I am inquiring about wholesale pricing for "${product.title}" on FactoryTribe Wholesale.`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-10 px-4 rounded-full bg-forest-800 text-white hover:bg-forest-900 text-xs font-bold shadow-xs transition flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
+          >
+            <svg className="w-3.5 h-3.5 fill-current text-emerald-400" viewBox="0 0 24 24">
+              <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.075-1.02-.053-.404-.134-.925-.331-1.609-.645-1.503-.687-2.484-2.222-2.56-2.325-.074-.103-.615-.818-.615-1.56 0-.742.389-1.107.527-1.258.138-.151.3-.189.4-.189.102 0 .204.002.294.006.096.004.225-.036.352.27.13.312.443 1.08.482 1.159.039.078.065.17.013.272-.051.102-.077.166-.153.255-.077.089-.161.198-.231.266-.077.075-.157.157-.068.31.09.153.397.654.852 1.059.585.521 1.079.683 1.233.76.154.077.244.064.334-.039.09-.102.385-.45.488-.604.102-.153.205-.128.346-.076.14.051.897.423 1.05.5.153.077.256.115.294.18.038.064.038.372-.106.777z"/>
+            </svg>
+            <span>WhatsApp</span>
+          </a>
+        </div>
       </div>
 
       {feedback && (
@@ -943,38 +959,26 @@ export default function QuickVariantGrid({
         </table>
       </div>
 
-      {/* DESKTOP Bottom Action Bar */}
+      {/* DESKTOP Bottom Action Bar - Browse & Inquiry Only */}
       <div className="hidden sm:flex border border-stone-200 items-center justify-between gap-4 bg-sand-50 p-4 rounded-2xl shadow-2xs">
         <div className="text-xs text-charcoal-900 flex items-center gap-4 flex-wrap">
-          <span>
-            Selected:{" "}
-            <strong className="font-bold text-sm text-charcoal-900">
-              {totalUnits}
-            </strong>{" "}
-            pcs ({totalPacks} {totalPacks === 1 ? "pack" : "packs"})
+          <span className="font-serif text-sm font-semibold text-charcoal-900">
+            Wholesale Sourcing & Inquiries
           </span>
-          {totalUnits > 0 && totalEstimatedAmount.sum > 0 && (
-            <span>
-              Order Subtotal:{" "}
-              <strong className="font-serif font-bold text-base text-charcoal-900">
-                {convertToLocale({
-                  amount: totalEstimatedAmount.sum,
-                  currency_code: totalEstimatedAmount.currency,
-                })}
-              </strong>
-            </span>
-          )}
+          <span className="text-stone-500 text-xs">
+            Direct factory pack pricing • Verified QC • Pan-India shipping
+          </span>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Prominent 'Request a Quote' CTA button alongside Add to Order */}
+          {/* Prominent 'Request a Quote' CTA button */}
           <button
             type="button"
             onClick={() => handleOpenQuoteModal()}
-            className="h-10 px-5 rounded-full border border-stone-300 bg-white hover:bg-sand-100 text-charcoal-900 text-xs font-bold shadow-xs transition flex items-center gap-2"
+            className="h-11 px-6 rounded-full bg-charcoal-900 text-white hover:bg-stone-800 text-xs font-bold shadow-xs transition flex items-center gap-2"
           >
             <svg
-              className="w-4 h-4 text-terracotta-600"
+              className="w-4 h-4 text-terracotta-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -986,9 +990,25 @@ export default function QuickVariantGrid({
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <span>Request a Quote</span>
+            <span>Request Wholesale Quote</span>
           </button>
 
+          {/* Connect on WhatsApp CTA */}
+          <a
+            href={`https://wa.me/${((seller as any)?.phone || "919782077711").replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+              `Hello! I am inquiring about wholesale pricing and availability for "${product.title}" on FactoryTribe Wholesale.`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-11 px-6 rounded-full bg-forest-800 text-white hover:bg-forest-900 text-xs font-bold shadow-xs transition flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 fill-current text-emerald-400" viewBox="0 0 24 24">
+              <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.075-1.02-.053-.404-.134-.925-.331-1.609-.645-1.503-.687-2.484-2.222-2.56-2.325-.074-.103-.615-.818-.615-1.56 0-.742.389-1.107.527-1.258.138-.151.3-.189.4-.189.102 0 .204.002.294.006.096.004.225-.036.352.27.13.312.443 1.08.482 1.159.039.078.065.17.013.272-.051.102-.077.166-.153.255-.077.089-.161.198-.231.266-.077.075-.157.157-.068.31.09.153.397.654.852 1.059.585.521 1.079.683 1.233.76.154.077.244.064.334-.039.09-.102.385-.45.488-.604.102-.153.205-.128.346-.076.14.051.897.423 1.05.5.153.077.256.115.294.18.038.064.038.372-.106.777z"/>
+            </svg>
+            <span>Connect on WhatsApp</span>
+          </a>
+
+          {/* Transactional cart adding code commented out for Browse-Only pipeline
           <button
             type="button"
             onClick={handleAddAll}
@@ -999,24 +1019,18 @@ export default function QuickVariantGrid({
               ? "Processing..."
               : `Add Selected to Order (${totalUnits} pcs)`}
           </button>
+          */}
         </div>
       </div>
 
-      {/* MOBILE STICKY BOTTOM BAR */}
+      {/* MOBILE STICKY BOTTOM BAR - Browse & Inquiry Only */}
       <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-3 sm:hidden shadow-lg flex items-center justify-between gap-2.5">
         <div className="flex flex-col min-w-0">
           <span className="text-[11px] text-stone-500 font-medium truncate">
-            {totalUnits > 0
-              ? `${totalPacks} pk (${totalUnits} pcs)`
-              : "Select packs above"}
+            Wholesale Inquiries
           </span>
           <span className="font-bold text-sm text-charcoal-900 truncate">
-            {totalUnits > 0 && totalEstimatedAmount.sum > 0
-              ? convertToLocale({
-                  amount: totalEstimatedAmount.sum,
-                  currency_code: totalEstimatedAmount.currency,
-                })
-              : "Wholesale Packs"}
+            {product.title}
           </span>
         </div>
 
@@ -1024,11 +1038,26 @@ export default function QuickVariantGrid({
           <button
             type="button"
             onClick={() => handleOpenQuoteModal()}
-            className="h-10 px-3.5 rounded-full border border-stone-300 bg-white text-charcoal-900 text-xs font-bold shadow-xs active:bg-sand-100"
+            className="h-10 px-4 rounded-full bg-charcoal-900 text-white text-xs font-bold shadow-xs active:bg-stone-800"
           >
-            Quote
+            Request Quote
           </button>
 
+          <a
+            href={`https://wa.me/${((seller as any)?.phone || "919782077711").replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+              `Hello! I am inquiring about wholesale pricing for "${product.title}" on FactoryTribe Wholesale.`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-10 px-3.5 rounded-full bg-forest-800 text-white text-xs font-bold shadow-xs flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5 fill-current text-emerald-400" viewBox="0 0 24 24">
+              <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.075-1.02-.053-.404-.134-.925-.331-1.609-.645-1.503-.687-2.484-2.222-2.56-2.325-.074-.103-.615-.818-.615-1.56 0-.742.389-1.107.527-1.258.138-.151.3-.189.4-.189.102 0 .204.002.294.006.096.004.225-.036.352.27.13.312.443 1.08.482 1.159.039.078.065.17.013.272-.051.102-.077.166-.153.255-.077.089-.161.198-.231.266-.077.075-.157.157-.068.31.09.153.397.654.852 1.059.585.521 1.079.683 1.233.76.154.077.244.064.334-.039.09-.102.385-.45.488-.604.102-.153.205-.128.346-.076.14.051.897.423 1.05.5.153.077.256.115.294.18.038.064.038.372-.106.777z"/>
+            </svg>
+            <span>WhatsApp</span>
+          </a>
+
+          {/* Transactional cart button commented out
           <button
             type="button"
             onClick={handleAddAll}
@@ -1037,6 +1066,7 @@ export default function QuickVariantGrid({
           >
             {isAddingAll ? "Adding..." : `Add (${totalUnits} pcs)`}
           </button>
+          */}
         </div>
       </div>
 

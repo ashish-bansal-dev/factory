@@ -65,12 +65,12 @@ export default function WholesalePriceDisplay({
       : calculatedPrice
 
   return (
-    <div className={`flex flex-col gap-0.5 ${className}`}>
-      <div className="flex items-baseline gap-2">
-        <span className="text-base font-semibold text-charcoal-900">
+    <div className={`flex flex-col gap-1 ${className}`}>
+      <div className="flex items-baseline gap-1.5 flex-wrap">
+        <span className="text-base sm:text-lg font-bold text-charcoal-900 tracking-tight">
           {formattedCalculatedPrice}
         </span>
-        <span className="text-xs text-stone-500 font-normal">/ pc</span>
+        <span className="text-xs font-medium text-stone-500">/ pc</span>
         {originalPrice && originalPrice !== calculatedPrice && (
           <span className="line-through text-xs text-stone-400">
             {originalPrice}
@@ -78,21 +78,21 @@ export default function WholesalePriceDisplay({
         )}
       </div>
 
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center gap-2 text-xs flex-wrap">
         {msrp && (
-          <span className="text-stone-500">
+          <span className="text-xs font-medium text-stone-600">
             MRP {convertToLocale({ amount: msrp / 100, currency_code: currencyCode })}
           </span>
         )}
         {marginPercent !== null && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-forest-50 text-forest-700 border border-forest-700/20">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-forest-100 text-forest-800 border border-forest-300">
             {marginPercent}% margin
           </span>
         )}
       </div>
 
       {bundleSize && bundleSize > 1 && !isNaN(numericPrice) && (
-        <span className="text-[11px] text-stone-500 mt-0.5">
+        <span className="text-xs font-medium text-stone-600 mt-0.5">
           Pack of {bundleSize} pcs ({convertToLocale({ amount: numericPrice * bundleSize, currency_code: currencyCode })} / pack)
         </span>
       )}

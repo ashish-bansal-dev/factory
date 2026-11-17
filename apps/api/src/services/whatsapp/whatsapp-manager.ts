@@ -17,6 +17,8 @@ import { WhatsAppClient } from "./whatsapp-client"
 import { ImageCompressor } from "./image-compressor"
 import { DraftEditorService } from "./draft-editor"
 import { WhatsAppConfigService, WhatsAppAiConfig } from "./config-service"
+import { BulkAiUploader } from "../bulk-ai-upload/bulk-ai-uploader"
+import { BrandAiService } from "../brands/brand-ai-service"
 import {
   AdminVendorContext,
   ExtractedProduct,
@@ -46,6 +48,8 @@ export class WhatsAppManager {
   private vision: GeminiVisionService
   private compressor: ImageCompressor
   private draftEditor: DraftEditorService
+  private bulkUploader: BulkAiUploader
+  private brandService: BrandAiService
   private adminPhone: string
   private storefrontUrl: string
   private vendorUrl: string
@@ -62,6 +66,8 @@ export class WhatsAppManager {
       format: "webp",
     })
     this.draftEditor = new DraftEditorService()
+    this.bulkUploader = new BulkAiUploader(container)
+    this.brandService = new BrandAiService(container)
     this.adminPhone = (process.env.ADMIN_WHATSAPP_PHONE || "").replace(/[^0-9]/g, "")
     this.storefrontUrl = (process.env.STOREFRONT_URL || "http://localhost:3000").replace(/\/+$/, "")
     this.vendorUrl = (process.env.VENDOR_URL || "http://localhost:7001").replace(/\/+$/, "")
@@ -79,6 +85,8 @@ export class WhatsAppManager {
     })
     this.vision = new GeminiVisionService(config.gemini_api_key, config.gemini_model)
     this.draftEditor = new DraftEditorService(config.gemini_api_key, config.text_model)
+    this.bulkUploader = new BulkAiUploader(this.container, config.gemini_api_key, config.gemini_model)
+    this.brandService = new BrandAiService(this.container, config.gemini_api_key, config.text_model || config.gemini_model)
     if (config.admin_whatsapp_phone) {
       this.adminPhone = config.admin_whatsapp_phone
     }
@@ -297,6 +305,7 @@ export class WhatsAppManager {
       activeSession.lastUpdated = Date.now()
 
       if (activeSession.debounceTimer) clearTimeout(activeSession.debounceTimer)
+      const debounceDelay = activeSession.mode === "BULK" ? 10000 : 8000
       activeSession.debounceTimer = setTimeout(async () => {
         try {
           await this.finalizeImageCollection(
@@ -310,10 +319,26 @@ export class WhatsAppManager {
           console.error("[WhatsAppManager] Debounce processing failed:", err)
           await this.client.sendMessage(toPhone, `⚠️ Failed to process product images: ${err.message}`)
         }
-      }, 4000)
+      }, debounceDelay)
 
       console.log(`[WhatsAppManager] Added accompanying message to pending image batch for ${cleanPhone}: "${rawText}"`)
       return
+    }
+
+    // Command: DONE / PROCESS (Manually trigger processing of pending image batch)
+    if (textUpper === "DONE" || textUpper === "PROCESS") {
+      const activeSession = activeSessions.get(cleanPhone)
+      if (activeSession && activeSession.pendingImages.length > 0) {
+        if (activeSession.debounceTimer) clearTimeout(activeSession.debounceTimer)
+        await this.finalizeImageCollection(
+          cleanPhone,
+          toPhone,
+          isAdmin,
+          activeSession.targetSellerId || currentSellerId,
+          activeSession.targetSellerName || currentSellerName
+        )
+        return
+      }
     }
 
     // Command: HELP
@@ -334,20 +359,84 @@ export class WhatsAppManager {
       return
     }
 
+    // Command: BULK <name> / BULK (Admin bulk upload mode switch)
+    if (isAdmin && (textUpper.startsWith("BULK ") || textUpper === "BULK")) {
+      const vendorQuery = rawText.replace(/^BULK\s*/i, "").trim()
+      if (vendorQuery) {
+        await this.handleAdminSwitchVendor(toPhone, cleanPhone, vendorQuery, true)
+      } else {
+        const currentCtx = adminVendorContexts.get(cleanPhone)
+        if (!currentCtx?.sellerId) {
+          await this.client.sendMessage(
+            toPhone,
+            `⚠️ Please specify a vendor name or number for bulk upload, e.g. *BULK Bhawani* or *BULK 1*. Reply *SELLERS* to see all vendors.`
+          )
+        } else {
+          let session = activeSessions.get(cleanPhone)
+          if (!session) {
+            session = {
+              step: "COLLECTING_IMAGES",
+              phone: cleanPhone,
+              pendingImages: [],
+              pendingTexts: [],
+              captions: [],
+              conversationHistory: [],
+              lastUpdated: Date.now(),
+              mode: "BULK",
+              targetSellerId: currentCtx.sellerId,
+              targetSellerName: currentCtx.sellerName,
+            }
+            activeSessions.set(cleanPhone, session)
+          } else {
+            session.mode = "BULK"
+            session.targetSellerId = currentCtx.sellerId
+            session.targetSellerName = currentCtx.sellerName
+          }
+          await this.client.sendMessage(
+            toPhone,
+            `🚀 *Bulk AI Upload Mode Enabled* for vendor *${currentCtx.sellerName}*!\n\nSend multiple product photos (e.g. 10 to 50+ photos) all at once. Each photo will be:\n1. Compressed to WebP\n2. Analyzed in single pass by Google Gemini Vision (extracting Article as Title, short description, brand, and categories)\n3. Created and published immediately for wholesale browsing without default variants.\n\nReply *DONE* after sending photos, or *CLEAR VENDOR* to exit.`
+          )
+        }
+      }
+      return
+    }
+
     // Command: VENDOR <name> / SWITCH VENDOR <name> / SELLER <name> (Admin only)
     if (isAdmin && (textUpper.startsWith("VENDOR ") || textUpper.startsWith("SWITCH VENDOR ") || textUpper.startsWith("SELLER "))) {
       const vendorQuery = rawText.replace(/^(SWITCH\s+)?(VENDOR|SELLER)\s+/i, "").trim()
-      await this.handleAdminSwitchVendor(toPhone, cleanPhone, vendorQuery)
+      await this.handleAdminSwitchVendor(toPhone, cleanPhone, vendorQuery, false)
       return
     }
 
     // Command: CLEAR VENDOR / EXIT (Admin only)
     if (isAdmin && (textUpper === "CLEAR VENDOR" || textUpper === "EXIT VENDOR" || textUpper === "EXIT")) {
       adminVendorContexts.delete(cleanPhone)
+      const session = activeSessions.get(cleanPhone)
+      if (session) {
+        session.mode = "SINGLE"
+        session.targetSellerId = undefined
+        session.targetSellerName = undefined
+      }
       await this.client.sendMessage(
         toPhone,
         `ℹ️ Active vendor context cleared. You are now operating as *Marketplace Admin*.`
       )
+      return
+    }
+
+    // Command: BRANDS / LIST BRANDS / CREATE BRAND / DELETE BRAND (Admin only)
+    if (
+      isAdmin &&
+      (textUpper === "BRANDS" ||
+        textUpper === "LIST BRANDS" ||
+        textUpper.startsWith("CREATE BRAND ") ||
+        textUpper.startsWith("ADD BRAND ") ||
+        textUpper.startsWith("DELETE BRAND ") ||
+        textUpper.startsWith("REMOVE BRAND ") ||
+        /^(?:create|add|delete|remove)\s+(?:a\s+)?brand\s+/i.test(rawText))
+    ) {
+      const res = await this.brandService.processBrandCommand(rawText, currentSellerId)
+      await this.client.sendMessage(toPhone, res.message)
       return
     }
 
@@ -711,7 +800,8 @@ export class WhatsAppManager {
   private async handleAdminSwitchVendor(
     toPhone: string,
     cleanPhone: string,
-    vendorQuery: string
+    vendorQuery: string,
+    isBulk = false
   ): Promise<void> {
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
 
@@ -753,8 +843,28 @@ export class WhatsAppManager {
         updatedAt: Date.now(),
       })
 
+      let session = activeSessions.get(cleanPhone)
+      if (!session) {
+        session = {
+          step: "COLLECTING_IMAGES",
+          phone: cleanPhone,
+          pendingImages: [],
+          pendingTexts: [],
+          captions: [],
+          conversationHistory: [],
+          lastUpdated: Date.now(),
+          mode: isBulk ? "BULK" : undefined,
+          targetSellerId: selected.id,
+          targetSellerName: selected.name,
+        }
+        activeSessions.set(cleanPhone, session)
+      } else {
+        if (isBulk) session.mode = "BULK"
+        session.targetSellerId = selected.id
+        session.targetSellerName = selected.name
+      }
+
       // If an active draft exists, update the draft's target seller directly
-      const session = activeSessions.get(cleanPhone)
       if (session?.draft) {
         session.draft.targetSellerId = selected.id
         session.draft.targetSellerName = selected.name
@@ -764,6 +874,14 @@ export class WhatsAppManager {
           toPhone,
           session.draft,
           `✅ Assigned product to vendor *${selected.name}* (ID: \`${selected.id}\`)!`
+        )
+        return
+      }
+
+      if (isBulk) {
+        await this.client.sendMessage(
+          toPhone,
+          `🚀 *Bulk AI Upload Mode Enabled* for vendor *${selected.name}* (ID: \`${selected.id}\`).\n\nSend multiple product photos (e.g. 10 to 50+ photos) all at once. Each photo will be:\n1. Compressed to WebP\n2. Analyzed in single pass by Google Gemini Vision (extracting Article as Title, short description, brand, and categories)\n3. Created and published immediately for wholesale browsing without default variants.\n\nReply *DONE* after sending photos, or *CLEAR VENDOR* to exit.`
         )
         return
       }
@@ -1015,7 +1133,8 @@ export class WhatsAppManager {
       ;(session as any).targetSellerName = targetSellerName
     }
 
-    // 4-second debounce timer: treats images sent together as a single batch without asking for 'DONE'
+    // 8-second debounce timer (10-second in BULK mode): treats images sent together as a single batch without asking for 'DONE'
+    const debounceDelay = session.mode === "BULK" ? 10000 : 8000
     session.debounceTimer = setTimeout(async () => {
       try {
         await this.finalizeImageCollection(
@@ -1029,7 +1148,7 @@ export class WhatsAppManager {
         console.error("[WhatsAppManager] Debounce processing failed:", err)
         await this.client.sendMessage(toPhone, `⚠️ Failed to process product images: ${err.message}`)
       }
-    }, 4000)
+    }, debounceDelay)
   }
 
   /**
@@ -1046,6 +1165,120 @@ export class WhatsAppManager {
   ): Promise<void> {
     const session = activeSessions.get(cleanPhone)
     if (!session || !session.pendingImages.length) return
+
+    // Prevent duplicate concurrent AI executions on delayed webhook deliveries
+    if ((session as any).isProcessing) {
+      console.log(`[WhatsAppManager] Image batch processing already active for ${cleanPhone}, skipping duplicate invocation.`)
+      return
+    }
+    ;(session as any).isProcessing = true
+
+    try {
+      const isBulk = session.mode === "BULK" || session.pendingImages.length > 1
+    const effectiveSellerId =
+      (session as any).targetSellerId ||
+      sellerId ||
+      adminVendorContexts.get(cleanPhone)?.sellerId
+    const effectiveSellerName =
+      (session as any).targetSellerName ||
+      sellerName ||
+      adminVendorContexts.get(cleanPhone)?.sellerName
+
+    // Bulk Mode: Process multiple images directly through BulkAiUploader without creating intermediate drafts
+    if (isBulk) {
+      if (isAdmin && !effectiveSellerId) {
+        await this.client.sendMessage(
+          toPhone,
+          `⚠️ *Vendor Assignment Required*\n\nPlease select a vendor before starting bulk upload:\n👉 Reply *BULK <vendor name>* or *VENDOR <name or number>* (reply *SELLERS* to list all vendors).`
+        )
+        session.pendingImages = []
+        session.pendingTexts = []
+        session.captions = []
+        activeSessions.set(cleanPhone, session)
+        return
+      }
+
+      const targetSellerId = effectiveSellerId || "marketplace_admin"
+      const targetSellerName = effectiveSellerName || "Vendor"
+
+      await this.client.sendMessage(
+        toPhone,
+        `🚀 *Bulk AI Upload Started for ${targetSellerName}*\n\nDownloading and compressing ${session.pendingImages.length} photo(s) to WebP...`
+      )
+
+      // 1. Download & compress images from WhatsApp Graph API
+      const downloadedImages: Array<{ buffer: Buffer; mimeType: string }> = []
+      for (const item of session.pendingImages) {
+        try {
+          const fileData = await this.client.downloadMedia(item.mediaId)
+          console.log(`[WhatsAppManager] Compressing media ${item.mediaId} (${fileData.buffer.length} bytes)...`)
+          const compressed = await this.compressor.compress(fileData.buffer)
+          downloadedImages.push({
+            buffer: compressed.buffer,
+            mimeType: compressed.mimeType,
+          })
+        } catch (dlErr: any) {
+          console.error(`[WhatsAppManager] Failed to download/compress media ${item.mediaId}:`, dlErr)
+        }
+      }
+
+      if (!downloadedImages.length) {
+        await this.client.sendMessage(
+          toPhone,
+          `⚠️ Failed to download the attached image(s) from WhatsApp. Please try sending the photo(s) again.`
+        )
+        session.pendingImages = []
+        session.pendingTexts = []
+        session.captions = []
+        activeSessions.set(cleanPhone, session)
+        return
+      }
+
+      const combinedNotes: string[] = [
+        ...session.captions,
+        ...session.pendingTexts,
+      ].filter(Boolean)
+
+      await this.client.sendMessage(
+        toPhone,
+        `⏳ Analyzing ${downloadedImages.length} photo(s) with Google Gemini Vision and creating products in single pass...`
+      )
+
+      const results = await this.bulkUploader.processBulkImages({
+        sellerId: targetSellerId,
+        images: downloadedImages,
+        notes: combinedNotes,
+        onProgress: async ({ current, total, lastProduct }) => {
+          if (current === 1 || current % 5 === 0 || current === total) {
+            await this.client.sendMessage(
+              toPhone,
+              `⏳ *Progress*: Created ${current}/${total} products${lastProduct?.title ? ` (Latest: *${lastProduct.title}*)` : ""}`
+            )
+          }
+        },
+      })
+
+      const summaryLines = [
+        `🎉 *Bulk Upload Complete!*`,
+        `Successfully created and published *${results.length}/${downloadedImages.length}* products for *${targetSellerName}*.`,
+        "",
+        "📦 *Created Articles*:",
+        ...results.slice(-5).map((r) => `• *${r.product.title}* (${r.brandName || "Brand"} / ${r.extracted.category_names?.join(", ") || "General"})`),
+      ]
+      if (results.length > 5) {
+        summaryLines.push(`• ...and ${results.length - 5} more`)
+      }
+      summaryLines.push("", `🌐 *View Storefront Catalog*: ${this.storefrontUrl}/store`)
+
+      await this.client.sendMessage(toPhone, summaryLines.join("\n"))
+
+      session.pendingImages = []
+      session.pendingTexts = []
+      session.captions = []
+      if (session.debounceTimer) clearTimeout(session.debounceTimer)
+      activeSessions.set(cleanPhone, session)
+      return
+    }
 
     await this.client.sendMessage(
       toPhone,
@@ -1113,12 +1346,14 @@ export class WhatsAppManager {
       ...session.pendingTexts,
     ].filter(Boolean)
 
-    // 4. Multimodal Analysis with Gemini Vision
+    // 4. Multimodal Analysis with Gemini Vision grounded with existing brands
     let extracted: ExtractedProduct
     try {
       const systemCategories = await this.getSystemCategories()
       const categoryNames = systemCategories.map((c) => c.name)
-      extracted = await this.vision.extractProductDetails(downloadedImages, combinedNotes, categoryNames)
+      const existingBrands = await this.brandService.listBrands()
+      const existingBrandNames = existingBrands.map((b) => b.name)
+      extracted = await this.vision.extractProductDetails(downloadedImages, combinedNotes, categoryNames, existingBrandNames)
       console.log(`[WhatsAppManager] Successfully extracted Article/Title: "${extracted.title}"`)
 
       // Resolve multiple categories (multi-select)
@@ -1165,15 +1400,12 @@ export class WhatsAppManager {
     extracted.retail_variants = retailVariants
     extracted.wholesale_variants = wholesaleVariants
 
-    const effectiveSellerId = (session as any).targetSellerId || sellerId || ""
-    const effectiveSellerName = (session as any).targetSellerName || sellerName
-
     // 6. Save Draft and maintain full conversational context
     const draft: ProductDraft = {
       product: extracted,
       imageUrls,
       createdAt: Date.now(),
-      targetSellerId: effectiveSellerId,
+      targetSellerId: effectiveSellerId || "",
       targetSellerName: effectiveSellerName,
       isAdmin: Boolean(isAdmin),
       rawCaptionsAndMessages: combinedNotes,
@@ -1212,6 +1444,11 @@ export class WhatsAppManager {
 
     // 7. Send Preview
     await this.sendDraftPreview(toPhone, draft)
+    } finally {
+      if (session) {
+        ;(session as any).isProcessing = false
+      }
+    }
   }
 
   /**
@@ -1334,10 +1571,10 @@ export class WhatsAppManager {
     const resolvedCategories = await this.resolveSystemCategories(categoriesToResolve)
     const resolvedCategoryIds = resolvedCategories.map((c) => c.id)
 
-    // 3. Resolve Brand from system or auto-create if not in system
+    // 3. Resolve Brand strictly from existing system brands (DO NOT auto-create)
     let brandId = p.brand_id
     if (!brandId && p.brand) {
-      brandId = (await this.resolveOrCreateBrand(p.brand, draft.targetSellerId)) || undefined
+      brandId = (await this.resolveExistingBrand(p.brand)) || undefined
       if (brandId) p.brand_id = brandId
     }
 
@@ -1352,7 +1589,7 @@ export class WhatsAppManager {
       status: ProductStatus.PUBLISHED,
       images: draft.imageUrls.map((url) => ({ url })),
       thumbnail: draft.imageUrls[0],
-      variants,
+      variants: [],
       sales_channels: salesChannels.map((sc) => ({ id: sc.id })),
       metadata: {
         listing_scope: "global",
@@ -1551,30 +1788,28 @@ export class WhatsAppManager {
   }
 
   /**
-   * Checks if the brand exists in the system; if not, creates it via createBrandWorkflow.
+   * Resolves brand strictly against existing system brands in database.
+   * Per user requirement: DOES NOT auto-create brands during product upload.
    */
-  async resolveOrCreateBrand(
-    brandName: string,
-    sellerId?: string
-  ): Promise<string | null> {
+  async resolveExistingBrand(brandName: string): Promise<string | null> {
     const clean = brandName.trim()
     if (!clean) return null
 
     const handle = slugify(clean)
     const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
 
-    // 1. Check if brand exists in system
     try {
       const { data: existingBrands } = await query.graph({
         entity: "brand",
         fields: ["id", "name", "handle"],
-        pagination: { skip: 0, take: 100 },
+        pagination: { skip: 0, take: 200 },
       })
 
       const match = existingBrands?.find(
         (b: any) =>
           b.name?.toLowerCase() === clean.toLowerCase() ||
-          b.handle?.toLowerCase() === handle
+          b.handle?.toLowerCase() === handle ||
+          b.name?.toLowerCase().includes(clean.toLowerCase())
       )
       if (match) {
         return match.id
@@ -1583,22 +1818,7 @@ export class WhatsAppManager {
       console.warn("[WhatsAppManager] Warning querying brands:", queryErr.message)
     }
 
-    // 2. Brand not found in system -> Auto-create brand
-    try {
-      console.log(`[WhatsAppManager] Brand "${clean}" not found in system. Auto-creating brand...`)
-      const { result: createdBrand } = await createBrandWorkflow(this.container).run({
-        input: {
-          name: clean,
-          handle: handle || `brand-${Date.now()}`,
-          status: BrandStatus.APPROVED,
-          seller_ids: sellerId ? [sellerId] : [],
-        },
-      })
-      return createdBrand.id
-    } catch (createBrandErr: any) {
-      console.error(`[WhatsAppManager] Failed to auto-create brand "${clean}":`, createBrandErr)
-      return null
-    }
+    return null
   }
 
   /**
@@ -1921,6 +2141,11 @@ export class WhatsAppManager {
         `\n👑 *Admin Commands*:`,
         `• *SELLERS*: View all registered marketplace vendors.`,
         `• *VENDOR <Name or Number>*: Switch active vendor to upload or query on their behalf.`,
+        `• *BULK <Name or Number>*: Switch to vendor and start bulk upload mode (send 10 to 50+ photos).`,
+        `• *DONE*: Finish sending bulk photos and process immediately.`,
+        `• *BRANDS*: List all registered brands.`,
+        `• *CREATE BRAND <name>*: Create an approved marketplace brand.`,
+        `• *DELETE BRAND <name>*: Remove a brand from marketplace.`,
         `• *CLEAR VENDOR*: Clear active vendor context.`
       )
     }

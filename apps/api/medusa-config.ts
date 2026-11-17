@@ -189,5 +189,17 @@ module.exports = withMercur({
         providers: fileProviders,
       },
     },
+    {
+      resolve: '@medusajs/medusa/search',
+      options: {
+        providers: [
+          {
+            resolve: '@medusajs/medusa/search-postgres',
+            id: 'postgres',
+            is_default: true,
+          },
+        ],
+      },
+    },
   ],
 })

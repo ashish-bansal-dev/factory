@@ -104,6 +104,9 @@ export interface WhatsAppSession {
   conversationHistory: ConversationMessage[]
   debounceTimer?: ReturnType<typeof setTimeout>
   lastUpdated: number
+  mode?: "SINGLE" | "BULK"
+  targetSellerId?: string
+  targetSellerName?: string
 }
 
 export interface AdminVendorContext {

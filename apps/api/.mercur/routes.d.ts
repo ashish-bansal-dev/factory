@@ -323,6 +323,7 @@ export type Routes = {
                     confirm: typeof import("@medusajs/medusa/api/admin/products/imports/[transaction_id]/confirm/route");
                 };
             };
+            bulkAiUpload: typeof import("../src/api/admin/products/bulk-ai-upload/route");
         };
         promotions: typeof import("@medusajs/medusa/api/admin/promotions/route") & {
             $id: typeof import("@medusajs/medusa/api/admin/promotions/[id]/route") & {
@@ -508,6 +509,9 @@ export type Routes = {
                 };
                 subscribe: typeof import("@medusajs/medusa/api/admin/workflows-executions/[workflow_id]/subscribe/route");
             };
+        };
+        brands: {
+            aiManage: typeof import("../src/api/admin/brands/ai-manage/route");
         };
         custom: typeof import("../src/api/admin/custom/route");
         mcp: typeof import("../src/api/admin/mcp/route");
@@ -831,6 +835,7 @@ export type Routes = {
                     $variantId: typeof import("@mercurjs/core/api/vendor/products/[id]/variants/[variant_id]/route");
                 };
             };
+            bulkAiUpload: typeof import("../src/api/vendor/products/bulk-ai-upload/route");
         };
         promotions: typeof import("@mercurjs/core/api/vendor/promotions/route") & {
             $id: typeof import("@mercurjs/core/api/vendor/promotions/[id]/route") & {

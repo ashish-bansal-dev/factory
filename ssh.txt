@@ -19,7 +19,7 @@
 # SSH Connections & Manual Operations
 # ==============================================================================
 # SSH Local Machine (Direct LAN IP)
-ssh dev@10.76.38.185
+ssh dev@10.32.121.185
 # Or via alias:
 ssh local-server
 

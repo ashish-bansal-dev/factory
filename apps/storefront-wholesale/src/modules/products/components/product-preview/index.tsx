@@ -48,18 +48,18 @@ export default async function ProductPreview({
         </div>
 
         {/* Content Section */}
-        <div className="p-4 flex flex-col justify-between flex-1 gap-3 font-sans">
+        <div className="p-3.5 sm:p-4 flex flex-col justify-between flex-1 gap-2.5 font-sans">
           <div>
             {/* Brand / Maker line */}
             {(brand?.name || seller?.name) && (
-              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block mb-1">
+              <span className="text-xs font-bold text-stone-600 uppercase tracking-wide block mb-1">
                 {brand?.name || seller?.name}
               </span>
             )}
 
-            {/* Product Title */}
+            {/* Product Title - Enhanced for Mobile Readability */}
             <h3
-              className="text-sm font-medium text-charcoal-900 group-hover:text-terracotta-600 transition line-clamp-1"
+              className="text-sm sm:text-base font-semibold text-charcoal-900 group-hover:text-terracotta-600 transition leading-snug line-clamp-2 min-h-[2.5rem]"
               data-testid="product-title"
             >
               {product.title}
@@ -77,7 +77,7 @@ export default async function ProductPreview({
                 isGated={false}
               />
             ) : (
-              <span className="text-xs text-stone-400">Pricing upon request</span>
+              <span className="text-xs font-medium text-stone-400">Pricing upon request</span>
             )}
           </div>
         </div>

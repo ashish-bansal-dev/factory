@@ -12,6 +12,7 @@ import { HttpTypes } from "@medusajs/types"
 import { Heading, Text } from "@medusajs/ui"
 
 import BrandTrustCard from "@modules/products/components/brand-trust-card"
+import WholesaleConnectActions from "@modules/products/components/wholesale-connect-actions"
 import ProductActionsWrapper from "./product-actions-wrapper"
 
 type ProductTemplateProps = {
@@ -73,7 +74,29 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
 
           <ProductOnboardingCta />
 
-          {/* Cart Addition Grid (Live with prices & offers) */}
+          {/* Unified Connect & Inquiry Actions: Guaranteed visible regardless of variant existence */}
+          <WholesaleConnectActions
+            product={product}
+            seller={seller}
+          />
+
+          {/* Description Box: Displayed only if a description exists */}
+          {product.description && product.description.trim().length > 0 && (
+            <div className="border border-stone-200 rounded-2xl p-6 bg-white shadow-sm flex flex-col gap-y-3">
+              <h3 className="font-serif text-base font-bold text-charcoal-900">
+                Product Overview & Description
+              </h3>
+              <Text
+                className="text-sm text-stone-600 whitespace-pre-line leading-relaxed"
+                data-testid="product-description"
+              >
+                {product.description}
+              </Text>
+            </div>
+          )}
+
+          {/* Pack matrices, variant tables, and size charts commented out for clean browse-and-connect pipeline */}
+          {/*
           <Suspense
             fallback={
               <ProductActions
@@ -86,26 +109,13 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
             <ProductActionsWrapper id={product.id} region={region} />
           </Suspense>
 
-          {/* Below it: Description Box */}
-          <div className="border border-stone-200 rounded-2xl p-6 bg-white shadow-sm flex flex-col gap-y-3">
-            <h3 className="font-serif text-base font-bold text-charcoal-900">
-              Product Overview & Fabric
-            </h3>
-            <Text
-              className="text-sm text-stone-600 whitespace-pre-line leading-relaxed"
-              data-testid="product-description"
-            >
-              {product.description || "No description provided for this product."}
-            </Text>
-          </div>
-
-          {/* Below it: Specifications & Shipping */}
           <div className="border border-stone-200 rounded-2xl p-6 bg-white shadow-sm flex flex-col gap-y-3">
             <h3 className="font-serif text-base font-bold text-charcoal-900">
               Wholesale Specifications & Shipping Policies
             </h3>
             <ProductTabs product={product} />
           </div>
+          */}
         </div>
       </div>
 
