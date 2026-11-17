@@ -1,5 +1,5 @@
 import { MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys, ProductStatus } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules, ProductStatus } from "@medusajs/framework/utils"
 import {
   uploadFilesWorkflow,
   linkProductsToSalesChannelWorkflow,
@@ -11,7 +11,7 @@ import {
   linkProductBrandWorkflow,
   ProductWorkflowEvents,
 } from "@mercurjs/core/workflows"
-import { BrandStatus } from "@mercurjs/types"
+import { BrandStatus, MercurModules } from "@mercurjs/types"
 import { GeminiVisionService } from "../whatsapp/gemini-vision"
 import { ImageCompressor } from "../whatsapp/image-compressor"
 import { ExtractedProduct } from "../whatsapp/types"
@@ -64,6 +64,44 @@ export class BulkAiUploader {
       quality: 82,
       format: "webp",
     })
+  }
+
+  /**
+   * Builds default wholesale variant with exact product attribution, without MRP.
+   */
+  private buildDefaultWholesaleVariant(
+    title: string,
+    extracted: ExtractedProduct,
+    index?: number
+  ): any {
+    const skuBase =
+      slugify(extracted.article_number || title)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 10) || "PROD"
+    const wholesalePrice = extracted.wholesale_price
+    const currencyCode = (extracted.currency_code || "inr").toLowerCase()
+    const skuSuffix = index != null ? `-${index + 1}` : ""
+
+    return {
+      title: "Default Wholesale",
+      sku: `${skuBase}-WS${skuSuffix}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
+      prices:
+        wholesalePrice && wholesalePrice > 0
+          ? [
+              {
+                currency_code: currencyCode,
+                amount: Math.round(wholesalePrice * 100),
+              },
+            ]
+          : [],
+      metadata: {
+        variant_type: "wholesale",
+        bundle_size: 1,
+        pack_description: "Standard Wholesale",
+        ...(extracted.wholesale_price ? { wholesale_unit_price: extracted.wholesale_price } : {}),
+      },
+    }
   }
 
   /**
@@ -253,7 +291,8 @@ export class BulkAiUploader {
       console.warn("[BulkAiUploader] Warning fetching sales channels:", scErr.message)
     }
 
-    // 7. Product payload - OMITTING variant creation per user requirement (variants: [])
+    // 7. Product payload with default wholesale variant (no MRP per user requirement)
+    const defaultVariant = this.buildDefaultWholesaleVariant(articleTitle, extracted)
     const productPayload: any = {
       title: articleTitle,
       subtitle: extracted.subtitle || "",
@@ -263,14 +302,12 @@ export class BulkAiUploader {
       images: imageUrls.map((url) => ({ url })),
       seller_ids: [sellerId],
       sales_channels: salesChannels.map((sc) => ({ id: sc.id })),
-      variants: [], // Omitted per user instruction for browse-only catalog
+      variants: [defaultVariant],
       metadata: {
         listing_scope: "global",
         created_via: "bulk_ai_upload",
         article_number: articleTitle,
-        mrp: extracted.mrp,
         wholesale_unit_price: extracted.wholesale_price,
-        suggested_retail_price: extracted.suggested_price,
         material: extracted.material,
         brand_name: brandName || extracted.brand || undefined,
         category_name: extracted.category_name || undefined,
@@ -295,6 +332,19 @@ export class BulkAiUploader {
     })
 
     const createdId = (result as { id: string }[])[0].id
+
+    // Explicitly link product to seller to ensure vendor domain visibility
+    try {
+      const remoteLink = this.container.resolve(ContainerRegistrationKeys.LINK)
+      await remoteLink.create([
+        {
+          [Modules.PRODUCT]: { product_id: createdId },
+          [MercurModules.SELLER]: { seller_id: sellerId },
+        },
+      ])
+    } catch {
+      // Ignore if already linked by workflow
+    }
 
     // Explicitly link brand if resolved
     if (brandId) {
@@ -398,10 +448,10 @@ export class BulkAiUploader {
     let batchExtracted: ExtractedProduct[] = []
     const existingBrands = await this.getExistingBrands()
     const existingBrandNames = existingBrands.map((b) => b.name)
+    let availableCategoryNames: string[] = []
 
     try {
       const query = this.container.resolve(ContainerRegistrationKeys.QUERY)
-      let availableCategoryNames: string[] = []
       try {
         const { data: categories } = await query.graph({
           entity: "product_category",
@@ -484,6 +534,7 @@ export class BulkAiUploader {
         const baseSlug = slugify(rawTitle) || `product-${Date.now()}`
         const productHandle = `${baseSlug}-${Date.now().toString(36)}-${i + 1}`
 
+        const defaultVariant = this.buildDefaultWholesaleVariant(rawTitle, extracted, i)
         const createProductInput: any = {
           title: rawTitle,
           handle: productHandle,
@@ -492,15 +543,15 @@ export class BulkAiUploader {
           status: ProductStatus.PUBLISHED,
           images: itemImageUrls.map((url) => ({ url })),
           thumbnail: itemImageUrls[0],
+          seller_ids: [sellerId],
+          sales_channels: salesChannels.map((sc) => ({ id: sc.id })),
           category_ids: categoryIds.length > 0 ? categoryIds : undefined,
-          variants: [],
+          variants: [defaultVariant],
           metadata: {
             listing_scope: "global",
             created_via: "bulk_ai_upload",
             seller_id: sellerId,
             article_number: extracted.article_number || extracted.title,
-            mrp: extracted.mrp,
-            suggested_retail_price: extracted.suggested_price,
             wholesale_unit_price: extracted.wholesale_price,
             material: extracted.material,
             brand_name: brandName || extracted.brand || undefined,
@@ -520,6 +571,17 @@ export class BulkAiUploader {
         })
 
         const createdId = (result as { id: string }[])[0].id
+
+        // Explicitly link product to seller to ensure immediate vendor domain showroom visibility
+        try {
+          const remoteLink = this.container.resolve(ContainerRegistrationKeys.LINK)
+          await remoteLink.create([
+            {
+              [Modules.PRODUCT]: { product_id: createdId },
+              [MercurModules.SELLER]: { seller_id: sellerId },
+            },
+          ])
+        } catch {}
 
         if (brandId) {
           try {

@@ -1,5 +1,6 @@
 "use server"
 
+import { headers as nextHeaders } from "next/headers"
 import { sdk } from "@lib/config"
 import { getAuthHeaders } from "./cookies"
 
@@ -13,6 +14,8 @@ export interface WholesaleInquiryInput {
   source_domain?: string | null
   notes?: string | null
   quantity?: number | null
+  batch_id?: string | null
+  metadata?: Record<string, unknown> | null
 }
 
 export interface WholesaleInquiryResponse {
@@ -34,12 +37,27 @@ export async function submitWholesaleInquiry(
 ): Promise<{ success: boolean; whatsapp_url?: string; error?: string }> {
   const headers = await getAuthHeaders()
 
+  let sourceDomain = input.source_domain
+  if (!sourceDomain) {
+    try {
+      const h = await nextHeaders()
+      sourceDomain = h.get("x-tenant-handle")
+        ? `${h.get("x-tenant-handle")}.factorytribe.com`
+        : h.get("x-forwarded-host") || h.get("host") || null
+    } catch {}
+  }
+
+  const payload: WholesaleInquiryInput = {
+    ...input,
+    source_domain: sourceDomain || undefined,
+  }
+
   try {
     const data = await sdk.client.fetch<WholesaleInquiryResponse>(
       "/store/inquiries",
       {
         method: "POST",
-        body: input,
+        body: payload,
         headers,
       }
     )

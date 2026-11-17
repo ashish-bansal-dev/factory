@@ -1,16 +1,19 @@
-import { Phone, ArrowUpRightOnBox } from "@medusajs/icons"
+import { Phone, ArrowUpRightOnBox, Eye } from "@medusajs/icons"
 import { Badge, Button, Container, Heading, Text } from "@medusajs/ui"
 import { keepPreviousData } from "@tanstack/react-query"
 import { createColumnHelper } from "@tanstack/react-table"
 import { Children, ReactNode, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
 
 import { _DataTable } from "../../../../components/table/data-table"
 import { DateCell } from "../../../../components/table/table-cells/common/date-cell"
 import { useDataTable } from "../../../../hooks/use-data-table"
 import { useVendorInquiries, type VendorInquiryDTO } from "../../../../hooks/api/inquiries"
 import { CreateDraftOrderModal } from "./create-draft-order-modal"
+import {
+  VendorInquiryDetailDrawer,
+  type GroupedVendorInquiry,
+} from "./vendor-inquiry-detail-drawer"
 
 const PAGE_SIZE = 20
 
@@ -33,18 +36,82 @@ export const VendorInquiryListHeader = ({ children }: { children?: ReactNode }) 
   )
 }
 
-const columnHelper = createColumnHelper<VendorInquiryDTO>()
+export const groupVendorInquiries = (
+  inquiries: VendorInquiryDTO[]
+): GroupedVendorInquiry[] => {
+  const groupsMap = new Map<string, VendorInquiryDTO[]>()
 
-const useColumns = (onConvert: (inquiry: VendorInquiryDTO) => void) => {
+  for (const inquiry of inquiries) {
+    const batchId = (inquiry.metadata?.batch_id as string) || null
+    const key = batchId || inquiry.id
+    const existing = groupsMap.get(key)
+    if (existing) {
+      existing.push(inquiry)
+    } else {
+      groupsMap.set(key, [inquiry])
+    }
+  }
+
+  const result: GroupedVendorInquiry[] = []
+
+  for (const [key, items] of groupsMap.entries()) {
+    const first = items[0]
+    const batchId = (first.metadata?.batch_id as string) || null
+
+    let totalUnits = 0
+    let hasNew = false
+    let hasContacted = false
+    let allConverted = true
+
+    for (const it of items) {
+      const q = Number(it.metadata?.quantity) || 1
+      totalUnits += q
+      if (it.status === "new") hasNew = true
+      if (it.status === "contacted") hasContacted = true
+      if (it.status !== "converted") allConverted = false
+    }
+
+    const aggregatedStatus = hasNew
+      ? "new"
+      : hasContacted
+      ? "contacted"
+      : allConverted
+      ? "converted"
+      : first.status
+
+    result.push({
+      id: key,
+      batchId,
+      createdAt: first.created_at,
+      storeName: first.store_name,
+      contactNumber: first.contact_number,
+      location: first.location,
+      sourceDomain: first.source_domain || "Your Branded Store",
+      status: aggregatedStatus,
+      totalUnits,
+      itemCount: items.length,
+      items,
+    })
+  }
+
+  return result
+}
+
+const columnHelper = createColumnHelper<GroupedVendorInquiry>()
+
+const useColumns = (
+  onOpenDrawer: (inquiry: GroupedVendorInquiry) => void,
+  onOpenDraftOrder: (item: VendorInquiryDTO) => void
+) => {
   const { t } = useTranslation()
 
   return useMemo(
     () => [
-      columnHelper.accessor("created_at", {
+      columnHelper.accessor("createdAt", {
         header: t("fields.createdAt", "Date"),
         cell: ({ getValue }) => <DateCell date={getValue()} />,
       }),
-      columnHelper.accessor("store_name", {
+      columnHelper.accessor("storeName", {
         header: "Retailer Store",
         cell: ({ getValue }) => (
           <Text size="small" leading="compact" weight="plus">
@@ -52,13 +119,13 @@ const useColumns = (onConvert: (inquiry: VendorInquiryDTO) => void) => {
           </Text>
         ),
       }),
-      columnHelper.accessor("contact_number", {
+      columnHelper.accessor("contactNumber", {
         header: "WhatsApp / Contact",
         cell: ({ getValue, row }) => {
           const number = getValue()
           const cleanPhone = number.replace(/\D/g, "")
           const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-            `Hi ${row.original.store_name}, following up on your wholesale inquiry regarding product ${row.original.product_id}`
+            `Hi ${row.original.storeName}, following up on your wholesale inquiry for ${row.original.itemCount} products.`
           )}`
 
           return (
@@ -87,97 +154,58 @@ const useColumns = (onConvert: (inquiry: VendorInquiryDTO) => void) => {
           </Text>
         ),
       }),
-      columnHelper.accessor("product_id", {
-        header: "Product / Variant",
-        cell: ({ getValue, row }) => {
-          const productId = getValue()
-          const productTitle = (row.original.metadata?.product_title as string) || productId
+      columnHelper.accessor("sourceDomain", {
+        header: "Showroom Source",
+        cell: ({ getValue }) => {
+          const domain = getValue()
+          const isShowroom =
+            Boolean(domain) &&
+            !domain.includes("factorytribe.com") &&
+            domain !== "factorytribe.com"
 
           return (
-            <div className="flex flex-col">
-              <Link
-                to={`/products/${productId}`}
-                className="text-ui-fg-interactive hover:underline font-medium text-xs flex items-center gap-1"
-                title="View Product Details"
-              >
-                <span>{productTitle}</span>
-                <ArrowUpRightOnBox className="h-3 w-3 shrink-0" />
-              </Link>
-              {productTitle !== productId && (
-                <Text size="xsmall" leading="compact" className="font-mono text-ui-fg-muted text-[10px]">
-                  {productId}
-                </Text>
-              )}
-              {row.original.variant_id && (
-                <Text size="xsmall" leading="compact" className="text-ui-fg-muted text-[10px]">
-                  Var: {row.original.variant_id}
-                </Text>
-              )}
-            </div>
+            <Badge size="small" color={isShowroom ? "purple" : "grey"}>
+              {isShowroom ? `Showroom: ${domain}` : "Marketplace Hub"}
+            </Badge>
           )
         },
       }),
       columnHelper.display({
-        id: "requirement",
-        header: "Requirement",
+        id: "items",
+        header: "Items Requested",
         cell: ({ row }) => {
-          const qty = row.original.metadata?.quantity
-          const notes = row.original.metadata?.notes as string | undefined
+          const inq = row.original
+          const firstProductTitle =
+            (inq.items[0]?.metadata?.product_title as string) ||
+            inq.items[0]?.product_id ||
+            "Product"
 
           return (
-            <div className="max-w-[200px] truncate">
-              {qty ? (
-                <Badge size="small" color="blue" className="mr-1">
-                  Qty: {qty}
+            <div className="flex flex-col gap-0.5 max-w-[240px]">
+              <div className="flex items-center gap-1.5">
+                <Badge size="small" color="blue" className="font-semibold">
+                  {inq.itemCount} {inq.itemCount === 1 ? "Product" : "Products"}
                 </Badge>
-              ) : null}
-              {notes && (
-                <Text size="xsmall" leading="compact" className="text-ui-fg-muted truncate">
-                  {notes}
+                <Text size="xsmall" className="text-ui-fg-muted font-medium">
+                  {inq.totalUnits} pcs
                 </Text>
-              )}
+              </div>
+              <Text size="xsmall" className="text-ui-fg-subtle truncate text-[11px]">
+                {firstProductTitle}
+                {inq.itemCount > 1 ? ` + ${inq.itemCount - 1} more` : ""}
+              </Text>
             </div>
           )
         },
       }),
-      columnHelper.accessor("source_domain", {
-        header: "Source",
-        cell: ({ getValue }) => (
-          <Badge size="small" color="grey">
-            {getValue() || "Your Branded Store"}
-          </Badge>
-        ),
-      }),
       columnHelper.accessor("status", {
         header: "Status",
-        cell: ({ getValue, row }) => {
+        cell: ({ getValue }) => {
           const status = getValue()
-          const isConverted = status === "converted"
-          const draftOrderId = row.original.metadata?.draft_order_id as string | undefined
-
-          if (isConverted) {
-            return (
-              <div className="flex flex-col gap-1 items-start">
-                <Badge size="small" color="green">
-                  CONVERTED
-                </Badge>
-                {draftOrderId && (
-                  <Link
-                    to={`/orders/${draftOrderId}`}
-                    className="text-ui-fg-interactive hover:underline text-[10px] font-mono flex items-center gap-1"
-                    title="View Draft Order"
-                  >
-                    <span>#{draftOrderId.slice(-7)}</span>
-                    <ArrowUpRightOnBox className="h-2.5 w-2.5" />
-                  </Link>
-                )}
-              </div>
-            )
-          }
-
           const colorMap: Record<string, "green" | "blue" | "grey"> = {
             new: "blue",
             contacted: "green",
+            converted: "green",
             closed: "grey",
           }
           return (
@@ -191,29 +219,38 @@ const useColumns = (onConvert: (inquiry: VendorInquiryDTO) => void) => {
         id: "actions",
         header: "Actions",
         cell: ({ row }) => {
-          const isConverted = row.original.status === "converted"
-          if (isConverted) {
-            return (
-              <Text size="xsmall" className="text-ui-fg-muted italic">
-                Converted
-              </Text>
-            )
-          }
+          const inq = row.original
+          const isSingle = inq.items.length === 1
+          const singleItem = inq.items[0]
+          const isConverted = inq.status === "converted"
 
           return (
-            <Button
-              size="small"
-              variant="secondary"
-              onClick={() => onConvert(row.original)}
-              data-testid={`inquiry-create-draft-order-btn-${row.original.id}`}
-            >
-              Create Draft Order
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="small"
+                variant="secondary"
+                onClick={() => onOpenDrawer(inq)}
+                className="flex items-center gap-1 text-xs"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>View Details</span>
+              </Button>
+              {isSingle && !isConverted && (
+                <Button
+                  size="small"
+                  variant="primary"
+                  onClick={() => onOpenDraftOrder(singleItem)}
+                  className="text-xs"
+                >
+                  Create Draft Order
+                </Button>
+              )}
+            </div>
           )
         },
       }),
     ],
-    [t, onConvert]
+    [t, onOpenDrawer, onOpenDraftOrder]
   )
 }
 
@@ -223,13 +260,22 @@ export const VendorInquiryListDataTable = () => {
     { placeholderData: keepPreviousData }
   )
 
-  const [selectedInquiry, setSelectedInquiry] = useState<VendorInquiryDTO | null>(null)
-  const columns = useColumns(setSelectedInquiry)
+  const [selectedDrawerInquiry, setSelectedDrawerInquiry] =
+    useState<GroupedVendorInquiry | null>(null)
+  const [selectedDraftOrderItem, setSelectedDraftOrderItem] =
+    useState<VendorInquiryDTO | null>(null)
+
+  const groupedData = useMemo(() => groupVendorInquiries(inquiries ?? []), [inquiries])
+
+  const columns = useColumns(
+    (inquiry) => setSelectedDrawerInquiry(inquiry),
+    (item) => setSelectedDraftOrderItem(item)
+  )
 
   const { table } = useDataTable({
-    data: inquiries ?? [],
+    data: groupedData,
     columns,
-    count: count ?? 0,
+    count: groupedData.length,
     enablePagination: true,
     getRowId: (row) => row.id,
     pageSize: PAGE_SIZE,
@@ -244,13 +290,13 @@ export const VendorInquiryListDataTable = () => {
       <_DataTable
         table={table}
         columns={columns}
-        count={count ?? 0}
+        count={groupedData.length}
         pageSize={PAGE_SIZE}
         pagination
         search
         navigateTo={undefined}
         isLoading={isPending}
-        defaultOrder="-created_at"
+        defaultOrder="-createdAt"
         noRecords={{
           title: "No Wholesale Inquiries",
           message: "When buyers submit inquiries for your brand, they will appear here.",
@@ -261,12 +307,22 @@ export const VendorInquiryListDataTable = () => {
         }}
         data-testid="vendor-inquiry-list-table"
       />
-      {selectedInquiry && (
+
+      <VendorInquiryDetailDrawer
+        open={Boolean(selectedDrawerInquiry)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedDrawerInquiry(null)
+        }}
+        inquiry={selectedDrawerInquiry}
+        onConvertItem={(item) => setSelectedDraftOrderItem(item)}
+      />
+
+      {selectedDraftOrderItem && (
         <CreateDraftOrderModal
-          inquiry={selectedInquiry}
-          open={!!selectedInquiry}
+          inquiry={selectedDraftOrderItem}
+          open={Boolean(selectedDraftOrderItem)}
           onOpenChange={(open) => {
-            if (!open) setSelectedInquiry(null)
+            if (!open) setSelectedDraftOrderItem(null)
           }}
         />
       )}

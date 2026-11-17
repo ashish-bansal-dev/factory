@@ -20,6 +20,8 @@ interface CuratedQuoteContextType {
   items: CuratedQuoteItem[]
   addItem: (item: Omit<CuratedQuoteItem, "id">) => void
   removeItem: (id: string) => void
+  toggleItem: (item: Omit<CuratedQuoteItem, "id">) => boolean
+  hasItem: (productId: string, variantId?: string | null) => boolean
   updateQuantity: (id: string, quantity: number) => void
   clearQuoteCart: () => void
   totalUnits: number
@@ -80,6 +82,23 @@ export const CuratedQuoteProvider: React.FC<{ children: React.ReactNode }> = ({
     setItems((prev) => prev.filter((i) => i.id !== id))
   }
 
+  const hasItem = (productId: string, variantId?: string | null): boolean => {
+    const id = `${productId}-${variantId || "default"}`
+    return items.some((i) => i.id === id || i.productId === productId)
+  }
+
+  const toggleItem = (item: Omit<CuratedQuoteItem, "id">): boolean => {
+    const id = `${item.productId}-${item.variantId || "default"}`
+    const exists = items.some((i) => i.id === id || i.productId === item.productId)
+    if (exists) {
+      setItems((prev) => prev.filter((i) => i.id !== id && i.productId !== item.productId))
+      return false
+    } else {
+      setItems((prev) => [...prev, { ...item, quantity: item.quantity || 1, id }])
+      return true
+    }
+  }
+
   const updateQuantity = (id: string, quantity: number) => {
     if (quantity <= 0) {
       removeItem(id)
@@ -106,6 +125,8 @@ export const CuratedQuoteProvider: React.FC<{ children: React.ReactNode }> = ({
         items,
         addItem,
         removeItem,
+        hasItem,
+        toggleItem,
         updateQuantity,
         clearQuoteCart,
         totalUnits,

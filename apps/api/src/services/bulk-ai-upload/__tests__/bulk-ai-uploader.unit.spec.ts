@@ -47,5 +47,26 @@ describe("BulkAiUploader", () => {
     const missing = await uploader.resolveExistingBrand("Unknown Brand")
     expect(missing).toBeNull()
   })
+
+  it("builds a default wholesale variant without MRP and quantity=1", () => {
+    const mockContainer = {} as any
+    const uploader = new BulkAiUploader(mockContainer, "test-key")
+
+    const variant = (uploader as any).buildDefaultWholesaleVariant("Art 101 Shoes", {
+      title: "Art 101 Shoes",
+      article_number: "ART-101",
+      wholesale_price: 350,
+      currency_code: "inr",
+      mrp: 1299,
+    })
+
+    expect(variant.title).toBe("Default Wholesale")
+    expect(variant.sku).toContain("ART101-WS")
+    expect(variant.prices).toEqual([{ currency_code: "inr", amount: 35000 }])
+    expect(variant.metadata.variant_type).toBe("wholesale")
+    expect(variant.metadata.bundle_size).toBe(1)
+    expect(variant.metadata.wholesale_unit_price).toBe(350)
+    expect(variant.metadata.mrp).toBeUndefined()
+  })
 })
 

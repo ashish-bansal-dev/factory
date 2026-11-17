@@ -5,6 +5,7 @@ import "styles/globals.css"
 
 import { CuratedQuoteProvider } from "@lib/context/curated-quote-context"
 import GlobalWhatsAppBadge from "@modules/common/components/whatsapp-badge"
+import FloatingQuoteCart from "@modules/common/components/floating-quote-cart"
 
 const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -36,6 +37,8 @@ export default function RootLayout(props: { children: React.ReactNode }) {
       <body className="bg-linen text-charcoal-900 font-sans antialiased min-h-screen selection:bg-terracotta-100 selection:text-terracotta-800">
         <CuratedQuoteProvider>
           <main className="relative">{props.children}</main>
+          {/* Global Multi-Product Wholesale Quote Cart Floating Bar */}
+          <FloatingQuoteCart />
           {/* Global WhatsApp Floating Badge with Page Context */}
           <GlobalWhatsAppBadge />
         </CuratedQuoteProvider>

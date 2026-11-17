@@ -120,7 +120,7 @@ export default function WholesaleInquiryModal({
         product_id: productId,
         variant_id: variantId || null,
         seller_id: sellerId || null,
-        source_domain: typeof window !== "undefined" ? window.location.hostname : null,
+        source_domain: typeof window !== "undefined" ? (window.location.host || window.location.hostname) : null,
         quantity: quantity ? parseInt(quantity, 10) : null,
         notes: notes.trim() || null,
       })

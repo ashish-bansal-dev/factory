@@ -8,6 +8,7 @@ import { deleteLineItem, updateLineItem } from "@lib/data/cart"
 import LocalizedClientLink from "@modules/common/components/localized-client-link"
 import Thumbnail from "@modules/products/components/thumbnail"
 import { useCuratedQuote } from "@lib/context/curated-quote-context"
+import { submitWholesaleInquiry } from "@lib/data/inquiries"
 import { usePathname } from "next/navigation"
 
 interface CartDrawerProps {
@@ -24,9 +25,17 @@ export default function CartDropdown({ cart }: CartDrawerProps) {
     items: curatedQuoteItems,
     removeItem: removeQuoteItem,
     updateQuantity: updateQuoteQuantity,
+    clearQuoteCart,
     totalItems: curatedQuoteCount,
     totalUnits: curatedQuoteTotalUnits,
   } = useCuratedQuote()
+
+  const [buyerStoreName, setBuyerStoreName] = useState("")
+  const [buyerPhone, setBuyerPhone] = useState("")
+  const [buyerCity, setBuyerCity] = useState("")
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false)
+  const [inquirySuccess, setInquirySuccess] = useState(false)
+  const [inquiryError, setInquiryError] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -87,7 +96,9 @@ export default function CartDropdown({ cart }: CartDrawerProps) {
     }
   }
 
-  const handleSendQuoteWhatsApp = () => {
+  const handleSendQuoteWhatsApp = async () => {
+    setInquiryError(null)
+
     const list = curatedQuoteItems
       .map(
         (it, idx) =>
@@ -95,24 +106,57 @@ export default function CartDropdown({ cart }: CartDrawerProps) {
       )
       .join("\n")
 
+    const details = [
+      buyerStoreName.trim() ? `Store / Business: ${buyerStoreName.trim()}` : null,
+      buyerPhone.trim() ? `Contact: ${buyerPhone.trim()}` : null,
+      buyerCity.trim() ? `Location: ${buyerCity.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n")
+
     const message = encodeURIComponent(
-      `Hello FactoryTribe! I would like to request a wholesale quotation for:\n\n${list}\n\nPlease share factory pricing, delivery lead time, and GST quotation.`
+      `Hello FactoryTribe! I would like to request a wholesale quotation for:\n\n${list}\n\nTotal Units: ${curatedQuoteTotalUnits}\n${details ? `\n${details}\n` : ""}\nPlease share factory pricing, delivery lead time, and GST quotation.`
     )
 
-    try {
-      fetch("/api/inquiry-log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source: "cart_drawer_quote",
-          items: curatedQuoteItems,
-          total_units: curatedQuoteTotalUnits,
-          notes: list,
-        }),
-      }).catch(() => {})
-    } catch {}
+    setIsSubmittingInquiry(true)
 
-    window.open(`https://wa.me/919782077711?text=${message}`, "_blank")
+    try {
+      const batchId = `inq_batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      const sourceDomain = typeof window !== "undefined" ? window.location.host : "factorytribe.com"
+
+      // 1. Submit structured wholesale inquiry lead to backend for each selected item sharing batchId
+      for (const item of curatedQuoteItems) {
+        await submitWholesaleInquiry({
+          store_name: buyerStoreName.trim() || "Wholesale Buyer",
+          contact_number: buyerPhone.trim() || "919782077711",
+          location: buyerCity.trim() || "India",
+          product_id: item.productId,
+          variant_id: item.variantId ?? null,
+          seller_id: item.sellerId ?? null,
+          source_domain: sourceDomain,
+          batch_id: batchId,
+          notes: `Multi-product Quote Cart (${curatedQuoteTotalUnits} total pcs):\n${list}`,
+          quantity: item.quantity,
+          metadata: {
+            batch_id: batchId,
+            item_variant_title: item.variantTitle || null,
+            item_sku: item.sku || null,
+            total_batch_items: curatedQuoteItems.length,
+            total_batch_units: curatedQuoteTotalUnits,
+          },
+        }).catch((err) => console.warn("Failed to log backend inquiry:", err))
+      }
+
+      // 2. Open WhatsApp click-to-chat
+      const targetPhone = "919782077711"
+      window.open(`https://wa.me/${targetPhone}?text=${message}`, "_blank")
+
+      setInquirySuccess(true)
+    } catch (err: any) {
+      setInquiryError(err?.message || "Failed to submit quote inquiry")
+    } finally {
+      setIsSubmittingInquiry(false)
+    }
   }
 
   const drawerContent = (
@@ -390,17 +434,78 @@ export default function CartDropdown({ cart }: CartDrawerProps) {
                       ))}
                     </div>
 
-                    {/* Dedicated WhatsApp Quote CTA */}
-                    <button
-                      type="button"
-                      onClick={handleSendQuoteWhatsApp}
-                      className="w-full h-11 rounded-xl bg-forest-900 hover:bg-forest-800 text-white text-xs font-semibold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
-                    >
-                      <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.053-1.637-.362-.977-.406-1.603-1.399-1.651-1.464-.049-.064-.405-.538-.405-1.026 0-.488.256-.729.346-.827.091-.098.199-.122.265-.122.066 0 .132.001.189.004.06.002.141-.023.22.167.083.199.281.684.306.734.025.049.041.107.008.173-.033.065-.05.106-.099.163-.049.057-.104.128-.148.172-.049.049-.1.103-.043.201.057.098.254.419.546.679.375.335.691.439.789.488.098.049.156.041.214-.025.058-.066.248-.29.314-.389.066-.098.132-.082.222-.049.091.033.578.272.677.322.099.049.165.074.19.115.025.041.025.24-.119.645z" />
-                      </svg>
-                      <span>Request Quote via WhatsApp ({curatedQuoteTotalUnits} pcs) &rarr;</span>
-                    </button>
+                    {/* Buyer Contact Details Inputs */}
+                    <div className="bg-sand-50/70 p-3.5 rounded-xl border border-stone-200/80 space-y-2.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-charcoal-900 block">
+                        Your Wholesale Business Details
+                      </span>
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={buyerStoreName}
+                          onChange={(e) => setBuyerStoreName(e.target.value)}
+                          placeholder="Store / Company Name (e.g. Acme Retail)"
+                          className="w-full text-xs px-3 py-2 rounded-lg border border-stone-300 bg-white text-charcoal-900 placeholder:text-stone-400 focus:outline-none focus:border-charcoal-900"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="tel"
+                            value={buyerPhone}
+                            onChange={(e) => setBuyerPhone(e.target.value)}
+                            placeholder="WhatsApp Number"
+                            className="w-full text-xs px-3 py-2 rounded-lg border border-stone-300 bg-white text-charcoal-900 placeholder:text-stone-400 focus:outline-none focus:border-charcoal-900"
+                          />
+                          <input
+                            type="text"
+                            value={buyerCity}
+                            onChange={(e) => setBuyerCity(e.target.value)}
+                            placeholder="City / Pincode"
+                            className="w-full text-xs px-3 py-2 rounded-lg border border-stone-300 bg-white text-charcoal-900 placeholder:text-stone-400 focus:outline-none focus:border-charcoal-900"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {inquirySuccess ? (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                        <span>✓ Inquiry sent & WhatsApp chat opened!</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            clearQuoteCart()
+                            setInquirySuccess(false)
+                          }}
+                          className="underline font-bold text-emerald-900 cursor-pointer"
+                        >
+                          Clear Cart
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={handleSendQuoteWhatsApp}
+                          disabled={isSubmittingInquiry}
+                          className="w-full h-11 rounded-xl bg-forest-900 hover:bg-forest-800 active:bg-forest-950 text-white text-xs font-bold flex items-center justify-center gap-2 transition shadow-sm cursor-pointer disabled:opacity-50"
+                        >
+                          <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.634.053-1.637-.362-.977-.406-1.603-1.399-1.651-1.464-.049-.064-.405-.538-.405-1.026 0-.488.256-.729.346-.827.091-.098.199-.122.265-.122.066 0 .132.001.189.004.06.002.141-.023.22.167.083.199.281.684.306.734.025.049.041.107.008.173-.033.065-.05.106-.099.163-.049.057-.104.128-.148.172-.049.049-.1.103-.043.201.057.098.254.419.546.679.375.335.691.439.789.488.098.049.156.041.214-.025.058-.066.248-.29.314-.389.066-.098.132-.082.222-.049.091.033.578.272.677.322.099.049.165.074.19.115.025.041.025.24-.119.645z" />
+                          </svg>
+                          <span>{isSubmittingInquiry ? "Sending Inquiry..." : `Send Wholesale Inquiry (${curatedQuoteTotalUnits} pcs)`} &rarr;</span>
+                        </button>
+
+                        <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
+                          <span>Logs quote lead & opens WhatsApp chat</span>
+                          <button
+                            type="button"
+                            onClick={clearQuoteCart}
+                            className="text-stone-400 hover:text-rose-600 transition cursor-pointer"
+                          >
+                            Clear quote cart
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </>

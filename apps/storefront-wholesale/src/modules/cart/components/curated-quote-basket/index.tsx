@@ -69,20 +69,32 @@ export default function CuratedQuoteBasket() {
 
     try {
       // 1. Log lead in Mercur inquiries if at least one product has an ID
-      const firstItem = items[0]
       const compiledNotes = buildQuoteMessage()
+      const batchId = `inq_batch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      const sourceDomain = typeof window !== "undefined" ? (window.location.host || window.location.hostname) : "factorytribe.com"
 
-      if (firstItem?.productId) {
-        await submitWholesaleInquiry({
-          store_name: storeName.trim(),
-          contact_number: contactNumber.trim(),
-          location: location.trim(),
-          product_id: firstItem.productId,
-          variant_id: firstItem.variantId ?? null,
-          seller_id: firstItem.sellerId ?? null,
-          notes: compiledNotes,
-          quantity: totalUnits,
-        }).catch((err) => console.warn("Failed to log inquiry backend lead:", err))
+      for (const item of items) {
+        if (item?.productId) {
+          await submitWholesaleInquiry({
+            store_name: storeName.trim(),
+            contact_number: contactNumber.trim(),
+            location: location.trim(),
+            product_id: item.productId,
+            variant_id: item.variantId ?? null,
+            seller_id: item.sellerId ?? null,
+            source_domain: sourceDomain,
+            batch_id: batchId,
+            notes: `Multi-product Curated Quote (${totalUnits} total pcs):\n${compiledNotes}`,
+            quantity: item.quantity,
+            metadata: {
+              batch_id: batchId,
+              item_variant_title: item.variantTitle || null,
+              item_sku: item.sku || null,
+              total_batch_items: items.length,
+              total_batch_units: totalUnits,
+            },
+          }).catch((err) => console.warn("Failed to log inquiry backend lead:", err))
+        }
       }
 
       // 2. Open WhatsApp with pre-formatted quote

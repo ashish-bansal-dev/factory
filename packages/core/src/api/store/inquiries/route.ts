@@ -21,7 +21,17 @@ export const POST = async (
     source_domain,
     notes,
     quantity,
+    batch_id,
+    metadata: extraMetadata,
   } = req.validatedBody
+
+  // Fallback domain detection from host headers if not explicitly supplied
+  const effectiveSourceDomain =
+    source_domain ||
+    (typeof req.headers["x-tenant-handle"] === "string" ? `${req.headers["x-tenant-handle"]}.factorytribe.com` : null) ||
+    (typeof req.headers["x-forwarded-host"] === "string" ? req.headers["x-forwarded-host"] : null) ||
+    (typeof req.headers["host"] === "string" ? req.headers["host"] : null) ||
+    null
 
   // 1. Verify product existence and resolve variants & linked sellers
   const { data: products } = await query.graph({
@@ -131,10 +141,12 @@ export const POST = async (
     product_id: product.id,
     variant_id: variant_id ?? null,
     seller_id: resolvedSeller?.id ?? null,
-    source_domain: source_domain ?? null,
+    source_domain: effectiveSourceDomain,
     channel: "whatsapp",
     status: "new",
     metadata: {
+      ...(extraMetadata || {}),
+      batch_id: batch_id || (extraMetadata as any)?.batch_id || null,
       notes: notes ?? null,
       quantity: quantity ?? null,
       product_title: productTitle,

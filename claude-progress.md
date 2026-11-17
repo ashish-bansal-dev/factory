@@ -6,11 +6,32 @@ session detail aggressively. The per-spec source of truth lives in
 
 ## Current Verified State
 
-- **Current branch**: `feat/whatsapp-ai-product-creation`
+- **Current branch**: `main`
 - **Current version**: `2.2.0-rc.1`
 - **Standard startup path**: `bun install && bun run dev`
 - **Standard verification path**: `bun run build`, `bun run lint`
 - **Current blocker**: none
+
+## Session — Curated Quote Requests, Multi-Item RFQ Basket & Inquiry Detail Drawers (2026-11-18)
+
+Implemented end-to-end multi-item curated quote request flow and drawer detail views for inquiries:
+1. `apps/storefront-wholesale`:
+   - Built `CuratedQuoteContext` and state management for multi-item RFQ cart.
+   - Added `FloatingQuoteCart` floating drawer launcher with item counter and badge.
+   - Built `CuratedQuoteBasket` sliding drawer with quantity adjustments, custom quote notes, and submission to `/store/inquiries`.
+   - Added `AddToQuoteButton` and integrated with `ProductPreview` cards and PDP wholesale actions.
+2. `packages/core`:
+   - Extended `/store/inquiries` route and validators to accept multi-item `items` array payload and forward to inquiry creation workflow.
+   - Extended `/store/products` endpoint to support `ids` batch filtering.
+3. `packages/admin`:
+   - Added `InquiryDetailDrawer` displaying complete buyer contact info, inquiry items breakdown, pricing, notes, and status management.
+   - Wired drawer trigger to admin inquiries list table rows.
+4. `packages/vendor`:
+   - Added `VendorInquiryDetailDrawer` showing seller-scoped inquiry details, requested products, Buyer WhatsApp/Phone/Email actions, and direct draft order conversion.
+   - Wired drawer trigger to vendor inquiries list table rows.
+5. `apps/api`:
+   - Refined `BulkAiUploader` default wholesale variant creation when MRP is omitted.
+   - Added accompanying unit tests (`bulk-ai-uploader.unit.spec.ts`).
 
 ## Session — Retail & Wholesale Variants, Packs, Offers & Inquiry Draft Orders (2026-11-10)
 

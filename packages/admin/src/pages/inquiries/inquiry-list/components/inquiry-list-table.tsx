@@ -1,15 +1,15 @@
-import { Phone, ArrowUpRightOnBox } from "@medusajs/icons"
-import { Badge, Container, Heading, Text } from "@medusajs/ui"
+import { Phone, ArrowUpRightOnBox, Eye } from "@medusajs/icons"
+import { Badge, Button, Container, Heading, Text } from "@medusajs/ui"
 import { keepPreviousData } from "@tanstack/react-query"
 import { createColumnHelper } from "@tanstack/react-table"
-import { Children, ReactNode, useMemo } from "react"
+import { Children, ReactNode, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link } from "react-router-dom"
 
 import { _DataTable } from "../../../../components/table/data-table"
 import { DateCell } from "../../../../components/table/table-cells/common/date-cell"
 import { useDataTable } from "../../../../hooks/use-data-table"
 import { useInquiries, type WholesaleInquiryDTO } from "../../../../hooks/api/inquiries"
+import { InquiryDetailDrawer, type GroupedInquiry } from "./inquiry-detail-drawer"
 
 const PAGE_SIZE = 20
 
@@ -32,18 +32,77 @@ export const InquiryListHeader = ({ children }: { children?: ReactNode }) => {
   )
 }
 
-const columnHelper = createColumnHelper<WholesaleInquiryDTO>()
+export const groupInquiries = (inquiries: WholesaleInquiryDTO[]): GroupedInquiry[] => {
+  const groupsMap = new Map<string, WholesaleInquiryDTO[]>()
 
-const useColumns = () => {
+  for (const inquiry of inquiries) {
+    const batchId = (inquiry.metadata?.batch_id as string) || null
+    const key = batchId || inquiry.id
+    const existing = groupsMap.get(key)
+    if (existing) {
+      existing.push(inquiry)
+    } else {
+      groupsMap.set(key, [inquiry])
+    }
+  }
+
+  const result: GroupedInquiry[] = []
+
+  for (const [key, items] of groupsMap.entries()) {
+    const first = items[0]
+    const batchId = (first.metadata?.batch_id as string) || null
+
+    let totalUnits = 0
+    let hasNew = false
+    let hasContacted = false
+    let allConverted = true
+
+    for (const it of items) {
+      const q = Number(it.metadata?.quantity) || 1
+      totalUnits += q
+      if (it.status === "new") hasNew = true
+      if (it.status === "contacted") hasContacted = true
+      if (it.status !== "converted") allConverted = false
+    }
+
+    const aggregatedStatus = hasNew
+      ? "new"
+      : hasContacted
+      ? "contacted"
+      : allConverted
+      ? "converted"
+      : first.status
+
+    result.push({
+      id: key,
+      batchId,
+      createdAt: first.created_at,
+      storeName: first.store_name,
+      contactNumber: first.contact_number,
+      location: first.location,
+      sourceDomain: first.source_domain || "factorytribe.com",
+      status: aggregatedStatus,
+      totalUnits,
+      itemCount: items.length,
+      items,
+    })
+  }
+
+  return result
+}
+
+const columnHelper = createColumnHelper<GroupedInquiry>()
+
+const useColumns = (onSelectInquiry: (inquiry: GroupedInquiry) => void) => {
   const { t } = useTranslation()
 
   return useMemo(
     () => [
-      columnHelper.accessor("created_at", {
+      columnHelper.accessor("createdAt", {
         header: t("fields.createdAt", "Date"),
         cell: ({ getValue }) => <DateCell date={getValue()} />,
       }),
-      columnHelper.accessor("store_name", {
+      columnHelper.accessor("storeName", {
         header: "Retailer Store",
         cell: ({ getValue }) => (
           <Text size="small" leading="compact" weight="plus">
@@ -51,13 +110,13 @@ const useColumns = () => {
           </Text>
         ),
       }),
-      columnHelper.accessor("contact_number", {
+      columnHelper.accessor("contactNumber", {
         header: "WhatsApp / Contact",
         cell: ({ getValue, row }) => {
           const number = getValue()
           const cleanPhone = number.replace(/\D/g, "")
           const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(
-            `Hi ${row.original.store_name}, following up on your wholesale inquiry regarding product ${row.original.product_id}`
+            `Hi ${row.original.storeName}, following up on your wholesale inquiry for ${row.original.itemCount} products.`
           )}`
 
           return (
@@ -86,66 +145,49 @@ const useColumns = () => {
           </Text>
         ),
       }),
-      columnHelper.accessor("product_id", {
-        header: "Product / Variant",
-        cell: ({ getValue, row }) => {
-          const productId = getValue()
-          const productTitle = (row.original.metadata?.product_title as string) || productId
+      columnHelper.accessor("sourceDomain", {
+        header: "Showroom Source",
+        cell: ({ getValue }) => {
+          const domain = getValue()
+          const isShowroom =
+            Boolean(domain) &&
+            !domain.includes("factorytribe.com") &&
+            domain !== "factorytribe.com"
 
           return (
-            <div className="flex flex-col">
-              <Link
-                to={`/products/${productId}`}
-                className="text-ui-fg-interactive hover:underline font-medium text-xs flex items-center gap-1"
-                title="View Product Details"
-              >
-                <span>{productTitle}</span>
-                <ArrowUpRightOnBox className="h-3 w-3 shrink-0" />
-              </Link>
-              {productTitle !== productId && (
-                <Text size="xsmall" leading="compact" className="font-mono text-ui-fg-muted text-[10px]">
-                  {productId}
-                </Text>
-              )}
-              {row.original.variant_id && (
-                <Text size="xsmall" leading="compact" className="text-ui-fg-muted text-[10px]">
-                  Var: {row.original.variant_id}
-                </Text>
-              )}
-            </div>
+            <Badge size="small" color={isShowroom ? "purple" : "grey"}>
+              {isShowroom ? `Showroom: ${domain}` : "factorytribe.com"}
+            </Badge>
           )
         },
       }),
       columnHelper.display({
-        id: "requirement",
-        header: "Requirement",
+        id: "items",
+        header: "Items Requested",
         cell: ({ row }) => {
-          const qty = row.original.metadata?.quantity
-          const notes = row.original.metadata?.notes as string | undefined
+          const inq = row.original
+          const firstProductTitle =
+            (inq.items[0]?.metadata?.product_title as string) ||
+            inq.items[0]?.product_id ||
+            "Product"
 
           return (
-            <div className="max-w-[200px] truncate">
-              {qty ? (
-                <Badge size="small" color="blue" className="mr-1">
-                  Qty: {qty}
+            <div className="flex flex-col gap-0.5 max-w-[240px]">
+              <div className="flex items-center gap-1.5">
+                <Badge size="small" color="blue" className="font-semibold">
+                  {inq.itemCount} {inq.itemCount === 1 ? "Product" : "Products"}
                 </Badge>
-              ) : null}
-              {notes && (
-                <Text size="xsmall" leading="compact" className="text-ui-fg-muted truncate">
-                  {notes}
+                <Text size="xsmall" className="text-ui-fg-muted font-medium">
+                  {inq.totalUnits} pcs
                 </Text>
-              )}
+              </div>
+              <Text size="xsmall" className="text-ui-fg-subtle truncate text-[11px]">
+                {firstProductTitle}
+                {inq.itemCount > 1 ? ` + ${inq.itemCount - 1} more` : ""}
+              </Text>
             </div>
           )
         },
-      }),
-      columnHelper.accessor("source_domain", {
-        header: "Source",
-        cell: ({ getValue }) => (
-          <Badge size="small" color="grey">
-            {getValue() || "factorytribe.com"}
-          </Badge>
-        ),
       }),
       columnHelper.accessor("status", {
         header: "Status",
@@ -154,6 +196,7 @@ const useColumns = () => {
           const colorMap: Record<string, "green" | "blue" | "grey"> = {
             new: "blue",
             contacted: "green",
+            converted: "green",
             closed: "grey",
           }
           return (
@@ -163,8 +206,25 @@ const useColumns = () => {
           )
         },
       }),
+      columnHelper.display({
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => {
+          return (
+            <Button
+              size="small"
+              variant="secondary"
+              onClick={() => onSelectInquiry(row.original)}
+              className="flex items-center gap-1"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>View Details</span>
+            </Button>
+          )
+        },
+      }),
     ],
-    [t]
+    [t, onSelectInquiry]
   )
 }
 
@@ -174,12 +234,14 @@ export const InquiryListDataTable = () => {
     { placeholderData: keepPreviousData }
   )
 
-  const columns = useColumns()
+  const [selectedInquiry, setSelectedInquiry] = useState<GroupedInquiry | null>(null)
+  const groupedData = useMemo(() => groupInquiries(inquiries ?? []), [inquiries])
+  const columns = useColumns(setSelectedInquiry)
 
   const { table } = useDataTable({
-    data: inquiries ?? [],
+    data: groupedData,
     columns,
-    count: count ?? 0,
+    count: groupedData.length,
     enablePagination: true,
     getRowId: (row) => row.id,
     pageSize: PAGE_SIZE,
@@ -190,26 +252,35 @@ export const InquiryListDataTable = () => {
   }
 
   return (
-    <_DataTable
-      table={table}
-      columns={columns}
-      count={count ?? 0}
-      pageSize={PAGE_SIZE}
-      pagination
-      search
-      navigateTo={undefined}
-      isLoading={isPending}
-      defaultOrder="-created_at"
-      noRecords={{
-        title: "No Wholesale Inquiries",
-        message: "When retailers submit wholesale inquiries, they will appear here.",
-        icon: <Phone />,
-      }}
-      noResults={{
-        icon: <Phone />,
-      }}
-      data-testid="inquiry-list-table"
-    />
+    <>
+      <_DataTable
+        table={table}
+        columns={columns}
+        count={groupedData.length}
+        pageSize={PAGE_SIZE}
+        pagination
+        search
+        navigateTo={undefined}
+        isLoading={isPending}
+        defaultOrder="-createdAt"
+        noRecords={{
+          title: "No Wholesale Inquiries",
+          message: "When retailers submit wholesale inquiries, they will appear here.",
+          icon: <Phone />,
+        }}
+        noResults={{
+          icon: <Phone />,
+        }}
+        data-testid="inquiry-list-table"
+      />
+      <InquiryDetailDrawer
+        open={Boolean(selectedInquiry)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedInquiry(null)
+        }}
+        inquiry={selectedInquiry}
+      />
+    </>
   )
 }
 

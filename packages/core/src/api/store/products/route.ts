@@ -61,7 +61,7 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
 
   if (effectiveSellerId) {
     const sellerId = effectiveSellerId
-    const [sellerLinksRes, offersRes] = await Promise.all([
+    const [sellerLinksRes, offersRes, metadataProductsRes] = await Promise.all([
       query.graph({
         entity: "product_seller",
         fields: ["product_id"],
@@ -71,6 +71,11 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
         entity: "offer",
         fields: ["product_id", "prices.id"],
         filters: { seller_id: sellerId },
+      }).catch(() => ({ data: [] })),
+      query.graph({
+        entity: "product",
+        fields: ["id"],
+        filters: { metadata: { seller_id: sellerId } },
       }).catch(() => ({ data: [] })),
     ])
 
@@ -86,6 +91,11 @@ export const GET = async (req: MedusaStoreRequest, res: MedusaResponse) => {
     }[]) {
       if (item.product_id && item.prices && item.prices.length > 0) {
         sellerProductIds.add(item.product_id)
+      }
+    }
+    for (const item of (metadataProductsRes.data ?? []) as { id?: string }[]) {
+      if (item.id) {
+        sellerProductIds.add(item.id)
       }
     }
 

@@ -4,6 +4,7 @@ import LocalizedClientLink from "@modules/common/components/localized-client-lin
 import Thumbnail from "../thumbnail"
 import WholesalePriceDisplay from "@modules/common/components/wholesale/wholesale-price-display"
 import BundlePackBadge from "@modules/common/components/wholesale/bundle-pack-badge"
+import AddToQuoteButton from "../add-to-quote-button"
 
 export default async function ProductPreview({
   product,
@@ -66,19 +67,24 @@ export default async function ProductPreview({
             </h3>
           </div>
 
-          {/* Pricing & Margin */}
+          {/* Pricing & Margin - No MSRP displayed per user instruction */}
           <div className="pt-2 border-t border-stone-100">
             {cheapestPrice ? (
               <WholesalePriceDisplay
                 calculatedPrice={cheapestPrice.calculated_price}
                 originalPrice={cheapestPrice.original_price}
-                msrp={msrp}
+                msrp={null}
                 bundleSize={bundleSize}
                 isGated={false}
               />
             ) : (
               <span className="text-xs font-medium text-stone-400">Pricing upon request</span>
             )}
+          </div>
+
+          {/* Action Row: Direct Multi-Product Selection for Quote Cart (Default Qty: 1) */}
+          <div className="pt-1">
+            <AddToQuoteButton product={product} />
           </div>
         </div>
       </div>

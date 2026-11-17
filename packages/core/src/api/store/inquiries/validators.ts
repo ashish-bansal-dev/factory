@@ -11,4 +11,6 @@ export const StoreCreateInquiry = z.object({
   source_domain: z.string().nullish(),
   notes: z.string().nullish(),
   quantity: z.number().nullish(),
+  batch_id: z.string().nullish(),
+  metadata: z.record(z.string(), z.unknown()).nullish(),
 })

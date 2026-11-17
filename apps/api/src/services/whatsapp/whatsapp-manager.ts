@@ -1,5 +1,5 @@
 import { MedusaContainer } from "@medusajs/framework/types"
-import { ContainerRegistrationKeys, ProductStatus } from "@medusajs/framework/utils"
+import { ContainerRegistrationKeys, Modules, ProductStatus } from "@medusajs/framework/utils"
 import {
   uploadFilesWorkflow,
   linkProductsToSalesChannelWorkflow,
@@ -11,7 +11,7 @@ import {
   linkProductBrandWorkflow,
   createProductAttributeValuesWorkflow,
 } from "@mercurjs/core/workflows"
-import { BrandStatus, AttributeType } from "@mercurjs/types"
+import { BrandStatus, AttributeType, MercurModules } from "@mercurjs/types"
 import { GeminiVisionService } from "./gemini-vision"
 import { WhatsAppClient } from "./whatsapp-client"
 import { ImageCompressor } from "./image-compressor"
@@ -1578,9 +1578,13 @@ export class WhatsAppManager {
       if (brandId) p.brand_id = brandId
     }
 
-    // 4. Build Attributes, Retail Variants, and Wholesale Variants
-    const effectivePriceAmount = Math.round((p.suggested_price || p.mrp || 0) * 100)
-    const { attributes, variants } = await this.buildAttributesAndVariants(p, currencyCode, effectivePriceAmount)
+    // 4. Build Attributes and Wholesale Variants (no MRP per user requirement)
+    const effectivePriceAmount = Math.round((p.wholesale_price || 0) * 100)
+    const { attributes, variants } = await this.buildAttributesAndVariants(
+      { ...p, mrp: undefined, suggested_price: undefined },
+      currencyCode,
+      effectivePriceAmount
+    )
 
     const productPayload: any = {
       title: p.title,
@@ -1589,14 +1593,12 @@ export class WhatsAppManager {
       status: ProductStatus.PUBLISHED,
       images: draft.imageUrls.map((url) => ({ url })),
       thumbnail: draft.imageUrls[0],
-      variants: [],
+      variants: variants && variants.length > 0 ? variants : [],
       sales_channels: salesChannels.map((sc) => ({ id: sc.id })),
       metadata: {
         listing_scope: "global",
         created_via: "whatsapp",
         article_number: p.article_number || p.title,
-        mrp: p.mrp,
-        suggested_retail_price: p.suggested_price,
         wholesale_unit_price: p.wholesale_price,
         material: p.material,
         brand_name: p.brand || undefined,
@@ -1630,6 +1632,19 @@ export class WhatsAppManager {
     })
 
     const createdId = (result as { id: string }[])[0].id
+
+    // Explicitly link product to seller to guarantee vendor domain showroom visibility
+    if (draft.targetSellerId) {
+      try {
+        const remoteLink = this.container.resolve(ContainerRegistrationKeys.LINK)
+        await remoteLink.create([
+          {
+            [Modules.PRODUCT]: { product_id: createdId },
+            [MercurModules.SELLER]: { seller_id: draft.targetSellerId },
+          },
+        ])
+      } catch {}
+    }
 
     // 6. Explicitly link Brand if created/resolved
     if (brandId) {
