@@ -146,60 +146,68 @@ Output ONLY valid JSON matching this schema:
 
     const timeoutMs = Number(process.env.WHATSAPP_AI_TIMEOUT_MS) || 30000
 
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: AbortSignal.timeout(timeoutMs),
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.2,
-          },
-        }),
-      })
+    const candidateModels = [
+      this.model,
+      ...["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash"].filter((m) => m !== this.model),
+    ]
 
-      if (!res.ok) {
-        const errText = await res.text()
-        console.warn(`[DraftEditorService] Model call (${this.model}) failed: ${errText}`)
-        return this.fallbackConversation(context, userMessage)
+    for (const model of candidateModels) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.apiKey}`
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(timeoutMs),
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.2,
+            },
+          }),
+        })
+
+        if (!res.ok) {
+          const errText = await res.text()
+          console.warn(`[DraftEditorService] Model call (${model}) failed: ${errText}. Trying next fallback candidate...`)
+          continue
+        }
+
+        const data = await res.json()
+        const parts = data.candidates?.[0]?.content?.parts || []
+
+        // Filter out thinking tokens from models like Gemma 4 31B
+        const textParts = parts
+          .filter((p: any) => !p.thought)
+          .map((p: any) => p.text)
+          .join("")
+          .trim()
+
+        const jsonMatch = textParts.match(/\{[\s\S]*\}/)
+        const rawText = jsonMatch
+          ? jsonMatch[0]
+          : textParts.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim() || "{}"
+
+        const parsed = JSON.parse(rawText) as AssistantResponse
+
+        return {
+          action: parsed.action || "CHAT",
+          sellerQuery: parsed.sellerQuery || undefined,
+          updatedProduct: parsed.updatedProduct || context.draftProduct,
+          replyMessage: parsed.replyMessage || "I'm here to help you manage your store and products!",
+        }
+      } catch (err: any) {
+        if (err?.name === "TimeoutError" || err?.message?.includes("timeout")) {
+          console.warn(
+            `[DraftEditorService] Model call (${model}) timed out after ${timeoutMs / 1000}s. Trying next fallback candidate...`
+          )
+        } else {
+          console.warn(`[DraftEditorService] Model call (${model}) failed: ${err?.message || err}. Trying next fallback candidate...`)
+        }
       }
-
-      const data = await res.json()
-      const parts = data.candidates?.[0]?.content?.parts || []
-
-      // Filter out thinking tokens from models like Gemma 4 31B
-      const textParts = parts
-        .filter((p: any) => !p.thought)
-        .map((p: any) => p.text)
-        .join("")
-        .trim()
-
-      const jsonMatch = textParts.match(/\{[\s\S]*\}/)
-      const rawText = jsonMatch
-        ? jsonMatch[0]
-        : textParts.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim() || "{}"
-
-      const parsed = JSON.parse(rawText) as AssistantResponse
-
-      return {
-        action: parsed.action || "CHAT",
-        sellerQuery: parsed.sellerQuery || undefined,
-        updatedProduct: parsed.updatedProduct || context.draftProduct,
-        replyMessage: parsed.replyMessage || "I'm here to help you manage your store and products!",
-      }
-    } catch (err: any) {
-      if (err?.name === "TimeoutError" || err?.message?.includes("timeout")) {
-        console.warn(
-          `[DraftEditorService] Model call (${this.model}) timed out after ${timeoutMs / 1000}s, falling back to rule-based assistant`
-        )
-      } else {
-        console.error("[DraftEditorService] Error processing conversation:", err)
-      }
-      return this.fallbackConversation(context, userMessage)
     }
+
+    return this.fallbackConversation(context, userMessage)
   }
 
   /**

@@ -431,6 +431,20 @@ export class BulkAiUploader {
       try {
         let extracted = batchExtracted[i]
         if (!extracted) {
+          try {
+            console.log(`[BulkAiUploader] Missing batch extraction for image ${i + 1}, trying individual extraction...`)
+            extracted = await this.vision.extractProductDetails(
+              [compressedImages[i]],
+              notes,
+              availableCategoryNames,
+              existingBrandNames
+            )
+          } catch (itemErr: any) {
+            console.warn(`[BulkAiUploader] Individual extraction failed for image ${i + 1}:`, itemErr.message)
+          }
+        }
+
+        if (!extracted) {
           console.warn(`[BulkAiUploader] Missing extraction for image ${i + 1}, using clean fallback`)
           extracted = {
             title: `Article ${i + 1}`,

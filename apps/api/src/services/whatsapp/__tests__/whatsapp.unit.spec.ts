@@ -1,5 +1,5 @@
 import { WhatsAppClient } from "../whatsapp-client"
-import { GeminiVisionService } from "../gemini-vision"
+import { GeminiVisionService, VISION_FALLBACK_MODELS } from "../gemini-vision"
 import { WhatsAppManager } from "../whatsapp-manager"
 import { ImageCompressor } from "../image-compressor"
 import { DraftEditorService } from "../draft-editor"
@@ -46,9 +46,15 @@ describe("WhatsAppClient", () => {
 })
 
 describe("GeminiVisionService", () => {
-  it("initializes with default model gemini-2.0-flash", () => {
+  it("initializes with default model gemini-3.5-flash-lite", () => {
     const service = new GeminiVisionService("test_key")
     expect(service).toBeDefined()
+  })
+
+  it("exports resilient fallback models list", () => {
+    expect(VISION_FALLBACK_MODELS).toContain("gemini-3.5-flash-lite")
+    expect(VISION_FALLBACK_MODELS).toContain("gemini-3.1-flash-lite")
+    expect(VISION_FALLBACK_MODELS.length).toBeGreaterThanOrEqual(2)
   })
 
   it("fails early if GEMINI_API_KEY is missing", async () => {

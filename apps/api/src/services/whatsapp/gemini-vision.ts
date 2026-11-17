@@ -1,5 +1,11 @@
 import { ExtractedProduct } from "./types"
 
+export const VISION_FALLBACK_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.8-flash",
+]
+
 export class GeminiVisionService {
   private apiKey?: string
   private model: string
@@ -8,6 +14,33 @@ export class GeminiVisionService {
   constructor(apiKey?: string, model?: string) {
     this.apiKey = apiKey !== undefined ? apiKey : process.env.GEMINI_API_KEY
     this.model = model || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite"
+  }
+
+  /**
+   * Executes a model generation request with automatic failover across fallback models
+   * in case of 503 high-demand, 404 deprecation, rate limit, or network timeout.
+   */
+  private async executeWithFallback(
+    fn: (modelName: string) => Promise<any>
+  ): Promise<any> {
+    const candidateModels = [
+      this.model,
+      ...VISION_FALLBACK_MODELS.filter((m) => m !== this.model),
+    ]
+
+    let lastError: any = null
+    for (const model of candidateModels) {
+      try {
+        return await fn(model)
+      } catch (err: any) {
+        lastError = err
+        console.warn(
+          `[GeminiVisionService] Model "${model}" failed (${err?.message || err}). Trying automatic fallback...`
+        )
+      }
+    }
+
+    throw lastError
   }
 
   private async getClient(): Promise<any> {
@@ -139,13 +172,15 @@ Always output strict, valid JSON matching the schema.`
       })
     }
 
-    const response = await ai.models.generateContent({
-      model: this.model,
-      contents: parts,
-      config: {
-        responseMimeType: "application/json",
-      },
-    })
+    const response = await this.executeWithFallback((modelName) =>
+      ai.models.generateContent({
+        model: modelName,
+        contents: parts,
+        config: {
+          responseMimeType: "application/json",
+        },
+      })
+    )
 
     const text = response.text || "{}"
     try {
@@ -305,18 +340,20 @@ Output ONLY valid JSON array with ${images.length} items.`
       })
     })
 
-    const response = await ai.models.generateContent({
-      model: this.model,
-      contents: [
-        {
-          role: "user",
-          parts,
+    const response = await this.executeWithFallback((modelName) =>
+      ai.models.generateContent({
+        model: modelName,
+        contents: [
+          {
+            role: "user",
+            parts,
+          },
+        ],
+        config: {
+          responseMimeType: "application/json",
         },
-      ],
-      config: {
-        responseMimeType: "application/json",
-      },
-    })
+      })
+    )
 
     const text = response.text || "[]"
     try {
